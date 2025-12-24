@@ -14,8 +14,11 @@ class RequestItem extends Model
     protected $fillable = [
         'request_id',
         'name',
+        'equipment_type',
+        'equipment_brand',
         'article',
         'brand',
+        'manufacturer_article',
         'quantity',
         'unit',
         'description',
@@ -34,6 +37,20 @@ class RequestItem extends Model
             'avg_price' => 'decimal:2',
             'max_price' => 'decimal:2',
             'offers_count' => 'integer',
+        ];
+    }
+
+    /**
+     * Типы оборудования
+     */
+    const EQUIPMENT_TYPE_LIFT = 'lift';
+    const EQUIPMENT_TYPE_ESCALATOR = 'escalator';
+
+    public static function equipmentTypes(): array
+    {
+        return [
+            self::EQUIPMENT_TYPE_LIFT => 'Лифт',
+            self::EQUIPMENT_TYPE_ESCALATOR => 'Эскалатор',
         ];
     }
 
@@ -89,5 +106,31 @@ class RequestItem extends Model
             'offers_count' => $offers->count(),
             'best_supplier_id' => $bestOffer->supplier_id,
         ]);
+    }
+
+    /**
+     * Проверка заполненности обязательных полей
+     */
+    public function isValid(): bool
+    {
+        return !empty($this->name) &&
+               !empty($this->equipment_type) &&
+               !empty($this->equipment_brand) &&
+               !empty($this->manufacturer_article);
+    }
+
+    /**
+     * Получить список незаполненных обязательных полей
+     */
+    public function getMissingRequiredFields(): array
+    {
+        $missing = [];
+
+        if (empty($this->name)) $missing[] = 'Полное название';
+        if (empty($this->equipment_type)) $missing[] = 'Тип оборудования (лифт/эскалатор)';
+        if (empty($this->equipment_brand)) $missing[] = 'Марка оборудования';
+        if (empty($this->manufacturer_article)) $missing[] = 'Артикул производителя';
+
+        return $missing;
     }
 }

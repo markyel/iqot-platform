@@ -14,30 +14,45 @@ use Illuminate\Support\Facades\Route;
 // Лендинг (публичные страницы)
 Route::get('/', [LandingController::class, 'index'])->name('landing');
 Route::post('/demo-request', [LandingController::class, 'demoRequest'])->name('demo.request');
+Route::post('/api/check-email', [LandingController::class, 'checkEmail'])->name('api.check-email');
+Route::get('/set-password/{token}', [LandingController::class, 'showSetPassword'])->name('set-password');
+Route::post('/set-password', [LandingController::class, 'storePassword'])->name('set-password.store');
 Route::get('/privacy', [LandingController::class, 'privacy'])->name('privacy');
+Route::get('/terms', [LandingController::class, 'terms'])->name('terms');
 
 // Личный кабинет (требует авторизации)
 Route::middleware(['auth', 'verified'])->prefix('cabinet')->name('cabinet.')->group(function () {
-    
+
     // Дашборд
     Route::get('/', [CabinetController::class, 'dashboard'])->name('dashboard');
-    
+
     // Заявки
     Route::get('/requests', [CabinetController::class, 'requests'])->name('requests');
+    Route::get('/requests/create', [CabinetController::class, 'createRequestForm'])->name('requests.create');
+    Route::post('/requests', [CabinetController::class, 'createRequest'])->name('requests.store');
     Route::get('/requests/{request}', [CabinetController::class, 'showRequest'])->name('requests.show');
-    Route::post('/requests', [CabinetController::class, 'createRequest'])->name('requests.create');
-    
+
     // Отчёты
     Route::get('/reports', [ReportController::class, 'index'])->name('reports');
     Route::get('/reports/{report}', [ReportController::class, 'show'])->name('reports.show');
     Route::get('/reports/{report}/download', [ReportController::class, 'download'])->name('reports.download');
-    
+
     // Поставщики
     Route::get('/suppliers', [CabinetController::class, 'suppliers'])->name('suppliers');
-    
+
     // Настройки профиля
     Route::get('/settings', [CabinetController::class, 'settings'])->name('settings');
     Route::put('/settings', [CabinetController::class, 'updateSettings'])->name('settings.update');
+});
+
+// Админка (требует is_admin)
+Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->name('admin.')->group(function () {
+    Route::get('/demo-requests', [\App\Http\Controllers\Admin\DemoRequestController::class, 'index'])->name('demo-requests.index');
+    Route::get('/demo-requests/{demoRequest}', [\App\Http\Controllers\Admin\DemoRequestController::class, 'show'])->name('demo-requests.show');
+    Route::post('/demo-requests/{demoRequest}/approve', [\App\Http\Controllers\Admin\DemoRequestController::class, 'approve'])->name('demo-requests.approve');
+    Route::post('/demo-requests/{demoRequest}/reject', [\App\Http\Controllers\Admin\DemoRequestController::class, 'reject'])->name('demo-requests.reject');
+    Route::post('/demo-requests/{demoRequest}/add-note', [\App\Http\Controllers\Admin\DemoRequestController::class, 'addNote'])->name('demo-requests.add-note');
+    Route::patch('/demo-requests/{demoRequest}/status', [\App\Http\Controllers\Admin\DemoRequestController::class, 'updateStatus'])->name('demo-requests.update-status');
 });
 
 // Авторизация (Laravel Breeze добавит свои роуты)

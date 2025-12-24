@@ -17,6 +17,12 @@ class Request extends Model
         'code',
         'title',
         'description',
+        'company_name',
+        'company_address',
+        'inn',
+        'kpp',
+        'contact_person',
+        'contact_phone',
         'status',
         'items_count',
         'suppliers_count',
@@ -126,5 +132,53 @@ class Request extends Model
     public function isCompleted(): bool
     {
         return $this->status === self::STATUS_COMPLETED;
+    }
+
+    /**
+     * Проверка заполненности обязательных полей для отправки
+     */
+    public function canBeSent(): bool
+    {
+        // Проверяем контактную информацию
+        if (empty($this->company_name) ||
+            empty($this->company_address) ||
+            empty($this->inn) ||
+            empty($this->contact_person) ||
+            empty($this->contact_phone)) {
+            return false;
+        }
+
+        // Проверяем наличие позиций
+        if ($this->items()->count() === 0) {
+            return false;
+        }
+
+        // Проверяем, что все позиции заполнены корректно
+        foreach ($this->items as $item) {
+            if (empty($item->name) ||
+                empty($item->equipment_type) ||
+                empty($item->equipment_brand) ||
+                empty($item->manufacturer_article)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Получить список незаполненных обязательных полей
+     */
+    public function getMissingRequiredFields(): array
+    {
+        $missing = [];
+
+        if (empty($this->company_name)) $missing[] = 'Название организации';
+        if (empty($this->company_address)) $missing[] = 'Адрес';
+        if (empty($this->inn)) $missing[] = 'ИНН';
+        if (empty($this->contact_person)) $missing[] = 'ФИО ответственного сотрудника';
+        if (empty($this->contact_phone)) $missing[] = 'Телефон';
+
+        return $missing;
     }
 }

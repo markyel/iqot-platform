@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>IQOT — ИИ-система сбора коммерческих предложений</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1482,6 +1483,232 @@
                 padding: 0.4rem;
             }
         }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+
+        .modal-content {
+            background: var(--bg-card);
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
+            max-width: 600px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            position: relative;
+            animation: modalSlideIn 0.3s ease;
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .modal-header {
+            padding: 2rem 2rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            position: relative;
+        }
+
+        .modal-title {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .modal-subtitle {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 1.5rem;
+            right: 1.5rem;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .modal-close:hover {
+            background: var(--bg-card-hover);
+            color: var(--text-primary);
+        }
+
+        .modal-body {
+            padding: 2rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+        }
+
+        .form-label.required::after {
+            content: ' *';
+            color: #ef4444;
+        }
+
+        .form-input,
+        .form-textarea {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-family: 'Manrope', sans-serif;
+            font-size: 0.95rem;
+            transition: all 0.2s ease;
+        }
+
+        .form-input:focus,
+        .form-textarea:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            background: var(--bg-card);
+        }
+
+        .form-textarea {
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 1rem;
+        }
+
+        .form-help {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
+        }
+
+        .form-checkbox-group {
+            margin: 1.5rem 0;
+        }
+
+        .checkbox-wrapper {
+            display: flex;
+            gap: 0.75rem;
+            align-items: start;
+        }
+
+        .form-checkbox {
+            width: 20px;
+            height: 20px;
+            min-width: 20px;
+            margin-top: 2px;
+            cursor: pointer;
+            accent-color: var(--accent-primary);
+        }
+
+        .checkbox-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            cursor: pointer;
+        }
+
+        .checkbox-label a {
+            color: var(--accent-primary);
+            text-decoration: none;
+        }
+
+        .checkbox-label a:hover {
+            text-decoration: underline;
+        }
+
+        .terms-box {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 1.25rem;
+            margin-top: 1rem;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        .terms-box h4 {
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            margin-bottom: 0.75rem;
+            font-weight: 600;
+        }
+
+        .terms-box ul {
+            margin-left: 1.25rem;
+            margin-top: 0.5rem;
+        }
+
+        .terms-box li {
+            margin-bottom: 0.5rem;
+        }
+
+        .btn-submit {
+            width: 100%;
+            padding: 1rem;
+            font-size: 1rem;
+            margin-top: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .modal-content {
+                max-height: 100vh;
+                border-radius: 0;
+            }
+
+            .modal-header,
+            .modal-body {
+                padding: 1.5rem;
+            }
+
+            .modal-title {
+                font-size: 1.5rem;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1507,7 +1734,7 @@
                     <button class="lang-btn active" data-lang="ru">RU</button>
                     <button class="lang-btn" data-lang="en">EN</button>
                 </div>
-                <a href="#cta" class="btn btn-primary" data-ru="Оставить заявку" data-en="Request Demo">Оставить заявку</a>
+                <a href="#" class="btn btn-primary" data-demo-modal data-ru="Оставить заявку" data-en="Request Demo">Оставить заявку</a>
             </div>
             <button class="mobile-menu-btn">
                 <span></span>
@@ -1532,7 +1759,7 @@
                     Автоматизируйте сбор и анализ ценовых предложений от поставщиков. Система сама отправит запросы, соберёт ответы и подготовит сводный отчёт.
                 </p>
                 <div class="hero-cta">
-                    <a href="#cta" class="btn btn-primary" data-ru="Запросить демо" data-en="Request Demo">Запросить демо</a>
+                    <a href="#" class="btn btn-primary" data-demo-modal data-ru="Запросить демо" data-en="Request Demo">Запросить демо</a>
                     <a href="#how-it-works" class="btn btn-outline" data-ru="Как это работает" data-en="How it works">Как это работает</a>
                 </div>
                 <div class="hero-stats">
@@ -2022,11 +2249,94 @@
             <h2 data-ru="Готовы автоматизировать закупки?" data-en="Ready to automate procurement?">Готовы автоматизировать закупки?</h2>
             <p data-ru="Запустим пилотный проект на вашей задаче. Увидите результат за 1 неделю." data-en="We'll launch a pilot project for your task. See results in 1 week.">Запустим пилотный проект на вашей задаче. Увидите результат за 1 неделю.</p>
             <div class="cta-buttons">
-                <a href="mailto:demo@iqot.ai" class="btn btn-primary btn-large" data-ru="Оставить заявку" data-en="Request Demo">Оставить заявку</a>
+                <a href="#" class="btn btn-primary btn-large" data-demo-modal data-ru="Оставить заявку" data-en="Request Demo">Оставить заявку</a>
                 <a href="https://t.me/iqot_support" class="btn btn-outline btn-large" data-ru="Написать в Telegram" data-en="Contact via Telegram">Написать в Telegram</a>
             </div>
         </div>
     </section>
+
+    <!-- Demo Request Modal -->
+    <div id="demoModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Заказать демонстрацию</h3>
+                <p class="modal-subtitle">Заполните форму, и мы свяжемся с вами в ближайшее время</p>
+                <button class="modal-close" type="button">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="demoRequestForm" method="POST" action="/demo-request">
+                    @csrf
+
+                    <div class="form-group">
+                        <label class="form-label required" for="full_name">ФИО</label>
+                        <input type="text" id="full_name" name="full_name" class="form-input" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label required" for="organization">Организация</label>
+                        <input type="text" id="organization" name="organization" class="form-input" required>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label required" for="inn">ИНН</label>
+                            <input type="text" id="inn" name="inn" class="form-input" pattern="\d{10}|\d{12}" placeholder="10 или 12 цифр" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="kpp">КПП</label>
+                            <input type="text" id="kpp" name="kpp" class="form-input" pattern="\d{9}" placeholder="9 цифр">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label required" for="email">Контактный e-mail</label>
+                        <input type="email" id="email" name="email" class="form-input" required>
+                        <p class="form-help">На этот email будут отправлены результаты</p>
+                    </div>
+
+                    <!-- Password field (shown only if user exists) -->
+                    <div id="passwordField" class="form-group" style="display: none;">
+                        <label class="form-label required" for="password">Пароль от личного кабинета</label>
+                        <input type="password" id="password" name="password" class="form-input" placeholder="Введите ваш пароль">
+                        <p class="form-help">Этот email уже зарегистрирован. Введите пароль для доступа к личному кабинету.</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label required" for="phone">Телефон</label>
+                        <input type="tel" id="phone" name="phone" class="form-input" placeholder="+7 (999) 123-45-67" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label required" for="items_list">Список товаров для запроса КП</label>
+                        <textarea id="items_list" name="items_list" class="form-textarea" placeholder="Для демонстрации будет выбрана 1-2 позиции. Для принятия заявки в работу - по каждой позиции должна быть предоставлена исчерпывающая информация: название, артикул, марка, количество.&#10;&#10;Пример:&#10;1. Шкив DAA261K8, OTIS, 1 шт&#10;2. Плата SMICE 62.Q, Schindler, 2 шт" required></textarea>
+                        <p class="form-help">Укажите название, артикул, марку и количество для каждой позиции</p>
+                    </div>
+
+                    <div class="terms-box">
+                        <h4>Условия и правила сервиса — основные положения:</h4>
+                        <ul>
+                            <li><strong>Достоверность данных:</strong> Вы обязуетесь предоставлять только достоверные данные. Заявка должна отражать реальную потребность вашей организации.</li>
+                            <li><strong>Передача данных поставщикам:</strong> Отправляя заявку, вы даёте согласие на то, что указанные вами контактные данные и реквизиты организации будут переданы потенциальным поставщикам в составе запроса коммерческого предложения.</li>
+                            <li><strong>Полнота информации:</strong> Для демонстрации будет выбрана 1-2 позиции. Для принятия заявки в работу необходимо предоставить исчерпывающую информацию по каждой позиции: название, артикул, марку, количество.</li>
+                            <li><strong>Конфиденциальность:</strong> Ваши данные хранятся на защищённых серверах на территории РФ и не передаются третьим лицам, за исключением поставщиков в рамках обработки заявки.</li>
+                        </ul>
+                        <p style="margin-top: 0.75rem; font-size: 0.8rem;">Подробнее: <a href="/terms" target="_blank">Условия использования</a> • <a href="/privacy" target="_blank">Политика конфиденциальности</a></p>
+                    </div>
+
+                    <div class="form-checkbox-group">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="terms_accepted" name="terms_accepted" class="form-checkbox" value="1" required>
+                            <label for="terms_accepted" class="checkbox-label">
+                                Я согласен с <a href="/terms" target="_blank">Условиями использования</a> и <a href="/privacy" target="_blank">Политикой конфиденциальности</a>, и даю согласие на обработку персональных данных
+                            </label>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-submit">Отправить заявку</button>
+                </form>
+            </div>
+        </div>
+    </div>
 
     <!-- Footer -->
     <footer class="footer">
@@ -2043,7 +2353,8 @@
             </div>
             <div class="footer-links">
                 <a href="mailto:info@iqot.ai" data-ru="Связаться" data-en="Contact">Связаться</a>
-                <a href="#" data-ru="Политика конфиденциальности" data-en="Privacy Policy">Политика конфиденциальности</a>
+                <a href="/terms" data-ru="Условия использования" data-en="Terms of Service">Условия использования</a>
+                <a href="/privacy" data-ru="Политика конфиденциальности" data-en="Privacy Policy">Политика конфиденциальности</a>
             </div>
         </div>
     </footer>
@@ -2159,6 +2470,134 @@
             mobileMenuBtn.addEventListener("click", function() {
                 navLinks.classList.toggle("active");
                 mobileMenuBtn.classList.toggle("active");
+            });
+        }
+
+        // Demo Request Modal
+        const demoModal = document.getElementById('demoModal');
+        const demoForm = document.getElementById('demoRequestForm');
+        const openModalBtns = document.querySelectorAll('[data-demo-modal]');
+        const closeModalBtn = document.querySelector('.modal-close');
+
+        openModalBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                demoModal.style.display = 'flex';
+                document.body.style.overflow = 'hidden';
+            });
+        });
+
+        if (closeModalBtn) {
+            closeModalBtn.addEventListener('click', () => {
+                demoModal.style.display = 'none';
+                document.body.style.overflow = '';
+            });
+        }
+
+        demoModal.addEventListener('click', (e) => {
+            if (e.target === demoModal) {
+                demoModal.style.display = 'none';
+                document.body.style.overflow = '';
+            }
+        });
+
+        // Email check for existing user
+        const emailInput = document.getElementById('email');
+        const passwordField = document.getElementById('passwordField');
+        const passwordInput = document.getElementById('password');
+        let emailCheckTimeout;
+
+        if (emailInput) {
+            emailInput.addEventListener('blur', async () => {
+                const email = emailInput.value.trim();
+                if (!email || !emailInput.validity.valid) return;
+
+                clearTimeout(emailCheckTimeout);
+                emailCheckTimeout = setTimeout(async () => {
+                    try {
+                        const response = await fetch('/api/check-email', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                                'Accept': 'application/json',
+                            },
+                            body: JSON.stringify({ email })
+                        });
+
+                        const data = await response.json();
+
+                        if (data.exists) {
+                            passwordField.style.display = 'block';
+                            passwordInput.required = true;
+                        } else {
+                            passwordField.style.display = 'none';
+                            passwordInput.required = false;
+                            passwordInput.value = '';
+                        }
+                    } catch (error) {
+                        console.error('Email check error:', error);
+                    }
+                }, 500);
+            });
+        }
+
+        // Form submission
+        if (demoForm) {
+            demoForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                const submitBtn = demoForm.querySelector('button[type="submit"]');
+                const originalText = submitBtn.textContent;
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Отправка...';
+
+                const formData = new FormData(demoForm);
+
+                try {
+                    const response = await fetch('/demo-request', {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                            'Accept': 'application/json',
+                        },
+                        body: formData
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        // Success
+                        if (data.redirect) {
+                            // Redirect to password setup page
+                            window.location.href = data.redirect;
+                        } else {
+                            alert(data.message || 'Заявка отправлена!');
+                            demoModal.style.display = 'none';
+                            document.body.style.overflow = '';
+                            demoForm.reset();
+                            passwordField.style.display = 'none';
+                            passwordInput.required = false;
+                        }
+                    } else {
+                        // Validation errors
+                        if (data.errors) {
+                            let errorMsg = 'Исправьте ошибки:\n';
+                            Object.values(data.errors).forEach(errors => {
+                                errors.forEach(error => errorMsg += '• ' + error + '\n');
+                            });
+                            alert(errorMsg);
+                        } else {
+                            alert(data.message || 'Произошла ошибка');
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('Произошла ошибка при отправке формы');
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = originalText;
+                }
             });
         }
     </script>

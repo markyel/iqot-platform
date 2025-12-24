@@ -78,22 +78,29 @@ class CabinetController extends Controller
     }
 
     /**
+     * Форма создания заявки
+     */
+    public function createRequestForm(): View
+    {
+        return view('cabinet.requests.create');
+    }
+
+    /**
      * Создание заявки
      */
-    public function createRequest(HttpRequest $httpRequest)
+    public function createRequest(\App\Http\Requests\StoreRequestRequest $httpRequest)
     {
-        $validated = $httpRequest->validate([
-            'title' => 'nullable|string|max:255',
-            'items' => 'required|array|min:1',
-            'items.*.name' => 'required|string|max:255',
-            'items.*.article' => 'nullable|string|max:100',
-            'items.*.brand' => 'nullable|string|max:100',
-            'items.*.quantity' => 'nullable|integer|min:1',
-        ]);
+        $validated = $httpRequest->validated();
 
         $request = auth()->user()->requests()->create([
             'code' => Request::generateCode(),
             'title' => $validated['title'] ?? 'Заявка от ' . now()->format('d.m.Y'),
+            'company_name' => $validated['company_name'],
+            'company_address' => $validated['company_address'],
+            'inn' => $validated['inn'],
+            'kpp' => $validated['kpp'] ?? null,
+            'contact_person' => $validated['contact_person'],
+            'contact_phone' => $validated['contact_phone'],
             'status' => Request::STATUS_DRAFT,
             'items_count' => count($validated['items']),
         ]);
