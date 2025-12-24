@@ -45,8 +45,8 @@ Route::middleware(['auth', 'verified'])->prefix('cabinet')->name('cabinet.')->gr
     Route::put('/settings', [CabinetController::class, 'updateSettings'])->name('settings.update');
 });
 
-// Админка (требует is_admin)
-Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->name('admin.')->group(function () {
+// Управление демо-заявками (требует is_admin) - переименовано из /admin в /manage чтобы не конфликтовать с Filament
+Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.')->group(function () {
     Route::get('/demo-requests', [\App\Http\Controllers\Admin\DemoRequestController::class, 'index'])->name('demo-requests.index');
     Route::get('/demo-requests/{demoRequest}', [\App\Http\Controllers\Admin\DemoRequestController::class, 'show'])->name('demo-requests.show');
     Route::post('/demo-requests/{demoRequest}/approve', [\App\Http\Controllers\Admin\DemoRequestController::class, 'approve'])->name('demo-requests.approve');
@@ -54,6 +54,8 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->name('admin.'
     Route::post('/demo-requests/{demoRequest}/add-note', [\App\Http\Controllers\Admin\DemoRequestController::class, 'addNote'])->name('demo-requests.add-note');
     Route::patch('/demo-requests/{demoRequest}/status', [\App\Http\Controllers\Admin\DemoRequestController::class, 'updateStatus'])->name('demo-requests.update-status');
 });
+
+// Filament админка доступна по /admin
 
 // Авторизация (Laravel Breeze добавит свои роуты)
 require __DIR__.'/auth.php';
