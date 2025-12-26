@@ -181,6 +181,109 @@
         color: #991b1b;
         border: 1px solid #fecaca;
     }
+
+    .price-best {
+        background: #d1fae5;
+        border: 1px solid #a7f3d0;
+        border-radius: 4px;
+        padding: 0.5rem 0.75rem;
+    }
+
+    /* Mobile card for offers */
+    .mobile-offer-card {
+        display: none;
+    }
+
+    /* Mobile responsive */
+    @media (max-width: 768px) {
+        .cabinet-card {
+            padding: 1rem;
+        }
+
+        .offers-table {
+            display: none;
+        }
+
+        .mobile-offer-card {
+            display: block;
+        }
+
+        .offer-card {
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .offer-card-header {
+            font-weight: 700;
+            color: #111827;
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid #f3f4f6;
+            font-size: 0.9375rem;
+        }
+
+        .offer-card-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        .offer-card-label {
+            color: #6b7280;
+            font-size: 0.8125rem;
+        }
+
+        .offer-card-value {
+            color: #111827;
+            font-weight: 600;
+            text-align: right;
+        }
+
+        .stat-card {
+            padding: 0.75rem;
+        }
+
+        .stat-value {
+            font-size: 1.25rem;
+        }
+
+        .unlock-banner {
+            padding: 1rem;
+        }
+
+        .unlock-banner h3 {
+            font-size: 1.125rem;
+        }
+
+        .btn-unlock {
+            padding: 0.875rem 1.5rem;
+            font-size: 1rem;
+        }
+
+        .offer-notes {
+            background: #f9fafb;
+            padding: 0.75rem;
+            border-radius: 6px;
+            margin-top: 0.75rem;
+        }
+
+        .offer-notes-label {
+            color: #6b7280;
+            font-size: 0.75rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .offer-notes-text {
+            color: #111827;
+            font-size: 0.8125rem;
+            line-height: 1.5;
+        }
+    }
 </style>
 @endpush
 
@@ -462,6 +565,113 @@
                     @endforeach
                 </tbody>
             </table>
+
+            <!-- Mobile Offer Cards -->
+            <div class="mobile-offer-card">
+                @foreach($offers as $index => $offer)
+                <div class="offer-card">
+                    <div class="offer-card-header">
+                        @if($hasPurchased && $offer->supplier)
+                            {{ $offer->supplier->name ?? 'Не указан' }}
+                            @if($index === 0)
+                                <span style="background: #d1fae5; color: #065f46; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; margin-left: 0.5rem;">Лучшая</span>
+                            @endif
+                        @else
+                            Поставщик скрыт
+                        @endif
+                    </div>
+
+                    @if($hasPurchased && $offer->supplier)
+                        @if($offer->supplier->email)
+                        <div class="offer-card-row">
+                            <span class="offer-card-label">Email:</span>
+                            <span class="offer-card-value">{{ $offer->supplier->email }}</span>
+                        </div>
+                        @endif
+                        @if($offer->supplier->phone)
+                        <div class="offer-card-row">
+                            <span class="offer-card-label">Телефон:</span>
+                            <span class="offer-card-value">{{ $offer->supplier->phone }}</span>
+                        </div>
+                        @endif
+                    @endif
+
+                    <div class="offer-card-row">
+                        <span class="offer-card-label">Цена за ед.:</span>
+                        <div class="offer-card-value">
+                            @if($hasPurchased || $offer->price_per_unit_in_rub == $maxPrice)
+                                @if($offer->price_per_unit)
+                                    <div style="font-weight: 700; color: #059669;">{{ number_format($offer->price_per_unit_in_rub, 2) }} ₽</div>
+                                    @if($offer->currency !== 'RUB')
+                                        <div style="color: #6b7280; font-size: 0.75rem;">{{ number_format($offer->price_per_unit, 2) }} {{ $offer->currency }}</div>
+                                    @endif
+                                @else
+                                    —
+                                @endif
+                            @else
+                                <span class="price-hidden">***</span>
+                            @endif
+                        </div>
+                    </div>
+
+                    <div class="offer-card-row">
+                        <span class="offer-card-label">Общая цена:</span>
+                        <div class="offer-card-value">
+                            @if($hasPurchased || $offer->price_per_unit_in_rub == $maxPrice)
+                                @if($offer->total_price)
+                                    <div style="font-weight: 700;">{{ number_format($offer->total_price_in_rub, 2) }} ₽</div>
+                                    @if($offer->currency !== 'RUB')
+                                        <div style="color: #6b7280; font-size: 0.75rem;">{{ number_format($offer->total_price, 2) }} {{ $offer->currency }}</div>
+                                    @endif
+                                @else
+                                    —
+                                @endif
+                            @else
+                                <span class="price-hidden">***</span>
+                            @endif
+                        </div>
+                    </div>
+
+                    <div class="offer-card-row">
+                        <span class="offer-card-label">Срок поставки:</span>
+                        <span class="offer-card-value">
+                            @if($hasPurchased || $offer->price_per_unit_in_rub == $maxPrice)
+                                @if($offer->delivery_days)
+                                    {{ $offer->delivery_days }} дн.
+                                @else
+                                    —
+                                @endif
+                            @else
+                                <span class="price-hidden">***</span>
+                            @endif
+                        </span>
+                    </div>
+
+                    @if($hasPurchased)
+                        @if($offer->payment_terms)
+                        <div class="offer-card-row">
+                            <span class="offer-card-label">Условия оплаты:</span>
+                            <span class="offer-card-value">{{ $offer->payment_terms }}</span>
+                        </div>
+                        @endif
+
+                        @if($offer->response_received_at)
+                        <div class="offer-card-row">
+                            <span class="offer-card-label">Дата ответа:</span>
+                            <span class="offer-card-value">{{ $offer->response_received_at->format('d.m.Y H:i') }}</span>
+                        </div>
+                        @endif
+
+                        @if($offer->notes)
+                        <div class="offer-notes">
+                            <div class="offer-notes-label">Примечание:</div>
+                            <div class="offer-notes-text">{{ $offer->notes }}</div>
+                        </div>
+                        @endif
+                    @endif
+                </div>
+                @endforeach
+            </div>
         @endif
     </div>
 

@@ -124,6 +124,93 @@
     .pagination a:hover:not(.active) {
         background: #f9fafb;
     }
+
+    /* Mobile card layout */
+    .mobile-card {
+        display: none;
+    }
+
+    /* Mobile responsive */
+    @media (max-width: 768px) {
+        .cabinet-card {
+            padding: 1rem;
+        }
+
+        .cabinet-table {
+            display: none;
+        }
+
+        .mobile-card {
+            display: block;
+        }
+
+        .item-card {
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .item-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid #f3f4f6;
+        }
+
+        .item-card-title {
+            font-weight: 600;
+            color: #111827;
+            font-size: 0.9375rem;
+            flex: 1;
+        }
+
+        .item-card-body {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        .item-card-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .item-card-label {
+            color: #6b7280;
+            font-size: 0.8125rem;
+        }
+
+        .item-card-value {
+            color: #111827;
+            font-weight: 600;
+        }
+
+        .filter-form-mobile {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .filter-form-mobile > div {
+            width: 100%;
+        }
+
+        .pagination {
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .pagination a, .pagination span {
+            padding: 0.5rem 0.75rem;
+            font-size: 0.875rem;
+        }
+    }
 </style>
 <?php $__env->stopPush(); ?>
 
@@ -140,7 +227,7 @@
 
     <!-- Filters -->
     <div class="cabinet-card">
-        <form method="GET" action="<?php echo e(route('cabinet.items.index')); ?>" style="display: grid; grid-template-columns: 2fr 1fr auto auto; gap: 1rem; align-items: end;">
+        <form method="GET" action="<?php echo e(route('cabinet.items.index')); ?>" style="display: grid; grid-template-columns: 2fr 1fr auto auto; gap: 1rem; align-items: end;" class="filter-form-mobile">
             <div>
                 <label style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 600; color: #374151;">Поиск</label>
                 <input type="text" name="search" value="<?php echo e(request('search')); ?>" placeholder="Название или артикул..." class="form-input" style="width: 100%;">
@@ -163,7 +250,7 @@
                 <label for="has_offers" style="font-size: 0.875rem; font-weight: 600; color: #374151; white-space: nowrap;">Только с предложениями</label>
             </div>
 
-            <button type="submit" class="btn-green">Применить</button>
+            <button type="submit" class="btn-green" style="width: 100%;">Применить</button>
         </form>
     </div>
 
@@ -243,6 +330,58 @@
             <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
         </tbody>
     </table>
+
+    <!-- Mobile Cards -->
+    <div class="mobile-card">
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $items; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $item): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+        <div class="item-card">
+            <div class="item-card-header">
+                <div class="item-card-title"><?php echo e($item->name); ?></div>
+                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(in_array($item->id, $purchasedItemIds)): ?>
+                    <span class="status-badge status-full-access">Полный доступ</span>
+                <?php else: ?>
+                    <span class="status-badge status-preview">Предпросмотр</span>
+                <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+            </div>
+            <div class="item-card-body">
+                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($item->article): ?>
+                <div class="item-card-row">
+                    <span class="item-card-label">Артикул:</span>
+                    <span class="item-card-value"><?php echo e($item->article); ?></span>
+                </div>
+                <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($item->brand): ?>
+                <div class="item-card-row">
+                    <span class="item-card-label">Бренд:</span>
+                    <span class="item-card-value"><?php echo e($item->brand); ?></span>
+                </div>
+                <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                <div class="item-card-row">
+                    <span class="item-card-label">Количество:</span>
+                    <span class="item-card-value"><?php echo e(rtrim(rtrim(number_format($item->quantity, 3, '.', ''), '0'), '.')); ?> <?php echo e($item->unit); ?></span>
+                </div>
+                <div class="item-card-row">
+                    <span class="item-card-label">Предложения:</span>
+                    <?php
+                        $receivedOffersCount = $item->offers()->whereIn('status', ['received', 'processed'])->count();
+                    ?>
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($receivedOffersCount > 0): ?>
+                        <div class="badge-success"><?php echo e($receivedOffersCount); ?> шт</div>
+                    <?php else: ?>
+                        <div class="badge-gray">Нет</div>
+                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                </div>
+                <a href="<?php echo e(route('cabinet.items.show', $item->id)); ?>" class="btn-green" style="display: block; text-align: center; text-decoration: none; margin-top: 0.75rem;">
+                    Открыть отчет
+                </a>
+            </div>
+        </div>
+        <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+        <div style="text-align: center; padding: 3rem; color: #9ca3af;">
+            Позиции не найдены
+        </div>
+        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    </div>
 
     <!-- Pagination -->
     <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($items->hasPages()): ?>

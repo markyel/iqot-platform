@@ -30,23 +30,31 @@
             background: #ffffff;
             border-right: 1px solid #e5e7eb;
             padding: 2rem 0;
+            transition: transform 0.3s ease;
+            z-index: 1000;
         }
-        
+
+        .sidebar.collapsed {
+            transform: translateX(-260px);
+        }
+
         .sidebar-header {
             padding: 0 1.5rem 2rem;
             border-bottom: 1px solid #e5e7eb;
         }
-        
+
         .logo {
             font-size: 1.5rem;
             font-weight: 700;
             color: #10b981;
         }
-        
+
         .nav-menu {
             padding: 1.5rem 0;
+            overflow-y: auto;
+            max-height: calc(100vh - 120px);
         }
-        
+
         .nav-item {
             display: block;
             padding: 0.75rem 1.5rem;
@@ -54,17 +62,22 @@
             text-decoration: none;
             transition: all 0.2s;
         }
-        
+
         .nav-item:hover, .nav-item.active {
             background: #f3f4f6;
             color: #10b981;
         }
-        
+
         .main-content {
             margin-left: 260px;
             min-height: 100vh;
+            transition: margin-left 0.3s ease;
         }
-        
+
+        .main-content.expanded {
+            margin-left: 0;
+        }
+
         .header {
             background: #ffffff;
             border-bottom: 1px solid #e5e7eb;
@@ -72,6 +85,93 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+        }
+
+        .menu-toggle {
+            background: #f3f4f6;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .menu-toggle:hover {
+            background: #e5e7eb;
+        }
+
+        .menu-toggle span {
+            display: block;
+            width: 20px;
+            height: 2px;
+            background: #6b7280;
+            position: relative;
+            transition: all 0.3s;
+        }
+
+        .menu-toggle span::before,
+        .menu-toggle span::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 2px;
+            background: #6b7280;
+            transition: all 0.3s;
+        }
+
+        .menu-toggle span::before {
+            top: -6px;
+        }
+
+        .menu-toggle span::after {
+            top: 6px;
+        }
+
+        .menu-toggle.active span {
+            background: transparent;
+        }
+
+        .menu-toggle.active span::before {
+            top: 0;
+            transform: rotate(45deg);
+        }
+
+        .menu-toggle.active span::after {
+            top: 0;
+            transform: rotate(-45deg);
+        }
+
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+        }
+
+        .sidebar-overlay.active {
+            display: block;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-260px);
+            }
+
+            .sidebar.active {
+                transform: translateX(0);
+            }
+
+            .main-content {
+                margin-left: 0;
+            }
         }
         
         .content {
@@ -118,7 +218,11 @@
     </style>
 </head>
 <body>
-    <div class="sidebar">
+    <!-- Sidebar Overlay -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <div class="logo">IQOT</div>
         </div>
@@ -168,9 +272,14 @@
         </nav>
     </div>
     
-    <div class="main-content">
+    <div class="main-content" id="mainContent">
         <header class="header">
-            <h1><?php echo $__env->yieldContent('header', 'Личный кабинет'); ?></h1>
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <button class="menu-toggle" id="menuToggle">
+                    <span></span>
+                </button>
+                <h1><?php echo $__env->yieldContent('header', 'Личный кабинет'); ?></h1>
+            </div>
             <div>
                 <span style="color: #6b7280; margin-right: 1rem;"><?php echo e(auth()->user()->name); ?></span>
                 <form method="POST" action="<?php echo e(route('logout')); ?>" style="display: inline;">
@@ -210,6 +319,58 @@
     </div>
     
     <?php echo $__env->yieldPushContent('scripts'); ?>
+
+    <script>
+        const menuToggle = document.getElementById('menuToggle');
+        const sidebar = document.getElementById('sidebar');
+        const mainContent = document.getElementById('mainContent');
+        const sidebarOverlay = document.getElementById('sidebarOverlay');
+
+        // Load saved state from localStorage
+        const sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+        if (sidebarCollapsed) {
+            sidebar.classList.add('collapsed');
+            mainContent.classList.add('expanded');
+            menuToggle.classList.add('active');
+        }
+
+        menuToggle.addEventListener('click', function() {
+            const isCollapsed = sidebar.classList.toggle('collapsed');
+            mainContent.classList.toggle('expanded');
+            menuToggle.classList.toggle('active');
+
+            // Save state to localStorage
+            localStorage.setItem('sidebarCollapsed', isCollapsed);
+
+            // On mobile, show overlay
+            if (window.innerWidth <= 768) {
+                sidebarOverlay.classList.toggle('active');
+            }
+        });
+
+        // Close sidebar on overlay click (mobile)
+        sidebarOverlay.addEventListener('click', function() {
+            sidebar.classList.remove('active');
+            sidebarOverlay.classList.remove('active');
+        });
+
+        // Handle mobile behavior
+        function handleMobile() {
+            if (window.innerWidth <= 768) {
+                sidebar.classList.remove('collapsed');
+                mainContent.classList.remove('expanded');
+
+                // On mobile, toggle active class instead
+                menuToggle.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    sidebar.classList.toggle('active');
+                });
+            }
+        }
+
+        handleMobile();
+        window.addEventListener('resize', handleMobile);
+    </script>
 </body>
 </html>
 <?php /**PATH C:\Users\Boag\PhpstormProjects\iqot-platform\resources\views/layouts/cabinet.blade.php ENDPATH**/ ?>
