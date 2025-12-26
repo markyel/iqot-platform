@@ -130,6 +130,9 @@
             <a href="<?php echo e(route('cabinet.requests')); ?>" class="nav-item <?php echo e(request()->routeIs('cabinet.requests*') ? 'active' : ''); ?>">
                 📝 Мои заявки
             </a>
+            <a href="<?php echo e(route('cabinet.items.index')); ?>" class="nav-item <?php echo e(request()->routeIs('cabinet.items*') ? 'active' : ''); ?>">
+                📦 Мониторинг позиций
+            </a>
             <a href="<?php echo e(route('cabinet.suppliers')); ?>" class="nav-item <?php echo e(request()->routeIs('cabinet.suppliers*') ? 'active' : ''); ?>">
                 🏢 Поставщики
             </a>
@@ -142,8 +145,20 @@
                     <div style="padding: 0 1.5rem; font-size: 0.75rem; font-weight: 600; color: #9ca3af; text-transform: uppercase; margin-bottom: 0.5rem;">
                         Администрирование
                     </div>
+                    <a href="<?php echo e(route('admin.external-requests.index')); ?>" class="nav-item <?php echo e(request()->routeIs('admin.external-requests*') ? 'active' : ''); ?>">
+                        📋 Заявки
+                    </a>
+                    <a href="<?php echo e(route('admin.items.index')); ?>" class="nav-item <?php echo e(request()->routeIs('admin.items*') ? 'active' : ''); ?>">
+                        📦 Мониторинг позиций (Админ)
+                    </a>
                     <a href="<?php echo e(route('admin.demo-requests.index')); ?>" class="nav-item <?php echo e(request()->routeIs('admin.demo-requests*') ? 'active' : ''); ?>">
                         🎯 Демо-заявки
+                    </a>
+                    <a href="<?php echo e(route('admin.users.index')); ?>" class="nav-item <?php echo e(request()->routeIs('admin.users*') ? 'active' : ''); ?>">
+                        👥 Пользователи
+                    </a>
+                    <a href="<?php echo e(route('admin.settings.index')); ?>" class="nav-item <?php echo e(request()->routeIs('admin.settings*') ? 'active' : ''); ?>">
+                        ⚙️ Настройки системы
                     </a>
                     <a href="/admin" class="nav-item" target="_blank">
                         🔧 Filament Admin

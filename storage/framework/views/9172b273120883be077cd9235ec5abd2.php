@@ -2,23 +2,10 @@
 
 <?php $__env->startPush('styles'); ?>
 <style>
-    /* Dark theme for admin */
-    body { background: #0f1117 !important; color: #9ca3af; }
-    .sidebar { background: #161a22 !important; border-right-color: rgba(255,255,255,0.08) !important; }
-    .sidebar-header { border-bottom-color: rgba(255,255,255,0.08) !important; }
-    .logo { color: #10b981 !important; }
-    .nav-item { color: #9ca3af !important; }
-    .nav-item:hover, .nav-item.active { background: rgba(16, 185, 129, 0.1) !important; color: #10b981 !important; }
-    .main-content { background: #0f1117 !important; }
-    .header { background: #161a22 !important; border-bottom-color: rgba(255,255,255,0.08) !important; }
-    .header h1 { color: #fff !important; }
-    .header span { color: #9ca3af !important; }
-    .header button { background: #1f2937 !important; color: #9ca3af !important; }
-    .header button:hover { background: #374151 !important; }
-
+    /* Light theme for admin */
     .admin-card {
-        background: rgba(22, 26, 34, 0.5);
-        border: 1px solid rgba(255,255,255,0.08);
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
         border-radius: 12px;
         padding: 1.5rem;
         margin-bottom: 1.5rem;
@@ -40,12 +27,12 @@
     .page-header h1 {
         font-size: 1.875rem;
         font-weight: 700;
-        color: #fff;
+        color: #111827;
         margin-bottom: 0.5rem;
     }
 
     .page-header p {
-        color: #9ca3af;
+        color: #6b7280;
         font-size: 0.875rem;
     }
 
@@ -54,18 +41,18 @@
     }
 
     .info-label {
-        color: #9ca3af;
+        color: #6b7280;
         font-size: 0.875rem;
         margin-bottom: 0.25rem;
     }
 
     .info-value {
-        color: #fff;
+        color: #111827;
         font-weight: 600;
     }
 
     .info-value-mono {
-        color: #fff;
+        color: #111827;
         font-family: monospace;
     }
 
@@ -80,13 +67,13 @@
     }
 
     .items-display {
-        background: rgba(15, 17, 23, 0.5);
+        background: #f9fafb;
         border-radius: 8px;
         padding: 1rem;
     }
 
     .items-display pre {
-        color: #d1d5db;
+        color: #374151;
         white-space: pre-wrap;
         font-size: 0.875rem;
         margin: 0;
@@ -94,9 +81,9 @@
 
     .form-textarea {
         width: 100%;
-        background: #1f2937;
-        border: 1px solid rgba(255,255,255,0.08);
-        color: #fff;
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        color: #111827;
         padding: 0.75rem 1rem;
         border-radius: 8px;
         outline: none;
@@ -110,9 +97,9 @@
 
     .form-select {
         width: 100%;
-        background: #1f2937;
-        border: 1px solid rgba(255,255,255,0.08);
-        color: #fff;
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        color: #111827;
         padding: 0.625rem 1rem;
         border-radius: 8px;
         outline: none;
@@ -215,7 +202,7 @@
 
     .modal-content {
         background: #161a22;
-        border: 1px solid rgba(255,255,255,0.08);
+        border: 1px solid #e5e7eb;
         border-radius: 12px;
         max-width: 500px;
         width: 100%;
@@ -223,7 +210,7 @@
     }
 
     .modal-content h3 {
-        color: #fff;
+        color: #111827;
         font-size: 1.25rem;
         font-weight: 700;
         margin-bottom: 1rem;
@@ -286,7 +273,7 @@
         <div>
             <!-- Данные заявителя -->
             <div class="admin-card">
-                <h2 style="color: #fff; font-size: 1.25rem; font-weight: 700; margin-bottom: 1.5rem;">Данные заявителя</h2>
+                <h2 style="color: #111827; font-size: 1.25rem; font-weight: 700; margin-bottom: 1.5rem;">Данные заявителя</h2>
                 <div>
                     <div class="info-item">
                         <div class="info-label">ФИО</div>
@@ -326,7 +313,7 @@
 
             <!-- Список товаров -->
             <div class="admin-card">
-                <h2 style="color: #fff; font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem;">Список товаров для запроса КП</h2>
+                <h2 style="color: #111827; font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem;">Список товаров для запроса КП</h2>
                 <div class="items-display">
                     <pre><?php echo e($demoRequest->items_list); ?></pre>
                 </div>
@@ -335,7 +322,7 @@
             <!-- Заметки -->
             <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($demoRequest->notes): ?>
             <div class="admin-card">
-                <h2 style="color: #fff; font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem;">Заметки</h2>
+                <h2 style="color: #111827; font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem;">Заметки</h2>
                 <div class="items-display">
                     <pre><?php echo e($demoRequest->notes); ?></pre>
                 </div>
@@ -344,7 +331,7 @@
 
             <!-- Добавить заметку -->
             <div class="admin-card">
-                <h2 style="color: #fff; font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem;">Добавить заметку</h2>
+                <h2 style="color: #111827; font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem;">Добавить заметку</h2>
                 <form method="POST" action="<?php echo e(route('admin.demo-requests.add-note', $demoRequest)); ?>">
                     <?php echo csrf_field(); ?>
                     <textarea name="note" rows="3" class="form-textarea" placeholder="Введите заметку..." required></textarea>
@@ -359,7 +346,7 @@
         <div>
             <!-- Статус -->
             <div class="admin-card">
-                <h2 style="color: #fff; font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem;">Статус</h2>
+                <h2 style="color: #111827; font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem;">Статус</h2>
                 <form method="POST" action="<?php echo e(route('admin.demo-requests.update-status', $demoRequest)); ?>">
                     <?php echo csrf_field(); ?>
                     <?php echo method_field('PATCH'); ?>
@@ -374,7 +361,7 @@
 
             <!-- Действия -->
             <div class="admin-card">
-                <h2 style="color: #fff; font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem;">Действия</h2>
+                <h2 style="color: #111827; font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem;">Действия</h2>
                 <div style="display: flex; flex-direction: column; gap: 0.75rem;">
                     <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($demoRequest->status === 'new'): ?>
                     <form method="POST" action="<?php echo e(route('admin.demo-requests.approve', $demoRequest)); ?>">
@@ -398,15 +385,15 @@
 
             <!-- Информация -->
             <div class="admin-card">
-                <h2 style="color: #fff; font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem;">Информация</h2>
+                <h2 style="color: #111827; font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem;">Информация</h2>
                 <div class="info-grid">
                     <div class="info-row">
                         <span class="info-label">Создана:</span>
-                        <span style="color: #fff;"><?php echo e($demoRequest->created_at->format('d.m.Y H:i')); ?></span>
+                        <span style="color: #111827;"><?php echo e($demoRequest->created_at->format('d.m.Y H:i')); ?></span>
                     </div>
                     <div class="info-row">
                         <span class="info-label">Обновлена:</span>
-                        <span style="color: #fff;"><?php echo e($demoRequest->updated_at->format('d.m.Y H:i')); ?></span>
+                        <span style="color: #111827;"><?php echo e($demoRequest->updated_at->format('d.m.Y H:i')); ?></span>
                     </div>
                     <div class="info-row">
                         <span class="info-label">Согласие:</span>

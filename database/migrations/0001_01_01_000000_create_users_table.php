@@ -18,6 +18,7 @@ return new class extends Migration
             $table->string('phone')->nullable();
             $table->string('telegram_id')->nullable()->unique();
             $table->boolean('is_admin')->default(false);
+            $table->decimal('balance', 10, 2)->default(500.00);
             $table->json('settings')->nullable();
             $table->rememberToken();
             $table->timestamps();

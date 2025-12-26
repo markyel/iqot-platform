@@ -2,23 +2,10 @@
 
 <?php $__env->startPush('styles'); ?>
 <style>
-    /* Dark theme for admin */
-    body { background: #0f1117 !important; color: #9ca3af; }
-    .sidebar { background: #161a22 !important; border-right-color: rgba(255,255,255,0.08) !important; }
-    .sidebar-header { border-bottom-color: rgba(255,255,255,0.08) !important; }
-    .logo { color: #10b981 !important; }
-    .nav-item { color: #9ca3af !important; }
-    .nav-item:hover, .nav-item.active { background: rgba(16, 185, 129, 0.1) !important; color: #10b981 !important; }
-    .main-content { background: #0f1117 !important; }
-    .header { background: #161a22 !important; border-bottom-color: rgba(255,255,255,0.08) !important; }
-    .header h1 { color: #fff !important; }
-    .header span { color: #9ca3af !important; }
-    .header button { background: #1f2937 !important; color: #9ca3af !important; }
-    .header button:hover { background: #374151 !important; }
-
+    /* Light theme for admin */
     .admin-card {
-        background: rgba(22, 26, 34, 0.5);
-        border: 1px solid rgba(255,255,255,0.08);
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
         border-radius: 12px;
         padding: 1.5rem;
         margin-bottom: 1.5rem;
@@ -26,31 +13,32 @@
 
     .admin-table {
         width: 100%;
-        background: rgba(22, 26, 34, 0.5);
-        border: 1px solid rgba(255,255,255,0.08);
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
         border-radius: 12px;
         overflow: hidden;
     }
 
     .admin-table thead {
-        background: rgba(15, 17, 23, 0.5);
+        background: #f9fafb;
     }
 
     .admin-table th {
         text-align: left;
         padding: 1rem 1.5rem;
-        color: #9ca3af;
+        color: #6b7280;
         font-weight: 600;
         font-size: 0.875rem;
+        border-bottom: 2px solid #e5e7eb;
     }
 
     .admin-table td {
         padding: 1rem 1.5rem;
-        border-top: 1px solid rgba(255,255,255,0.08);
+        border-top: 1px solid #f3f4f6;
     }
 
-    .admin-table tr:hover {
-        background: rgba(22, 26, 34, 0.3);
+    .admin-table tbody tr:hover {
+        background: #f9fafb;
     }
 
     .status-badge {
@@ -59,18 +47,17 @@
         border-radius: 9999px;
         font-size: 0.75rem;
         font-weight: 600;
-        border: 1px solid;
     }
 
-    .status-new { background: rgba(59, 130, 246, 0.1); color: #60a5fa; border-color: rgba(59, 130, 246, 0.3); }
-    .status-processing { background: rgba(245, 158, 11, 0.1); color: #fbbf24; border-color: rgba(245, 158, 11, 0.3); }
-    .status-contacted { background: rgba(16, 185, 129, 0.1); color: #10b981; border-color: rgba(16, 185, 129, 0.3); }
-    .status-completed { background: rgba(107, 114, 128, 0.1); color: #9ca3af; border-color: rgba(107, 114, 128, 0.3); }
+    .status-new { background: #dbeafe; color: #1e40af; }
+    .status-processing { background: #fef3c7; color: #92400e; }
+    .status-contacted { background: #d1fae5; color: #065f46; }
+    .status-completed { background: #f3f4f6; color: #6b7280; }
 
     .form-select {
-        background: #1f2937;
-        border: 1px solid rgba(255,255,255,0.08);
-        color: #fff;
+        background: #ffffff;
+        border: 1px solid #d1d5db;
+        color: #111827;
         padding: 0.625rem 1rem;
         border-radius: 8px;
         outline: none;
@@ -96,18 +83,18 @@
     }
 
     .alert-success {
-        background: rgba(16, 185, 129, 0.1);
-        border: 1px solid rgba(16, 185, 129, 0.3);
-        color: #10b981;
+        background: #d1fae5;
+        border: 1px solid #a7f3d0;
+        color: #065f46;
         padding: 1rem 1.25rem;
         border-radius: 12px;
         margin-bottom: 1.5rem;
     }
 
     .alert-error {
-        background: rgba(239, 68, 68, 0.1);
-        border: 1px solid rgba(239, 68, 68, 0.3);
-        color: #ef4444;
+        background: #fee2e2;
+        border: 1px solid #fecaca;
+        color: #991b1b;
         padding: 1rem 1.25rem;
         border-radius: 12px;
         margin-bottom: 1.5rem;
