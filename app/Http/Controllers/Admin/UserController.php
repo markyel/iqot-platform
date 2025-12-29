@@ -38,6 +38,15 @@ class UserController extends Controller
         return view('admin.users.index', compact('users'));
     }
 
+    public function show(User $user)
+    {
+        $user->load(['requests', 'balanceHolds']);
+        $user->purchases_count = ItemPurchase::where('user_id', $user->id)->count();
+        $user->purchases_sum = ItemPurchase::where('user_id', $user->id)->sum('amount');
+
+        return view('admin.users.show', compact('user'));
+    }
+
     public function updateBalance(Request $request, User $user)
     {
         $request->validate([

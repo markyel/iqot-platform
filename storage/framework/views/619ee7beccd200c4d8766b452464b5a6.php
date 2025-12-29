@@ -9,7 +9,7 @@
         <h1 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem;">Мои заявки</h1>
         <p style="color: #6b7280;">Управление запросами на подбор запчастей</p>
     </div>
-    <a href="<?php echo e(route('cabinet.requests.create')); ?>" class="btn btn-primary">
+    <a href="<?php echo e(route('cabinet.my.requests.create')); ?>" class="btn btn-primary">
         + Создать заявку
     </a>
 </div>
@@ -116,7 +116,7 @@
                     Создайте первую заявку для подбора запчастей
                 <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
             </p>
-            <a href="<?php echo e(route('cabinet.requests.create')); ?>" class="btn btn-primary">
+            <a href="<?php echo e(route('cabinet.my.requests.create')); ?>" class="btn btn-primary">
                 Создать заявку
             </a>
         </div>

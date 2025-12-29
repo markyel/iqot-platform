@@ -31,7 +31,7 @@
     <div style="background: white; padding: 1.5rem; border-radius: 0.75rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
             <h2 style="font-size: 1.25rem; font-weight: 600;">Последние заявки</h2>
-            <a href="<?php echo e(route('cabinet.requests.create')); ?>" class="btn btn-primary">
+            <a href="<?php echo e(route('cabinet.my.requests.create')); ?>" class="btn btn-primary">
                 Создать заявку
             </a>
         </div>
@@ -74,7 +74,7 @@
         <?php else: ?>
             <div style="text-align: center; padding: 3rem; color: #6b7280;">
                 <p style="margin-bottom: 1rem;">У вас пока нет заявок</p>
-                <a href="<?php echo e(route('cabinet.requests.create')); ?>" class="btn btn-primary">
+                <a href="<?php echo e(route('cabinet.my.requests.create')); ?>" class="btn btn-primary">
                     Создать первую заявку
                 </a>
             </div>

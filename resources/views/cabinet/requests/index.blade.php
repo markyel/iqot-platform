@@ -9,7 +9,7 @@
         <h1 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem;">Мои заявки</h1>
         <p style="color: #6b7280;">Управление запросами на подбор запчастей</p>
     </div>
-    <a href="{{ route('cabinet.requests.create') }}" class="btn btn-primary">
+    <a href="{{ route('cabinet.my.requests.create') }}" class="btn btn-primary">
         + Создать заявку
     </a>
 </div>
@@ -113,7 +113,7 @@
                     Создайте первую заявку для подбора запчастей
                 @endif
             </p>
-            <a href="{{ route('cabinet.requests.create') }}" class="btn btn-primary">
+            <a href="{{ route('cabinet.my.requests.create') }}" class="btn btn-primary">
                 Создать заявку
             </a>
         </div>

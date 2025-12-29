@@ -250,10 +250,13 @@
                         Администрирование
                     </div>
                     <a href="{{ route('admin.external-requests.index') }}" class="nav-item {{ request()->routeIs('admin.external-requests*') ? 'active' : '' }}">
-                        📋 Заявки
+                        📋 Заявки (внешние)
+                    </a>
+                    <a href="{{ route('admin.requests.index') }}" class="nav-item {{ request()->routeIs('admin.requests*') ? 'active' : '' }}">
+                        📝 Заявки пользователей
                     </a>
                     <a href="{{ route('admin.items.index') }}" class="nav-item {{ request()->routeIs('admin.items*') ? 'active' : '' }}">
-                        📦 Мониторинг позиций (Админ)
+                        📦 Мониторинг позиций
                     </a>
                     <a href="{{ route('admin.demo-requests.index') }}" class="nav-item {{ request()->routeIs('admin.demo-requests*') ? 'active' : '' }}">
                         🎯 Демо-заявки

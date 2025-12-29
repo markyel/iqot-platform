@@ -199,6 +199,7 @@
                 <th>Пользователь</th>
                 <th>Компания</th>
                 <th style="width: 100px;">Роль</th>
+                <th style="width: 80px;">Sender</th>
                 <th style="width: 120px;">Баланс</th>
                 <th style="width: 100px;">Покупок</th>
                 <th style="width: 120px;">Потрачено</th>
@@ -228,6 +229,13 @@
                         <span class="badge-user">Пользователь</span>
                     <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                 </td>
+                <td style="text-align: center;">
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($user->sender_id): ?>
+                        <span style="color: #10b981; font-size: 1.25rem;" title="Email-отправитель настроен">✓</span>
+                    <?php else: ?>
+                        <span style="color: #d1d5db; font-size: 1.25rem;" title="Email-отправитель не настроен">—</span>
+                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                </td>
                 <td style="font-weight: 600; color: #10b981;">
                     <?php echo e(number_format($user->balance ?? 0, 2)); ?> ₽
                 </td>
@@ -243,14 +251,19 @@
 
                 </td>
                 <td>
-                    <button onclick="openBalanceModal(<?php echo e($user->id); ?>, '<?php echo e(addslashes($user->name)); ?>', <?php echo e($user->balance ?? 0); ?>)" class="btn-green btn-sm">
-                        Баланс
-                    </button>
+                    <div style="display: flex; gap: 0.5rem; flex-direction: column;">
+                        <button onclick="openBalanceModal(<?php echo e($user->id); ?>, '<?php echo e(addslashes($user->name)); ?>', <?php echo e($user->balance ?? 0); ?>)" class="btn-green btn-sm">
+                            Баланс
+                        </button>
+                        <a href="<?php echo e(route('admin.users.sender.show', $user)); ?>" class="btn-green btn-sm" style="text-align: center; text-decoration: none;">
+                            Sender
+                        </a>
+                    </div>
                 </td>
             </tr>
             <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
             <tr>
-                <td colspan="9" style="text-align: center; padding: 3rem; color: #9ca3af;">
+                <td colspan="10" style="text-align: center; padding: 3rem; color: #9ca3af;">
                     Пользователи не найдены
                 </td>
             </tr>

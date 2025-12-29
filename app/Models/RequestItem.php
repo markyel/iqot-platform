@@ -13,12 +13,19 @@ class RequestItem extends Model
 
     protected $fillable = [
         'request_id',
+        'position_number',
         'name',
         'equipment_type',
         'equipment_brand',
         'article',
         'brand',
         'manufacturer_article',
+        'category',
+        'product_type_id',
+        'domain_id',
+        'type_confidence',
+        'domain_confidence',
+        'classification_needs_review',
         'quantity',
         'unit',
         'description',
@@ -32,7 +39,11 @@ class RequestItem extends Model
     protected function casts(): array
     {
         return [
+            'position_number' => 'integer',
             'quantity' => 'integer',
+            'type_confidence' => 'decimal:2',
+            'domain_confidence' => 'decimal:2',
+            'classification_needs_review' => 'boolean',
             'min_price' => 'decimal:2',
             'avg_price' => 'decimal:2',
             'max_price' => 'decimal:2',

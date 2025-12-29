@@ -123,7 +123,7 @@
 
     <div class="admin-card">
         <h2 style="font-size: 1.25rem; font-weight: 700; color: #111827; margin-bottom: 1.5rem;">
-            Настройки доступа к отчетам
+            Настройки ценообразования
         </h2>
 
         <form method="POST" action="{{ route('admin.settings.update') }}">
@@ -147,6 +147,24 @@
                 </span>
             </div>
 
+            <div class="form-group">
+                <label class="form-label">
+                    Стоимость мониторинга одной позиции в заявке (₽)
+                </label>
+                <input
+                    type="number"
+                    name="price_per_item"
+                    value="{{ $pricePerItem }}"
+                    step="0.01"
+                    min="0"
+                    class="form-input"
+                    required
+                >
+                <span class="form-help">
+                    Эта сумма замораживается на балансе при создании заявки (за каждую позицию). После обработки заявки средства списываются
+                </span>
+            </div>
+
             <button type="submit" class="btn-green">
                 Сохранить настройки
             </button>
@@ -165,6 +183,15 @@
                 </div>
                 <div style="color: #10b981; font-size: 1.5rem; font-weight: 700;">
                     {{ number_format($unlockPrice, 0) }} ₽
+                </div>
+            </div>
+
+            <div style="background: #f9fafb; padding: 1rem; border-radius: 8px;">
+                <div style="color: #6b7280; font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.5rem;">
+                    Цена за позицию
+                </div>
+                <div style="color: #10b981; font-size: 1.5rem; font-weight: 700;">
+                    {{ number_format($pricePerItem, 0) }} ₽
                 </div>
             </div>
 

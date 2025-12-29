@@ -14,7 +14,9 @@ class Request extends Model
 
     protected $fillable = [
         'user_id',
+        'client_organization_id',
         'code',
+        'request_number',
         'title',
         'description',
         'company_name',
@@ -24,19 +26,28 @@ class Request extends Model
         'contact_person',
         'contact_phone',
         'status',
+        'is_customer_request',
+        'total_items',
         'items_count',
         'suppliers_count',
         'offers_count',
         'collection_started_at',
         'collection_ended_at',
+        'notes',
         'settings',
+        'synced_to_main_db',
+        'main_db_request_id',
+        'synced_at',
     ];
 
     protected function casts(): array
     {
         return [
+            'is_customer_request' => 'boolean',
+            'synced_to_main_db' => 'boolean',
             'collection_started_at' => 'datetime',
             'collection_ended_at' => 'datetime',
+            'synced_at' => 'datetime',
             'settings' => 'array',
         ];
     }
@@ -180,5 +191,13 @@ class Request extends Model
         if (empty($this->contact_phone)) $missing[] = 'Телефон';
 
         return $missing;
+    }
+
+    /**
+     * Связь с заморозкой баланса
+     */
+    public function balanceHold(): HasOne
+    {
+        return $this->hasOne(BalanceHold::class);
     }
 }

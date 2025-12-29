@@ -68,10 +68,18 @@ class CabinetController extends Controller
     /**
      * Просмотр заявки
      */
-    public function showRequest(Request $request): View
+    public function showRequest(Request $request)
     {
-        $this->authorize('view', $request);
-        
+        // Проверяем, что заявка принадлежит текущему пользователю
+        if ($request->user_id !== auth()->id()) {
+            abort(403, 'Доступ запрещен');
+        }
+
+        // Если это заявка через новую систему (is_customer_request), перенаправляем на новый view
+        if ($request->is_customer_request) {
+            return redirect()->route('cabinet.my.requests.show', $request->id);
+        }
+
         $request->load(['items.offers.supplier', 'suppliers', 'report']);
 
         return view('cabinet.requests.show', compact('request'));
@@ -154,8 +162,17 @@ class CabinetController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'company' => 'nullable|string|max:255',
+            'full_name' => 'nullable|string|max:255',
+            'email' => 'required|email|max:255|unique:users,email,' . auth()->id(),
             'phone' => 'nullable|string|max:50',
+            'company' => 'nullable|string|max:255',
+            'organization' => 'nullable|string|max:255',
+            'inn' => 'nullable|string|max:12',
+            'kpp' => 'nullable|string|max:9',
+            'legal_address' => 'nullable|string|max:500',
+            'contact_person' => 'nullable|string|max:255',
+            'company_phone' => 'nullable|string|max:50',
+            'company_details' => 'nullable|string',
         ]);
 
         auth()->user()->update($validated);

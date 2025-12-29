@@ -48,6 +48,21 @@ return [
             'engine' => null,
         ],
 
+        'n8n_mysql' => [
+            'driver' => 'mysql',
+            'host' => env('N8N_DB_HOST', '127.0.0.1'),
+            'port' => env('N8N_DB_PORT', '3306'),
+            'database' => env('N8N_DB_DATABASE', 'price_quotation_system'),
+            'username' => env('N8N_DB_USERNAME', 'forge'),
+            'password' => env('N8N_DB_PASSWORD', ''),
+            'unix_socket' => '',
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'strict' => true,
+            'engine' => null,
+        ],
+
     ],
 
     /*

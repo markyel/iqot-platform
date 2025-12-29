@@ -16,16 +16,24 @@ class User extends Authenticatable implements FilamentUser
 
     protected $fillable = [
         'name',
+        'full_name',
         'email',
         'password',
         'company',
         'organization',
         'inn',
         'kpp',
+        'legal_address',
+        'contact_person',
         'phone',
+        'company_phone',
+        'company_details',
         'telegram_id',
         'is_admin',
         'settings',
+        'sender_id',
+        'client_organization_id',
+        'balance',
     ];
 
     protected $hidden = [
@@ -65,5 +73,46 @@ class User extends Authenticatable implements FilamentUser
     public function reports(): HasMany
     {
         return $this->hasMany(Report::class);
+    }
+
+    /**
+     * Заморозки баланса
+     */
+    public function balanceHolds(): HasMany
+    {
+        return $this->hasMany(BalanceHold::class);
+    }
+
+    /**
+     * Доступный баланс (за вычетом замороженных средств)
+     */
+    public function getAvailableBalanceAttribute(): float
+    {
+        $heldAmount = $this->balanceHolds()
+            ->where('status', 'held')
+            ->sum('amount');
+
+        return (float) ($this->balance - $heldAmount);
+    }
+
+    /**
+     * Проверка возможности заморозки средств
+     */
+    public function canAfford(float $amount): bool
+    {
+        return $this->getAvailableBalanceAttribute() >= $amount;
+    }
+
+    /**
+     * Заморозить средства на балансе
+     */
+    public function holdBalance(float $amount, ?int $requestId = null, ?string $description = null): BalanceHold
+    {
+        return $this->balanceHolds()->create([
+            'request_id' => $requestId,
+            'amount' => $amount,
+            'status' => 'held',
+            'description' => $description,
+        ]);
     }
 }

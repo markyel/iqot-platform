@@ -48,6 +48,16 @@ Route::middleware(['auth', 'verified'])->prefix('cabinet')->name('cabinet.')->gr
     Route::get('/items', [\App\Http\Controllers\Cabinet\ItemController::class, 'index'])->name('items.index');
     Route::get('/items/{item}', [\App\Http\Controllers\Cabinet\ItemController::class, 'show'])->name('items.show');
     Route::post('/items/{item}/purchase', [\App\Http\Controllers\Cabinet\ItemController::class, 'purchase'])->name('items.purchase');
+
+    // Создание заявок пользователем
+    Route::prefix('my')->name('my.')->group(function () {
+        Route::get('/requests', [\App\Http\Controllers\UserRequestController::class, 'index'])->name('requests.index');
+        Route::get('/requests/create', [\App\Http\Controllers\UserRequestController::class, 'create'])->name('requests.create');
+        Route::post('/requests/parse', [\App\Http\Controllers\UserRequestController::class, 'parse'])->name('requests.parse');
+        Route::post('/requests', [\App\Http\Controllers\UserRequestController::class, 'store'])->name('requests.store');
+        Route::get('/requests/balance', [\App\Http\Controllers\UserRequestController::class, 'checkBalance'])->name('requests.balance');
+        Route::get('/requests/{id}', [\App\Http\Controllers\UserRequestController::class, 'show'])->name('requests.show');
+    });
 });
 
 // Управление демо-заявками (требует is_admin) - переименовано из /admin в /manage чтобы не конфликтовать с Filament
@@ -60,8 +70,8 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
     Route::patch('/demo-requests/{demoRequest}/status', [\App\Http\Controllers\Admin\DemoRequestController::class, 'updateStatus'])->name('demo-requests.update-status');
 
     // Заявки из внешней базы
-    Route::get('/requests', [\App\Http\Controllers\Admin\ExternalRequestController::class, 'index'])->name('external-requests.index');
-    Route::get('/requests/{externalRequest}', [\App\Http\Controllers\Admin\ExternalRequestController::class, 'show'])->name('external-requests.show');
+    Route::get('/external-requests', [\App\Http\Controllers\Admin\ExternalRequestController::class, 'index'])->name('external-requests.index');
+    Route::get('/external-requests/{externalRequest}', [\App\Http\Controllers\Admin\ExternalRequestController::class, 'show'])->name('external-requests.show');
 
     // Мониторинг позиций (админ)
     Route::get('/items', [\App\Http\Controllers\Admin\ExternalRequestController::class, 'items'])->name('items.index');
@@ -69,7 +79,37 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
 
     // Управление пользователями
     Route::get('/users', [\App\Http\Controllers\Admin\UserController::class, 'index'])->name('users.index');
+    Route::get('/users/{user}', [\App\Http\Controllers\Admin\UserController::class, 'show'])->name('users.show');
     Route::post('/users/{user}/balance', [\App\Http\Controllers\Admin\UserController::class, 'updateBalance'])->name('users.balance');
+
+    // Настройки системы
+    Route::get('/settings', [\App\Http\Controllers\Admin\SettingsController::class, 'index'])->name('settings.index');
+    Route::post('/settings', [\App\Http\Controllers\Admin\SettingsController::class, 'update'])->name('settings.update');
+
+    // Диагностика
+    Route::get('/diagnostics', [\App\Http\Controllers\Admin\DiagnosticsController::class, 'index'])->name('diagnostics.index');
+    Route::post('/diagnostics/test-parse', [\App\Http\Controllers\Admin\DiagnosticsController::class, 'testParse'])->name('diagnostics.test-parse');
+    Route::get('/diagnostics/test-connection', [\App\Http\Controllers\Admin\DiagnosticsController::class, 'testConnection'])->name('diagnostics.test-connection');
+
+    // Управление Sender пользователей
+    Route::get('/sender/test-connection', [\App\Http\Controllers\Admin\UserSenderController::class, 'testConnection'])->name('sender.test');
+    Route::prefix('users/{user}/sender')->name('users.sender.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\UserSenderController::class, 'show'])->name('show');
+        Route::get('/create', [\App\Http\Controllers\Admin\UserSenderController::class, 'create'])->name('create');
+        Route::post('/', [\App\Http\Controllers\Admin\UserSenderController::class, 'store'])->name('store');
+        Route::get('/edit', [\App\Http\Controllers\Admin\UserSenderController::class, 'edit'])->name('edit');
+        Route::put('/', [\App\Http\Controllers\Admin\UserSenderController::class, 'update'])->name('update');
+        Route::delete('/', [\App\Http\Controllers\Admin\UserSenderController::class, 'deactivate'])->name('deactivate');
+    });
+
+    // Модерация заявок пользователей
+    Route::prefix('requests')->name('requests.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\RequestController::class, 'index'])->name('index');
+        Route::get('/{id}', [\App\Http\Controllers\Admin\RequestController::class, 'show'])->name('show');
+        Route::post('/{id}/approve', [\App\Http\Controllers\Admin\RequestController::class, 'approve'])->name('approve');
+        Route::post('/{id}/reject', [\App\Http\Controllers\Admin\RequestController::class, 'reject'])->name('reject');
+        Route::get('/test-connection', [\App\Http\Controllers\Admin\RequestController::class, 'testConnection'])->name('test-connection');
+    });
 
     // Настройки системы
     Route::get('/settings', [\App\Http\Controllers\Admin\SettingsController::class, 'index'])->name('settings.index');
