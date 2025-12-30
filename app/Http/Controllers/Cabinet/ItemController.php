@@ -42,17 +42,21 @@ class ItemController extends Controller
             ->pluck('item_id')
             ->toArray();
 
-        return view('cabinet.items.index', compact('items', 'purchasedItemIds'));
+        // Get user's request numbers to check which items belong to user's requests
+        $userRequestNumbers = auth()->user()->requests()
+            ->where('synced_to_main_db', true)
+            ->pluck('request_number')
+            ->toArray();
+
+        return view('cabinet.items.index', compact('items', 'purchasedItemIds', 'userRequestNumbers'));
     }
 
     public function show(ExternalRequestItem $item)
     {
         $item->load(['request', 'offers.supplier']);
 
-        // Check if user has purchased this item
-        $hasPurchased = ItemPurchase::where('user_id', auth()->id())
-            ->where('item_id', $item->id)
-            ->exists();
+        // Check if user has access (purchased or owns the request)
+        $hasPurchased = auth()->user()->hasAccessToItem($item);
 
         $unlockPrice = Setting::get('item_unlock_price', 99);
 
@@ -70,9 +74,9 @@ class ItemController extends Controller
         $user = auth()->user();
         $unlockPrice = (float) Setting::get('item_unlock_price', 99);
 
-        // Check if already purchased
-        if (ItemPurchase::where('user_id', $user->id)->where('item_id', $item->id)->exists()) {
-            return redirect()->back()->with('error', 'Вы уже приобрели доступ к этому отчету');
+        // Check if user already has access (purchased or owns the request)
+        if ($user->hasAccessToItem($item)) {
+            return redirect()->back()->with('error', 'У вас уже есть доступ к этому отчету');
         }
 
         // Check balance

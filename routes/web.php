@@ -57,6 +57,7 @@ Route::middleware(['auth', 'verified'])->prefix('cabinet')->name('cabinet.')->gr
         Route::post('/requests', [\App\Http\Controllers\UserRequestController::class, 'store'])->name('requests.store');
         Route::get('/requests/balance', [\App\Http\Controllers\UserRequestController::class, 'checkBalance'])->name('requests.balance');
         Route::get('/requests/{id}', [\App\Http\Controllers\UserRequestController::class, 'show'])->name('requests.show');
+        Route::get('/requests/{id}/report', [\App\Http\Controllers\UserRequestController::class, 'showReport'])->name('requests.report');
     });
 });
 

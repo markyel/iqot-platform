@@ -115,4 +115,29 @@ class User extends Authenticatable implements FilamentUser
             'description' => $description,
         ]);
     }
+
+    /**
+     * Проверить, есть ли доступ к позиции (через покупку или через свою заявку)
+     */
+    public function hasAccessToItem(ExternalRequestItem $item): bool
+    {
+        // Проверяем покупку
+        if (ItemPurchase::where('user_id', $this->id)->where('item_id', $item->id)->exists()) {
+            return true;
+        }
+
+        // Проверяем, принадлежит ли позиция заявке пользователя
+        if ($item->request) {
+            // Получаем номер заявки из external request
+            $requestNumber = $item->request->request_number;
+
+            // Проверяем, есть ли у пользователя заявка с таким номером
+            return $this->requests()
+                ->where('request_number', $requestNumber)
+                ->where('synced_to_main_db', true)
+                ->exists();
+        }
+
+        return false;
+    }
 }

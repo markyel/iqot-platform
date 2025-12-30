@@ -30,8 +30,14 @@
 @section('content')
 <div style="max-width: 1200px; margin: 0 auto;">
     <!-- Кнопка назад -->
-    <div style="margin-bottom: 1.5rem;">
+    <div style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
         <a href="{{ route('cabinet.my.requests.index') }}" class="btn btn-secondary">← Назад к списку</a>
+
+        @if($request->synced_to_main_db && $request->main_db_request_id)
+        <a href="{{ route('cabinet.my.requests.report', $request->id) }}" class="btn" style="background: #10b981; color: white;">
+            📊 Просмотреть отчет
+        </a>
+        @endif
     </div>
 
     <!-- Заголовок заявки -->

@@ -28,8 +28,14 @@
 <?php $__env->startSection('content'); ?>
 <div style="max-width: 1200px; margin: 0 auto;">
     <!-- Кнопка назад -->
-    <div style="margin-bottom: 1.5rem;">
+    <div style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
         <a href="<?php echo e(route('cabinet.my.requests.index')); ?>" class="btn btn-secondary">← Назад к списку</a>
+
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($request->synced_to_main_db && $request->main_db_request_id): ?>
+        <a href="<?php echo e(route('cabinet.my.requests.report', $request->id)); ?>" class="btn" style="background: #10b981; color: white;">
+            📊 Просмотреть отчет
+        </a>
+        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
     </div>
 
     <!-- Заголовок заявки -->
@@ -90,20 +96,16 @@
                 </div>
             </div>
             <div class="info-item">
-                <div class="info-label">Статус обработки</div>
+                <div class="info-label">Отправка</div>
                 <div class="info-value">
-                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($request->status === 'completed'): ?>
-                        Завершена <?php echo e($request->collection_ended_at ? $request->collection_ended_at->format('d.m.Y') : ''); ?>
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($request->synced_to_main_db): ?>
+                        <span style="color: #059669; font-weight: 600;">✓ Отправлено</span>
+                        <div style="font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem;">
+                            <?php echo e($request->synced_at->format('d.m.Y H:i')); ?>
 
-                    <?php elseif($request->status === 'collecting'): ?>
-                        В процессе сбора ответов
-                    <?php elseif($request->status === 'sending'): ?>
-                        Отправка запросов поставщикам
-                    <?php elseif($request->status === 'pending'): ?>
-                        Ожидает обработки
+                        </div>
                     <?php else: ?>
-                        <?php echo e($statusText); ?>
-
+                        <span style="color: #d97706;">Ожидает модерации</span>
                     <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                 </div>
             </div>

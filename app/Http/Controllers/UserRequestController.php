@@ -232,4 +232,40 @@ class UserRequestController extends Controller
 
         return view('requests.show', compact('request'));
     }
+
+    /**
+     * Просмотр отчета по заявке
+     */
+    public function showReport($id)
+    {
+        // Получаем заявку пользователя
+        $request = Auth::user()->requests()->findOrFail($id);
+
+        // Проверяем, что заявка синхронизирована с главной БД
+        if (!$request->synced_to_main_db || !$request->main_db_request_id) {
+            return redirect()->route('cabinet.my.requests.show', $id)
+                ->with('error', 'Отчет еще не готов. Заявка находится на модерации.');
+        }
+
+        // Получаем заявку из БД reports по request_number (как это делает админ)
+        $externalRequest = \App\Models\ExternalRequest::with([
+            'items' => function ($query) {
+                $query->orderBy('position_number');
+            },
+            'items.offers' => function ($query) {
+                $query->whereIn('status', ['received', 'processed'])
+                      ->whereNotNull('price_per_unit')
+                      ->orderByRaw('CASE WHEN currency = "RUB" THEN price_per_unit ELSE price_per_unit * 100 END')
+                      ->orderBy('price_per_unit', 'asc');
+            },
+            'items.offers.supplier'
+        ])->where('request_number', $request->request_number)->first();
+
+        if (!$externalRequest) {
+            return redirect()->route('cabinet.my.requests.show', $id)
+                ->with('error', 'Отчет не найден. Возможно, заявка еще обрабатывается.');
+        }
+
+        return view('requests.report', compact('externalRequest', 'request'));
+    }
 }

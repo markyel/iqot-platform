@@ -44,6 +44,7 @@
                     <th style="width: 80px; text-align: center;">Позиций</th>
                     <th style="width: 100px; text-align: right;">Стоимость</th>
                     <th style="width: 150px;">Дата создания</th>
+                    <th style="width: 150px;"></th>
                 </tr>
             </thead>
             <tbody>
@@ -80,6 +81,18 @@
                     </td>
                     <td style="color: #6b7280; font-size: 0.875rem;">
                         {{ $request->created_at->format('d.m.Y H:i') }}
+                    </td>
+                    <td style="text-align: right;">
+                        <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                            <a href="{{ route('cabinet.my.requests.show', $request->id) }}" style="color: #3b82f6; text-decoration: none; font-weight: 600; font-size: 0.875rem;">
+                                Подробнее
+                            </a>
+                            @if($request->synced_to_main_db && $request->main_db_request_id)
+                            <a href="{{ route('cabinet.my.requests.report', $request->id) }}" style="color: #10b981; text-decoration: none; font-weight: 600; font-size: 0.875rem;">
+                                📊 Отчет
+                            </a>
+                            @endif
+                        </div>
                     </td>
                 </tr>
                 @endforeach

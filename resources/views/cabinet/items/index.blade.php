@@ -294,7 +294,11 @@
                     {{ rtrim(rtrim(number_format($item->quantity, 3, '.', ''), '0'), '.') }} {{ $item->unit }}
                 </td>
                 <td>
-                    @if(in_array($item->id, $purchasedItemIds))
+                    @php
+                        $hasAccess = in_array($item->id, $purchasedItemIds) ||
+                                    ($item->request && in_array($item->request->request_number, $userRequestNumbers));
+                    @endphp
+                    @if($hasAccess)
                         <span class="status-badge status-full-access">Полный доступ</span>
                     @else
                         <span class="status-badge status-preview">Предпросмотр</span>
@@ -332,7 +336,11 @@
         <div class="item-card">
             <div class="item-card-header">
                 <div class="item-card-title">{{ $item->name }}</div>
-                @if(in_array($item->id, $purchasedItemIds))
+                @php
+                    $hasAccess = in_array($item->id, $purchasedItemIds) ||
+                                ($item->request && in_array($item->request->request_number, $userRequestNumbers));
+                @endphp
+                @if($hasAccess)
                     <span class="status-badge status-full-access">Полный доступ</span>
                 @else
                     <span class="status-badge status-preview">Предпросмотр</span>
