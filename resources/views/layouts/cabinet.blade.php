@@ -327,25 +327,33 @@
         const mainContent = document.getElementById('mainContent');
         const sidebarOverlay = document.getElementById('sidebarOverlay');
 
-        // Load saved state from localStorage
-        const sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
-        if (sidebarCollapsed) {
-            sidebar.classList.add('collapsed');
-            mainContent.classList.add('expanded');
-            menuToggle.classList.add('active');
+        // Check if mobile
+        function isMobile() {
+            return window.innerWidth <= 768;
+        }
+
+        // Load saved state from localStorage (only for desktop)
+        if (!isMobile()) {
+            const sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+            if (sidebarCollapsed) {
+                sidebar.classList.add('collapsed');
+                mainContent.classList.add('expanded');
+                menuToggle.classList.add('active');
+            }
         }
 
         menuToggle.addEventListener('click', function() {
-            const isCollapsed = sidebar.classList.toggle('collapsed');
-            mainContent.classList.toggle('expanded');
-            menuToggle.classList.toggle('active');
-
-            // Save state to localStorage
-            localStorage.setItem('sidebarCollapsed', isCollapsed);
-
-            // On mobile, show overlay
-            if (window.innerWidth <= 768) {
+            if (isMobile()) {
+                // Mobile behavior: toggle active class
+                sidebar.classList.toggle('active');
                 sidebarOverlay.classList.toggle('active');
+                menuToggle.classList.toggle('active');
+            } else {
+                // Desktop behavior: toggle collapsed class
+                const isCollapsed = sidebar.classList.toggle('collapsed');
+                mainContent.classList.toggle('expanded');
+                menuToggle.classList.toggle('active');
+                localStorage.setItem('sidebarCollapsed', isCollapsed);
             }
         });
 
@@ -353,24 +361,21 @@
         sidebarOverlay.addEventListener('click', function() {
             sidebar.classList.remove('active');
             sidebarOverlay.classList.remove('active');
+            menuToggle.classList.remove('active');
         });
 
-        // Handle mobile behavior
-        function handleMobile() {
-            if (window.innerWidth <= 768) {
+        // Reset classes on window resize
+        window.addEventListener('resize', function() {
+            if (!isMobile()) {
+                // Desktop: remove mobile classes
+                sidebar.classList.remove('active');
+                sidebarOverlay.classList.remove('active');
+            } else {
+                // Mobile: remove desktop classes
                 sidebar.classList.remove('collapsed');
                 mainContent.classList.remove('expanded');
-
-                // On mobile, toggle active class instead
-                menuToggle.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    sidebar.classList.toggle('active');
-                });
             }
-        }
-
-        handleMobile();
-        window.addEventListener('resize', handleMobile);
+        });
     </script>
 </body>
 </html>

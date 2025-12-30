@@ -191,14 +191,42 @@
             font-weight: 600;
         }
 
-        .filter-form-mobile {
+        .filter-form {
             display: flex;
             flex-direction: column;
             gap: 1rem;
         }
 
-        .filter-form-mobile > div {
-            width: 100%;
+        .filter-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 1rem;
+        }
+
+        .filter-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .filter-actions button {
+            flex-shrink: 0;
+        }
+
+        @media (max-width: 768px) {
+            .filter-row {
+                grid-template-columns: 1fr;
+            }
+
+            .filter-actions {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .filter-actions button {
+                width: 100%;
+            }
         }
 
         .pagination {
@@ -227,30 +255,34 @@
 
     <!-- Filters -->
     <div class="cabinet-card">
-        <form method="GET" action="{{ route('cabinet.items.index') }}" style="display: grid; grid-template-columns: 2fr 1fr auto auto; gap: 1rem; align-items: end;" class="filter-form-mobile">
-            <div>
-                <label style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 600; color: #374151;">Поиск</label>
-                <input type="text" name="search" value="{{ request('search') }}" placeholder="Название или артикул..." class="form-input" style="width: 100%;">
+        <form method="GET" action="{{ route('cabinet.items.index') }}" class="filter-form">
+            <div class="filter-row">
+                <div>
+                    <label style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 600; color: #374151;">Поиск</label>
+                    <input type="text" name="search" value="{{ request('search') }}" placeholder="Название или артикул..." class="form-input" style="width: 100%;">
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 600; color: #374151;">Статус</label>
+                    <select name="status" class="form-select" style="width: 100%;">
+                        <option value="">Все статусы</option>
+                        <option value="pending" {{ request('status') === 'pending' ? 'selected' : '' }}>Ожидает</option>
+                        <option value="has_offers" {{ request('status') === 'has_offers' ? 'selected' : '' }}>Есть предложения</option>
+                        <option value="partial_offers" {{ request('status') === 'partial_offers' ? 'selected' : '' }}>Частично</option>
+                        <option value="no_offers" {{ request('status') === 'no_offers' ? 'selected' : '' }}>Нет предложений</option>
+                        <option value="clarification_needed" {{ request('status') === 'clarification_needed' ? 'selected' : '' }}>Требуется уточнение</option>
+                    </select>
+                </div>
             </div>
 
-            <div>
-                <label style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 600; color: #374151;">Статус</label>
-                <select name="status" class="form-select" style="width: 100%;">
-                    <option value="">Все статусы</option>
-                    <option value="pending" {{ request('status') === 'pending' ? 'selected' : '' }}>Ожидает</option>
-                    <option value="has_offers" {{ request('status') === 'has_offers' ? 'selected' : '' }}>Есть предложения</option>
-                    <option value="partial_offers" {{ request('status') === 'partial_offers' ? 'selected' : '' }}>Частично</option>
-                    <option value="no_offers" {{ request('status') === 'no_offers' ? 'selected' : '' }}>Нет предложений</option>
-                    <option value="clarification_needed" {{ request('status') === 'clarification_needed' ? 'selected' : '' }}>Требуется уточнение</option>
-                </select>
-            </div>
+            <div class="filter-actions">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" name="has_offers" id="has_offers" value="1" {{ request('has_offers') ? 'checked' : '' }} style="width: 1.25rem; height: 1.25rem;">
+                    <label for="has_offers" style="font-size: 0.875rem; font-weight: 600; color: #374151; white-space: nowrap;">Только с предложениями</label>
+                </div>
 
-            <div style="display: flex; align-items: center; gap: 0.5rem; padding-top: 1.75rem;">
-                <input type="checkbox" name="has_offers" id="has_offers" value="1" {{ request('has_offers') ? 'checked' : '' }} style="width: 1.25rem; height: 1.25rem;">
-                <label for="has_offers" style="font-size: 0.875rem; font-weight: 600; color: #374151; white-space: nowrap;">Только с предложениями</label>
+                <button type="submit" class="btn-green">Применить</button>
             </div>
-
-            <button type="submit" class="btn-green" style="width: 100%;">Применить</button>
         </form>
     </div>
 
