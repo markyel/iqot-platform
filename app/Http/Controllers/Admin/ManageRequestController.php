@@ -58,10 +58,8 @@ class ManageRequestController extends Controller
             $filters['date_to'] = $request->date_to;
         }
 
-        if ($request->filled('has_questions') && $request->has_questions === '1') {
-            // Фильтр по неотвеченным вопросам (has_unanswered)
-            $filters['has_unanswered'] = true;
-        }
+        // Фильтр по неотвеченным вопросам будет применен на стороне приложения после получения summary
+        // т.к. API не поддерживает фильтр has_unanswered
 
         // Получаем заявки из n8n
         $result = $this->n8nService->listRequests($filters, $sort, $pagination);
@@ -96,12 +94,6 @@ class ManageRequestController extends Controller
             $requestIds = array_column($requests, 'id');
             $summaryResult = $this->questionsService->getQuestionsSummary($requestIds);
 
-            // Логируем результат для отладки
-            \Log::info('Questions summary result', [
-                'request_ids' => $requestIds,
-                'result' => $summaryResult
-            ]);
-
             // n8n может возвращать массив с одним элементом
             if (is_array($summaryResult) && isset($summaryResult[0])) {
                 $summaryResult = $summaryResult[0];
@@ -120,9 +112,18 @@ class ManageRequestController extends Controller
                         }
                     }
                 }
-            }
 
-            \Log::info('Questions counts final', ['counts' => $questionsCounts]);
+                // Если фильтр по неотвеченным вопросам активен,
+                // фильтруем заявки на стороне приложения (т.к. API не поддерживает has_unanswered)
+                if ($request->filled('has_questions') && $request->has_questions === '1') {
+                    $requests = array_filter($requests, function($req) use ($questionsCounts) {
+                        return isset($questionsCounts[$req['id']]);
+                    });
+                    // Пересчитываем total
+                    $total = count($requests);
+                    $lastPage = 1;
+                }
+            }
         }
 
         return view('admin.manage.requests.index', compact('requests', 'total', 'currentPage', 'lastPage', 'questionsCounts'));
