@@ -107,19 +107,15 @@ class ManageRequestController extends Controller
             }
 
             if (($summaryResult['success'] ?? false) && isset($summaryResult['summary'])) {
-                // summary может быть массивом или объектом с ключами request_id
+                // summary возвращается как объект с ключами request_id
                 $summary = $summaryResult['summary'];
 
                 foreach ($summary as $requestId => $item) {
-                    // $item может быть массивом с данными
                     if (is_array($item)) {
-                        // API возвращает total_questions и другие поля
-                        $totalQuestions = $item['total_questions'] ?? 0;
+                        // Показываем только неотвеченные вопросы (ожидают ответа автора)
                         $unansweredCount = $item['unanswered_questions'] ?? 0;
-
-                        // Показываем количество всех вопросов (не только неотвеченных)
-                        if ($totalQuestions > 0) {
-                            $questionsCounts[$requestId] = $totalQuestions;
+                        if ($unansweredCount > 0) {
+                            $questionsCounts[$requestId] = $unansweredCount;
                         }
                     }
                 }
