@@ -59,7 +59,8 @@ class ManageRequestController extends Controller
         }
 
         if ($request->filled('has_questions') && $request->has_questions === '1') {
-            $filters['has_questions'] = true;
+            // Фильтр по неотвеченным вопросам (has_unanswered)
+            $filters['has_unanswered'] = true;
         }
 
         // Получаем заявки из n8n

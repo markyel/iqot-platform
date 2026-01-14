@@ -101,7 +101,7 @@
                 <label>Вопросы</label>
                 <select name="has_questions">
                     <option value="">Все</option>
-                    <option value="1" {{ request('has_questions') === '1' ? 'selected' : '' }}>Только с вопросами</option>
+                    <option value="1" {{ request('has_questions') === '1' ? 'selected' : '' }}>С неотвеченными вопросами</option>
                 </select>
             </div>
 
