@@ -106,6 +106,11 @@ Route::get('/test-auth', function() {
 
 // Управление демо-заявками (требует is_admin) - переименовано из /admin в /manage чтобы не конфликтовать с Filament
 Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.')->group(function () {
+    // Редирект с корневого пути /manage на управление заявками
+    Route::get('/', function () {
+        return redirect()->route('admin.manage.requests.index');
+    });
+
     Route::get('/demo-requests', [\App\Http\Controllers\Admin\DemoRequestController::class, 'index'])->name('demo-requests.index');
     Route::get('/demo-requests/{demoRequest}', [\App\Http\Controllers\Admin\DemoRequestController::class, 'show'])->name('demo-requests.show');
     Route::post('/demo-requests/{demoRequest}/approve', [\App\Http\Controllers\Admin\DemoRequestController::class, 'approve'])->name('demo-requests.approve');
