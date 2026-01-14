@@ -63,35 +63,59 @@
                 </thead>
                 <tbody>
                     @foreach($requests as $request)
+                    @php
+                        $externalRequest = ($request->synced_to_main_db && $request->main_db_request_id && isset($externalRequests[$request->main_db_request_id]))
+                            ? $externalRequests[$request->main_db_request_id]
+                            : null;
+                        $displayStatus = $externalRequest ? $externalRequest->status : $request->status;
+                        $displayStatusLabel = $externalRequest
+                            ? (\App\Models\ExternalRequest::getStatusLabels()[$displayStatus] ?? $displayStatus)
+                            : (\App\Models\Request::statuses()[$displayStatus] ?? $displayStatus);
+                        $statusColors = [
+                            'draft' => 'background: #f3f4f6; color: #374151;',
+                            'pending' => 'background: #fef3c7; color: #92400e;',
+                            'sending' => 'background: #dbeafe; color: #1e40af;',
+                            'collecting' => 'background: #e0e7ff; color: #3730a3;',
+                            'completed' => 'background: #d1fae5; color: #065f46;',
+                            'cancelled' => 'background: #fee2e2; color: #991b1b;',
+                            'new' => 'background: #dbeafe; color: #1e40af;',
+                            'active' => 'background: #e0e7ff; color: #3730a3;',
+                            'queued_for_sending' => 'background: #fef3c7; color: #92400e;',
+                            'emails_sent' => 'background: #dbeafe; color: #1e40af;',
+                            'responses_received' => 'background: #e0e7ff; color: #3730a3;',
+                        ];
+                    @endphp
                     <tr style="border-bottom: 1px solid #f3f4f6;">
                         <td style="padding: 1rem;">
                             <a href="{{ route('cabinet.requests.show', $request) }}" style="color: #10b981; text-decoration: none; font-weight: 600;">
-                                {{ $request->code }}
+                                {{ $externalRequest ? $externalRequest->request_number : $request->code }}
                             </a>
                         </td>
                         <td style="padding: 1rem;">{{ $request->title ?? '—' }}</td>
                         <td style="padding: 1rem;">
-                            @php
-                                $statusColors = [
-                                    'draft' => 'background: #f3f4f6; color: #374151;',
-                                    'pending' => 'background: #fef3c7; color: #92400e;',
-                                    'sending' => 'background: #dbeafe; color: #1e40af;',
-                                    'collecting' => 'background: #e0e7ff; color: #3730a3;',
-                                    'completed' => 'background: #d1fae5; color: #065f46;',
-                                    'cancelled' => 'background: #fee2e2; color: #991b1b;',
-                                ];
-                            @endphp
-                            <span style="display: inline-block; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; {{ $statusColors[$request->status] ?? '' }}">
-                                {{ \App\Models\Request::statuses()[$request->status] ?? $request->status }}
+                            <span style="display: inline-block; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; {{ $statusColors[$displayStatus] ?? '' }}">
+                                {{ $displayStatusLabel }}
                             </span>
                         </td>
                         <td style="padding: 1rem;">{{ $request->company_name ?? '—' }}</td>
-                        <td style="padding: 1rem;">{{ $request->items_count }}</td>
+                        <td style="padding: 1rem;">{{ $externalRequest ? $externalRequest->total_items : $request->items_count }}</td>
                         <td style="padding: 1rem; color: #6b7280; font-size: 0.875rem;">{{ $request->created_at->format('d.m.Y H:i') }}</td>
                         <td style="padding: 1rem;">
-                            <a href="{{ route('cabinet.requests.show', $request) }}" style="color: #10b981; text-decoration: none; font-weight: 500;">
-                                Открыть →
-                            </a>
+                            <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                                <a href="{{ route('cabinet.requests.show', $request) }}" style="color: #10b981; text-decoration: none; font-weight: 500;">
+                                    Открыть
+                                </a>
+                                @if($externalRequest)
+                                    <span style="color: #d1d5db;">|</span>
+                                    <a href="{{ route('cabinet.my.requests.report', $request->id) }}" style="color: #8b5cf6; text-decoration: none; font-weight: 500;">
+                                        📊 Отчет
+                                    </a>
+                                @endif
+                                <span style="color: #d1d5db;">|</span>
+                                <a href="{{ route('cabinet.my.requests.questions', $request->id) }}" style="color: #3b82f6; text-decoration: none; font-weight: 500;">
+                                    💬 Вопросы
+                                </a>
+                            </div>
                         </td>
                     </tr>
                     @endforeach

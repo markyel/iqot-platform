@@ -144,11 +144,11 @@
                     Позиция #{{ $item->position_number }}
                 </h1>
                 <p style="color: #6b7280;">
-                    Из заявки 
+                    Из заявки
                     @if($item->request)
-                        <a href="{{ route('admin.external-requests.show', $item->request) }}" style="color: #10b981; text-decoration: none; font-weight: 600;">
+                        <span style="color: #10b981; font-weight: 600;">
                             {{ $item->request->request_number }}
-                        </a>
+                        </span>
                     @endif
                 </p>
             </div>

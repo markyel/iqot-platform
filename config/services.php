@@ -36,11 +36,12 @@ return [
     */
     
     'n8n' => [
-        'webhook_url' => env('N8N_WEBHOOK_URL', 'http://localhost:5678/webhook'),
+        'webhook_url' => env('N8N_WEBHOOK_URL', 'https://liftway.app.n8n.cloud/webhook'),
+        'auth_token' => env('N8N_AUTH_TOKEN'),
         'api_key' => env('N8N_API_KEY'),
         'sender_webhook_url' => env('N8N_SENDER_WEBHOOK_URL'),
         'sender_auth_token' => env('N8N_SENDER_AUTH_TOKEN'),
-        'parse_webhook_url' => env('N8N_PARSE_WEBHOOK_URL'),
+        'parse_webhook_url' => env('N8N_PARSE_WEBHOOK_URL', env('N8N_WEBHOOK_URL', 'https://liftway.app.n8n.cloud/webhook') . '/parse-request'),
         'parse_auth_token' => env('N8N_PARSE_AUTH_TOKEN'),
         'system_user_id' => env('N8N_SYSTEM_USER_ID', 1),
     ],

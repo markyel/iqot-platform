@@ -186,9 +186,9 @@
                 </td>
                 <td>
                     @if($item->request)
-                        <a href="{{ route('admin.external-requests.show', $item->request) }}" style="color: #10b981; text-decoration: none; font-size: 0.875rem; font-weight: 500;">
+                        <span style="color: #10b981; font-size: 0.875rem; font-weight: 500;">
                             {{ $item->request->request_number }}
-                        </a>
+                        </span>
                     @else
                         <span style="color: #6b7280;">—</span>
                     @endif

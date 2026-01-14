@@ -249,11 +249,17 @@
                     <div style="padding: 0 1.5rem; font-size: 0.75rem; font-weight: 600; color: #9ca3af; text-transform: uppercase; margin-bottom: 0.5rem;">
                         Администрирование
                     </div>
-                    <a href="{{ route('admin.external-requests.index') }}" class="nav-item {{ request()->routeIs('admin.external-requests*') ? 'active' : '' }}">
-                        📋 Заявки (внешние)
+                    <a href="{{ route('admin.manage.requests.index') }}" class="nav-item {{ request()->routeIs('admin.manage.requests*') ? 'active' : '' }}">
+                        📋 Управление заявками
+                    </a>
+                    <a href="{{ route('admin.questions.index') }}" class="nav-item {{ request()->routeIs('admin.questions.index') ? 'active' : '' }}">
+                        ❓ Вопросы от поставщиков
+                    </a>
+                    <a href="{{ route('admin.questions.consolidated') }}" class="nav-item {{ request()->routeIs('admin.questions.consolidated*') ? 'active' : '' }}">
+                        🔗 Консолидированные вопросы
                     </a>
                     <a href="{{ route('admin.requests.index') }}" class="nav-item {{ request()->routeIs('admin.requests*') ? 'active' : '' }}">
-                        📝 Заявки пользователей
+                        📝 Модерация заявок
                     </a>
                     <a href="{{ route('admin.items.index') }}" class="nav-item {{ request()->routeIs('admin.items*') ? 'active' : '' }}">
                         📦 Мониторинг позиций

@@ -198,10 +198,11 @@ function updateTotals() {
     const cost = count * pricePerItem;
     document.getElementById('total-items').textContent = count;
     document.getElementById('total-cost').textContent = cost.toFixed(2);
-    const availableBalance = parseFloat(document.getElementById('available-balance').textContent.replace(/\s/g, ''));
+    const availableBalance = parseFloat(document.getElementById('available-balance').textContent.replace(/[\s,]/g, ''));
     const alertEl = document.getElementById('cost-alert');
     if (cost > availableBalance) {
         alertEl.classList.add('alert-danger');
+        alertEl.classList.remove('alert-info');
         document.getElementById('btn-create').disabled = true;
     } else {
         alertEl.classList.remove('alert-danger');

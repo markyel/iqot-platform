@@ -218,7 +218,19 @@ class UserRequestController extends Controller
             ->orderByDesc('created_at')
             ->paginate(20);
 
-        return view('requests.index', compact('requests'));
+        // Загружаем актуальные данные из основной БД для синхронизированных заявок
+        $externalRequests = [];
+        $syncedRequestIds = $requests->filter(fn($r) => $r->synced_to_main_db && $r->main_db_request_id)
+            ->pluck('main_db_request_id')
+            ->toArray();
+
+        if (!empty($syncedRequestIds)) {
+            $externalRequests = \App\Models\ExternalRequest::whereIn('id', $syncedRequestIds)
+                ->get()
+                ->keyBy('id');
+        }
+
+        return view('cabinet.requests.index', compact('requests', 'externalRequests'));
     }
 
     /**
@@ -230,7 +242,14 @@ class UserRequestController extends Controller
             ->with(['items', 'balanceHold'])
             ->findOrFail($id);
 
-        return view('requests.show', compact('request'));
+        // Если заявка синхронизирована, получаем данные из основной БД
+        $externalRequest = null;
+        if ($request->synced_to_main_db && $request->main_db_request_id) {
+            $externalRequest = \App\Models\ExternalRequest::with(['items', 'clientOrganization'])
+                ->find($request->main_db_request_id);
+        }
+
+        return view('cabinet.requests.show', compact('request', 'externalRequest'));
     }
 
     /**

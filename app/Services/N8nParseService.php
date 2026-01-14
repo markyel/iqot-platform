@@ -7,12 +7,12 @@ use Illuminate\Support\Facades\Log;
 
 class N8nParseService
 {
-    private string $webhookUrl;
-    private string $authToken;
+    private ?string $webhookUrl;
+    private ?string $authToken;
 
     public function __construct()
     {
-        $this->webhookUrl = config('services.n8n.parse_webhook_url');
+        $this->webhookUrl = config('services.n8n.parse_webhook_url') ?: config('services.n8n.webhook_url') . '/parse-request';
         $this->authToken = config('services.n8n.parse_auth_token');
     }
 
