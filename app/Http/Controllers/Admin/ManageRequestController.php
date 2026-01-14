@@ -95,6 +95,12 @@ class ManageRequestController extends Controller
             $requestIds = array_column($requests, 'id');
             $summaryResult = $this->questionsService->getQuestionsSummary($requestIds);
 
+            // Логируем результат для отладки
+            \Log::info('Questions summary result', [
+                'request_ids' => $requestIds,
+                'result' => $summaryResult
+            ]);
+
             // n8n может возвращать массив с одним элементом
             if (is_array($summaryResult) && isset($summaryResult[0])) {
                 $summaryResult = $summaryResult[0];
@@ -109,6 +115,8 @@ class ManageRequestController extends Controller
                     }
                 }
             }
+
+            \Log::info('Questions counts final', ['counts' => $questionsCounts]);
         }
 
         return view('admin.manage.requests.index', compact('requests', 'total', 'currentPage', 'lastPage', 'questionsCounts'));
