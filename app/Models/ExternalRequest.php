@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ExternalRequest extends Model
 {
@@ -70,5 +71,10 @@ class ExternalRequest extends Model
     public function items(): HasMany
     {
         return $this->hasMany(ExternalRequestItem::class, 'request_id');
+    }
+
+    public function clientOrganization(): BelongsTo
+    {
+        return $this->belongsTo(ClientOrganization::class, 'client_organization_id');
     }
 }
