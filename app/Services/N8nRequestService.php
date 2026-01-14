@@ -8,8 +8,8 @@ use Illuminate\Support\Facades\Log;
 class N8nRequestService
 {
     protected string $baseUrl;
-    protected string $authToken;
-    protected string $parseAuthToken;
+    protected ?string $authToken;
+    protected ?string $parseAuthToken;
 
     public function __construct()
     {
