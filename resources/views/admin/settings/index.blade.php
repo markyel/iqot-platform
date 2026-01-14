@@ -129,6 +129,10 @@
         <form method="POST" action="{{ route('admin.settings.update') }}">
             @csrf
 
+            <h3 style="font-size: 1rem; font-weight: 600; color: #111827; margin-bottom: 1rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem;">
+                Базовые настройки системы
+            </h3>
+
             <div class="form-group">
                 <label class="form-label">
                     Стоимость разблокировки отчета по позиции (₽)
@@ -165,7 +169,128 @@
                 </span>
             </div>
 
-            <button type="submit" class="btn-green">
+            <h3 style="font-size: 1rem; font-weight: 600; color: #111827; margin: 2rem 0 1rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem;">
+                Тарифы для лендинга
+            </h3>
+
+            <div class="form-group">
+                <label class="form-label">
+                    Стоимость мониторинга позиции в заявке (₽)
+                </label>
+                <input
+                    type="number"
+                    name="pricing_monitoring"
+                    value="{{ $pricingMonitoring }}"
+                    step="0.01"
+                    min="0"
+                    class="form-input"
+                    required
+                >
+                <span class="form-help">
+                    Цена за мониторинг одной позиции для разовых операций (отображается на лендинге)
+                </span>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">
+                    Стоимость разблокировки отчета (₽)
+                </label>
+                <input
+                    type="number"
+                    name="pricing_report_unlock"
+                    value="{{ $pricingReportUnlock }}"
+                    step="0.01"
+                    min="0"
+                    class="form-input"
+                    required
+                >
+                <span class="form-help">
+                    Цена за разблокировку отчета для разовых операций (отображается на лендинге)
+                </span>
+            </div>
+
+            <h3 style="font-size: 1rem; font-weight: 600; color: #111827; margin: 2rem 0 1rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem;">
+                Тариф «Базовый»
+            </h3>
+
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;">
+                <div class="form-group">
+                    <label class="form-label">Стоимость подписки (₽/мес)</label>
+                    <input type="number" name="subscription_basic_price" value="{{ $subscriptionBasicPrice }}" step="0.01" min="0" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Позиций в месяц (шт)</label>
+                    <input type="number" name="subscription_basic_positions" value="{{ $subscriptionBasicPositions }}" min="0" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Отчетов в месяц (шт)</label>
+                    <input type="number" name="subscription_basic_reports" value="{{ $subscriptionBasicReports }}" min="0" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Сверх лимита: позиция (₽)</label>
+                    <input type="number" name="subscription_basic_overlimit_position" value="{{ $subscriptionBasicOverlimitPosition }}" step="0.01" min="0" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Сверх лимита: отчет (₽)</label>
+                    <input type="number" name="subscription_basic_overlimit_report" value="{{ $subscriptionBasicOverlimitReport }}" step="0.01" min="0" class="form-input" required>
+                </div>
+            </div>
+
+            <h3 style="font-size: 1rem; font-weight: 600; color: #111827; margin: 2rem 0 1rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem;">
+                Тариф «Расширенный»
+            </h3>
+
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;">
+                <div class="form-group">
+                    <label class="form-label">Стоимость подписки (₽/мес)</label>
+                    <input type="number" name="subscription_advanced_price" value="{{ $subscriptionAdvancedPrice }}" step="0.01" min="0" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Позиций в месяц (шт)</label>
+                    <input type="number" name="subscription_advanced_positions" value="{{ $subscriptionAdvancedPositions }}" min="0" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Отчетов в месяц (шт)</label>
+                    <input type="number" name="subscription_advanced_reports" value="{{ $subscriptionAdvancedReports }}" min="0" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Сверх лимита: позиция (₽)</label>
+                    <input type="number" name="subscription_advanced_overlimit_position" value="{{ $subscriptionAdvancedOverlimitPosition }}" step="0.01" min="0" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Сверх лимита: отчет (₽)</label>
+                    <input type="number" name="subscription_advanced_overlimit_report" value="{{ $subscriptionAdvancedOverlimitReport }}" step="0.01" min="0" class="form-input" required>
+                </div>
+            </div>
+
+            <h3 style="font-size: 1rem; font-weight: 600; color: #111827; margin: 2rem 0 1rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem;">
+                Тариф «Профессиональный»
+            </h3>
+
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;">
+                <div class="form-group">
+                    <label class="form-label">Стоимость подписки (₽/мес)</label>
+                    <input type="number" name="subscription_pro_price" value="{{ $subscriptionProPrice }}" step="0.01" min="0" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Позиций в месяц (шт)</label>
+                    <input type="number" name="subscription_pro_positions" value="{{ $subscriptionProPositions }}" min="0" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Отчетов в месяц (шт)</label>
+                    <input type="number" name="subscription_pro_reports" value="{{ $subscriptionProReports }}" min="0" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Сверх лимита: позиция (₽)</label>
+                    <input type="number" name="subscription_pro_overlimit_position" value="{{ $subscriptionProOverlimitPosition }}" step="0.01" min="0" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Сверх лимита: отчет (₽)</label>
+                    <input type="number" name="subscription_pro_overlimit_report" value="{{ $subscriptionProOverlimitReport }}" step="0.01" min="0" class="form-input" required>
+                </div>
+            </div>
+
+            <button type="submit" class="btn-green" style="margin-top: 2rem;">
                 Сохранить настройки
             </button>
         </form>

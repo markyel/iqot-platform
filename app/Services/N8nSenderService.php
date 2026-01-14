@@ -7,8 +7,8 @@ use Illuminate\Support\Facades\Log;
 
 class N8nSenderService
 {
-    private string $webhookUrl;
-    private string $authToken;
+    private ?string $webhookUrl;
+    private ?string $authToken;
 
     public function __construct()
     {
@@ -84,6 +84,18 @@ class N8nSenderService
      */
     private function request(string $action, array $params = []): array
     {
+        if (!$this->webhookUrl || !$this->authToken) {
+            Log::error('N8nSenderService: webhook URL or auth token not configured', [
+                'webhook_url' => $this->webhookUrl ? 'set' : 'not set',
+                'auth_token' => $this->authToken ? 'set' : 'not set',
+            ]);
+
+            return [
+                'success' => false,
+                'error' => 'N8N Sender service not configured. Please set N8N_SENDER_WEBHOOK_URL and N8N_SENDER_AUTH_TOKEN in .env file.',
+            ];
+        }
+
         try {
             $response = Http::timeout(30)
                 ->withHeaders([

@@ -22,7 +22,12 @@ class LandingController extends Controller
      */
     public function index(): View
     {
-        return view('landing.index');
+        $pricing = [
+            'monitoring' => \App\Models\SystemSetting::get('pricing_monitoring', 396),
+            'report_unlock' => \App\Models\SystemSetting::get('pricing_report_unlock', 99),
+        ];
+
+        return view('landing.index', compact('pricing'));
     }
 
     /**
@@ -121,6 +126,40 @@ class LandingController extends Controller
     public function terms(): View
     {
         return view('landing.terms');
+    }
+
+    /**
+     * Тарифы и оплата
+     */
+    public function pricing(): View
+    {
+        $pricing = [
+            'monitoring' => \App\Models\SystemSetting::get('pricing_monitoring', 396),
+            'report_unlock' => \App\Models\SystemSetting::get('pricing_report_unlock', 99),
+            'subscription_basic' => [
+                'price' => \App\Models\SystemSetting::get('subscription_basic_price', 5000),
+                'positions' => \App\Models\SystemSetting::get('subscription_basic_positions', 15),
+                'reports' => \App\Models\SystemSetting::get('subscription_basic_reports', 5),
+                'overlimit_position' => \App\Models\SystemSetting::get('subscription_basic_overlimit_position', 300),
+                'overlimit_report' => \App\Models\SystemSetting::get('subscription_basic_overlimit_report', 89),
+            ],
+            'subscription_advanced' => [
+                'price' => \App\Models\SystemSetting::get('subscription_advanced_price', 15000),
+                'positions' => \App\Models\SystemSetting::get('subscription_advanced_positions', 50),
+                'reports' => \App\Models\SystemSetting::get('subscription_advanced_reports', 15),
+                'overlimit_position' => \App\Models\SystemSetting::get('subscription_advanced_overlimit_position', 270),
+                'overlimit_report' => \App\Models\SystemSetting::get('subscription_advanced_overlimit_report', 79),
+            ],
+            'subscription_pro' => [
+                'price' => \App\Models\SystemSetting::get('subscription_pro_price', 50000),
+                'positions' => \App\Models\SystemSetting::get('subscription_pro_positions', 200),
+                'reports' => \App\Models\SystemSetting::get('subscription_pro_reports', 50),
+                'overlimit_position' => \App\Models\SystemSetting::get('subscription_pro_overlimit_position', 240),
+                'overlimit_report' => \App\Models\SystemSetting::get('subscription_pro_overlimit_report', 69),
+            ],
+        ];
+
+        return view('landing.pricing', compact('pricing'));
     }
 
     /**
