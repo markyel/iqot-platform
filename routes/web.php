@@ -4,6 +4,7 @@ use App\Http\Controllers\LandingController;
 use App\Http\Controllers\CabinetController;
 use App\Http\Controllers\ReportController;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Auth;
 
 /*
 |--------------------------------------------------------------------------
@@ -19,6 +20,7 @@ Route::get('/set-password/{token}', [LandingController::class, 'showSetPassword'
 Route::post('/set-password', [LandingController::class, 'storePassword'])->name('set-password.store');
 Route::get('/privacy', [LandingController::class, 'privacy'])->name('privacy');
 Route::get('/terms', [LandingController::class, 'terms'])->name('terms');
+Route::get('/pricing', [LandingController::class, 'pricing'])->name('pricing');
 
 // Личный кабинет (требует авторизации)
 Route::middleware(['auth', 'verified'])->prefix('cabinet')->name('cabinet.')->group(function () {
@@ -58,7 +60,48 @@ Route::middleware(['auth', 'verified'])->prefix('cabinet')->name('cabinet.')->gr
         Route::get('/requests/balance', [\App\Http\Controllers\UserRequestController::class, 'checkBalance'])->name('requests.balance');
         Route::get('/requests/{id}', [\App\Http\Controllers\UserRequestController::class, 'show'])->name('requests.show');
         Route::get('/requests/{id}/report', [\App\Http\Controllers\UserRequestController::class, 'showReport'])->name('requests.report');
+        Route::get('/requests/{id}/questions', [\App\Http\Controllers\Cabinet\QuestionController::class, 'requestQuestions'])->name('requests.questions');
     });
+
+    // Вопросы пользователя
+    Route::prefix('questions')->name('questions.')->group(function () {
+        Route::post('/{id}/answer', [\App\Http\Controllers\Cabinet\QuestionController::class, 'answer'])->name('answer');
+    });
+});
+
+// Тестовая страница проверки прав (удалить после отладки)
+Route::get('/test-auth', function() {
+    $user = Auth::user();
+    if (!$user) {
+        return 'Не авторизован. <a href="/login">Войти</a>';
+    }
+
+    $html = '<h1>Проверка авторизации</h1>';
+    $html .= '<p><strong>Email:</strong> ' . $user->email . '</p>';
+    $html .= '<p><strong>Имя:</strong> ' . $user->name . '</p>';
+    $html .= '<p><strong>ID:</strong> ' . $user->id . '</p>';
+    $html .= '<p><strong>Email подтвержден:</strong> ' . ($user->email_verified_at ? '✓ Да' : '✗ Нет') . '</p>';
+    $html .= '<p><strong>Администратор:</strong> ' . ($user->is_admin ? '✓ Да' : '✗ Нет') . '</p>';
+
+    $canAccess = $user->is_admin && $user->email_verified_at;
+    $html .= '<hr>';
+    $html .= '<p><strong>Доступ к /manage/*:</strong> ' . ($canAccess ? '✓ Разрешен' : '✗ Запрещен') . '</p>';
+
+    if (!$canAccess) {
+        $html .= '<h2>Причины отказа:</h2><ul>';
+        if (!$user->is_admin) {
+            $html .= '<li>Не является администратором (is_admin = 0)</li>';
+        }
+        if (!$user->email_verified_at) {
+            $html .= '<li>Email не подтвержден</li>';
+        }
+        $html .= '</ul>';
+    }
+
+    $html .= '<hr>';
+    $html .= '<p><a href="/manage/manage-requests">Попробовать открыть /manage/manage-requests</a></p>';
+
+    return $html;
 });
 
 // Управление демо-заявками (требует is_admin) - переименовано из /admin в /manage чтобы не конфликтовать с Filament
@@ -69,10 +112,6 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
     Route::post('/demo-requests/{demoRequest}/reject', [\App\Http\Controllers\Admin\DemoRequestController::class, 'reject'])->name('demo-requests.reject');
     Route::post('/demo-requests/{demoRequest}/add-note', [\App\Http\Controllers\Admin\DemoRequestController::class, 'addNote'])->name('demo-requests.add-note');
     Route::patch('/demo-requests/{demoRequest}/status', [\App\Http\Controllers\Admin\DemoRequestController::class, 'updateStatus'])->name('demo-requests.update-status');
-
-    // Заявки из внешней базы
-    Route::get('/external-requests', [\App\Http\Controllers\Admin\ExternalRequestController::class, 'index'])->name('external-requests.index');
-    Route::get('/external-requests/{externalRequest}', [\App\Http\Controllers\Admin\ExternalRequestController::class, 'show'])->name('external-requests.show');
 
     // Мониторинг позиций (админ)
     Route::get('/items', [\App\Http\Controllers\Admin\ExternalRequestController::class, 'items'])->name('items.index');
@@ -110,6 +149,33 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
         Route::post('/{id}/approve', [\App\Http\Controllers\Admin\RequestController::class, 'approve'])->name('approve');
         Route::post('/{id}/reject', [\App\Http\Controllers\Admin\RequestController::class, 'reject'])->name('reject');
         Route::get('/test-connection', [\App\Http\Controllers\Admin\RequestController::class, 'testConnection'])->name('test-connection');
+    });
+
+    // Управление заявками через n8n (анонимные + именные)
+    Route::prefix('manage-requests')->name('manage.requests.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\ManageRequestController::class, 'index'])->name('index');
+        Route::get('/create', [\App\Http\Controllers\Admin\ManageRequestController::class, 'create'])->name('create');
+        Route::post('/', [\App\Http\Controllers\Admin\ManageRequestController::class, 'store'])->name('store');
+        Route::get('/{id}', [\App\Http\Controllers\Admin\ManageRequestController::class, 'show'])->name('show');
+        Route::get('/{id}/report', [\App\Http\Controllers\Admin\ManageRequestController::class, 'showReport'])->name('report');
+        Route::get('/{id}/questions', [\App\Http\Controllers\Admin\QuestionController::class, 'requestQuestions'])->name('questions');
+        Route::get('/{id}/edit', [\App\Http\Controllers\Admin\ManageRequestController::class, 'edit'])->name('edit');
+        Route::put('/{id}', [\App\Http\Controllers\Admin\ManageRequestController::class, 'update'])->name('update');
+        Route::post('/{id}/cancel', [\App\Http\Controllers\Admin\ManageRequestController::class, 'cancel'])->name('cancel');
+        Route::post('/parse-text', [\App\Http\Controllers\Admin\ManageRequestController::class, 'parseText'])->name('parse-text');
+    });
+
+    // Вопросы от поставщиков
+    Route::prefix('questions')->name('questions.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\QuestionController::class, 'index'])->name('index');
+
+        // Консолидированные вопросы (должны быть ПЕРЕД роутами с параметром {id})
+        Route::get('/consolidated', [\App\Http\Controllers\Admin\ConsolidatedQuestionController::class, 'index'])->name('consolidated');
+        Route::post('/consolidated/answer', [\App\Http\Controllers\Admin\ConsolidatedQuestionController::class, 'answer'])->name('consolidated.answer');
+
+        // Роуты с параметром {id} должны быть в конце
+        Route::post('/{id}/answer', [\App\Http\Controllers\Admin\QuestionController::class, 'answer'])->name('answer');
+        Route::post('/{id}/skip', [\App\Http\Controllers\Admin\QuestionController::class, 'skip'])->name('skip');
     });
 
     // Настройки системы
