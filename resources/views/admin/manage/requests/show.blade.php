@@ -33,8 +33,6 @@
 @endpush
 
 @section('content')
-
-<!-- Page Header -->
 <x-page-header
     title="Заявка {{ $request['request_number'] ?? 'N/A' }}"
     description="Детальная информация о заявке"

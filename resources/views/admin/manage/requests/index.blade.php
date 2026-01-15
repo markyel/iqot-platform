@@ -3,8 +3,6 @@
 @section('title', 'Управление заявками')
 
 @section('content')
-
-<!-- Page Header -->
 <x-page-header
     title="Управление заявками"
     description="Создание и управление заявками через n8n API"

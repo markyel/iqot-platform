@@ -2,12 +2,11 @@
 
 @section('title', 'Создать заявку')
 
+@section('content')
 <x-page-header
     title="Создать заявку через n8n"
     description="Создайте новую заявку с помощью AI-парсинга или заполните данные вручную"
 />
-
-@section('content')
 <div style="max-width: 1200px; margin: 0 auto;">
 
     @if($errors->any())

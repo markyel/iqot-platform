@@ -2,12 +2,11 @@
 
 @section('title', 'Редактировать заявку ' . ($request['request_number'] ?? ''))
 
+@section('content')
 <x-page-header
     title="Редактировать заявку {{ $request['request_number'] ?? '' }}"
     description="Измените настройки заявки и информацию о клиенте"
 />
-
-@section('content')
 <div style="max-width: 1200px; margin: 0 auto;">
 
     @if($errors->any())
