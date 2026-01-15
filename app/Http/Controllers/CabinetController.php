@@ -15,7 +15,7 @@ class CabinetController extends Controller
     public function dashboard(): View
     {
         $user = auth()->user();
-        
+
         $stats = [
             'total_requests' => $user->requests()->count(),
             'active_requests' => $user->requests()->whereIn('status', ['pending', 'sending', 'collecting'])->count(),
@@ -35,7 +35,34 @@ class CabinetController extends Controller
             ->take(5)
             ->get();
 
-        return view('cabinet.dashboard', compact('stats', 'recentRequests', 'recentReports'));
+        // Получаем позиции, к которым у пользователя есть доступ
+        // 1. Позиции, которые пользователь купил
+        $purchasedItemIds = \App\Models\ItemPurchase::where('user_id', $user->id)
+            ->pluck('item_id')
+            ->toArray();
+
+        // 2. Номера заявок пользователя (синхронизированных с основной БД)
+        $userRequestNumbers = $user->requests()
+            ->where('synced_to_main_db', true)
+            ->whereNotNull('request_number')
+            ->pluck('request_number')
+            ->toArray();
+
+        // Получаем позиции, к которым есть доступ (купленные или из своих заявок)
+        $previewItems = \App\Models\ExternalRequestItem::with('request')
+            ->where(function($query) use ($purchasedItemIds, $userRequestNumbers) {
+                // Либо позиция куплена
+                $query->whereIn('id', $purchasedItemIds)
+                    // Либо позиция из заявки пользователя
+                    ->orWhereHas('request', function($q) use ($userRequestNumbers) {
+                        $q->whereIn('request_number', $userRequestNumbers);
+                    });
+            })
+            ->latest()
+            ->take(10)
+            ->get();
+
+        return view('cabinet.dashboard', compact('stats', 'recentRequests', 'recentReports', 'previewItems'));
     }
 
     /**

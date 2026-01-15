@@ -4,112 +4,50 @@
 
 @push('styles')
 <style>
-    /* Light theme for user cabinet */
-    .cabinet-card {
-        background: #ffffff;
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        padding: 1.5rem;
-        margin-bottom: 1.5rem;
+    .price-hidden {
+        color: var(--neutral-500);
+        font-style: italic;
     }
 
-    .back-link {
-        color: #10b981;
-        text-decoration: none;
-        font-weight: 600;
-        display: inline-block;
-        margin-bottom: 1rem;
-    }
-
-    .back-link:hover {
-        color: #059669;
-    }
-
-    .info-label {
-        color: #6b7280;
-        font-size: 0.875rem;
-        margin-bottom: 0.25rem;
-    }
-
-    .info-value {
-        color: #111827;
-        font-weight: 600;
-    }
-
-    .offers-table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 1rem;
-        background: #ffffff;
-        border-radius: 8px;
-        overflow: hidden;
-    }
-
-    .offers-table th {
-        text-align: left;
-        padding: 0.75rem;
-        background: #f9fafb;
-        color: #6b7280;
-        font-size: 0.875rem;
-        font-weight: 600;
-        border-bottom: 2px solid #e5e7eb;
-    }
-
-    .offers-table td {
-        padding: 0.75rem;
-        border-top: 1px solid #f3f4f6;
-        color: #374151;
-        font-size: 0.875rem;
-    }
-
-    .offers-table tbody tr:hover {
-        background: #f9fafb;
+    .price-best {
+        background: var(--green-50);
+        border: 1px solid var(--green-200);
+        border-radius: var(--radius-sm);
+        padding: var(--space-2) var(--space-3);
     }
 
     .price-highlight {
-        color: #059669;
+        color: var(--green-700);
         font-weight: 700;
         font-size: 1rem;
     }
 
-    .price-hidden {
-        color: #9ca3af;
-        font-style: italic;
-    }
-
-    .stat-card {
-        background: #ffffff;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 1rem;
-    }
-
-    .stat-label {
-        color: #6b7280;
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin-bottom: 0.5rem;
-    }
-
-    .stat-value {
-        color: #111827;
-        font-size: 1.5rem;
-        font-weight: 700;
-    }
-
-    .no-offers {
+    .unlock-banner {
+        background: linear-gradient(135deg, var(--yellow-50) 0%, var(--yellow-100) 100%);
+        border: 2px solid var(--yellow-400);
+        border-radius: var(--radius-lg);
+        padding: var(--space-4);
+        margin-bottom: var(--space-4);
         text-align: center;
-        padding: 3rem;
-        color: #9ca3af;
-        font-style: italic;
+    }
+
+    .unlock-banner h3 {
+        color: var(--yellow-900);
+        font-size: 1.25rem;
+        font-weight: 700;
+        margin-bottom: var(--space-2);
+    }
+
+    .unlock-banner p {
+        color: var(--yellow-800);
+        margin-bottom: var(--space-3);
     }
 
     .btn-unlock {
-        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        background: linear-gradient(135deg, var(--green-600) 0%, var(--green-700) 100%);
         color: white;
-        padding: 1rem 2rem;
-        border-radius: 8px;
+        padding: var(--space-3) var(--space-5);
+        border-radius: var(--radius-md);
         border: none;
         font-weight: 700;
         font-size: 1.125rem;
@@ -126,80 +64,25 @@
     }
 
     .btn-unlock:disabled {
-        background: #d1d5db;
+        background: var(--neutral-300);
         cursor: not-allowed;
         transform: none;
         box-shadow: none;
     }
 
-    .unlock-banner {
-        background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-        border: 2px solid #fbbf24;
-        border-radius: 12px;
-        padding: 1.5rem;
-        margin-bottom: 1.5rem;
-        text-align: center;
-    }
-
-    .unlock-banner h3 {
-        color: #92400e;
-        font-size: 1.25rem;
-        font-weight: 700;
-        margin-bottom: 0.5rem;
-    }
-
-    .unlock-banner p {
-        color: #78350f;
-        margin-bottom: 1rem;
-    }
-
     .full-access-badge {
-        background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
-        border: 2px solid #10b981;
-        border-radius: 12px;
-        padding: 1rem;
-        margin-bottom: 1.5rem;
+        background: linear-gradient(135deg, var(--green-50) 0%, var(--green-100) 100%);
+        border: 2px solid var(--green-600);
+        border-radius: var(--radius-lg);
+        padding: var(--space-3);
+        margin-bottom: var(--space-4);
         text-align: center;
-        color: #065f46;
+        color: var(--green-900);
         font-weight: 700;
-    }
-
-    .alert {
-        padding: 1rem;
-        border-radius: 8px;
-        margin-bottom: 1rem;
-    }
-
-    .alert-success {
-        background: #d1fae5;
-        color: #065f46;
-        border: 1px solid #a7f3d0;
-    }
-
-    .alert-error {
-        background: #fee2e2;
-        color: #991b1b;
-        border: 1px solid #fecaca;
-    }
-
-    .price-best {
-        background: #d1fae5;
-        border: 1px solid #a7f3d0;
-        border-radius: 4px;
-        padding: 0.5rem 0.75rem;
-    }
-
-    /* Mobile card for offers */
-    .mobile-offer-card {
-        display: none;
     }
 
     /* Mobile responsive */
     @media (max-width: 768px) {
-        .cabinet-card {
-            padding: 1rem;
-        }
-
         .offers-table {
             display: none;
         }
@@ -209,19 +92,19 @@
         }
 
         .offer-card {
-            background: #ffffff;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            padding: 1rem;
-            margin-bottom: 1rem;
+            background: var(--neutral-0);
+            border: 1px solid var(--neutral-200);
+            border-radius: var(--radius-md);
+            padding: var(--space-3);
+            margin-bottom: var(--space-3);
         }
 
         .offer-card-header {
             font-weight: 700;
-            color: #111827;
-            margin-bottom: 0.75rem;
-            padding-bottom: 0.75rem;
-            border-bottom: 1px solid #f3f4f6;
+            color: var(--neutral-900);
+            margin-bottom: var(--space-2);
+            padding-bottom: var(--space-2);
+            border-bottom: 1px solid var(--neutral-100);
             font-size: 0.9375rem;
         }
 
@@ -229,59 +112,44 @@
             display: flex;
             justify-content: space-between;
             align-items: start;
-            margin-bottom: 0.5rem;
+            margin-bottom: var(--space-2);
             font-size: 0.875rem;
         }
 
         .offer-card-label {
-            color: #6b7280;
+            color: var(--neutral-600);
             font-size: 0.8125rem;
         }
 
         .offer-card-value {
-            color: #111827;
+            color: var(--neutral-900);
             font-weight: 600;
             text-align: right;
         }
 
-        .stat-card {
-            padding: 0.75rem;
-        }
-
-        .stat-value {
-            font-size: 1.25rem;
-        }
-
-        .unlock-banner {
-            padding: 1rem;
-        }
-
-        .unlock-banner h3 {
-            font-size: 1.125rem;
-        }
-
-        .btn-unlock {
-            padding: 0.875rem 1.5rem;
-            font-size: 1rem;
-        }
-
         .offer-notes {
-            background: #f9fafb;
-            padding: 0.75rem;
-            border-radius: 6px;
-            margin-top: 0.75rem;
+            background: var(--neutral-50);
+            padding: var(--space-3);
+            border-radius: var(--radius-sm);
+            margin-top: var(--space-2);
         }
 
         .offer-notes-label {
-            color: #6b7280;
+            color: var(--neutral-600);
             font-size: 0.75rem;
-            margin-bottom: 0.25rem;
+            margin-bottom: var(--space-1);
         }
 
         .offer-notes-text {
-            color: #111827;
+            color: var(--neutral-900);
             font-size: 0.8125rem;
             line-height: 1.5;
+        }
+    }
+
+    @media (min-width: 769px) {
+        .mobile-offer-card {
+            display: none;
         }
     }
 </style>
@@ -289,52 +157,64 @@
 
 @section('content')
 <div style="max-width: 1400px; margin: 0 auto;">
-    <div style="margin-bottom: 2rem;">
-        <a href="{{ route('cabinet.items.index') }}" class="back-link">
-            ← Назад к списку позиций
+    <div style="margin-bottom: var(--space-4);">
+        <a href="{{ route('cabinet.items.index') }}" class="text-muted" style="text-decoration: none; display: inline-flex; align-items: center; gap: var(--space-2); font-weight: 600;">
+            <i data-lucide="arrow-left" style="width: 16px; height: 16px;"></i>
+            Назад к списку позиций
         </a>
 
         @if(session('success'))
-            <div class="alert alert-success">{{ session('success') }}</div>
+            <div class="alert alert-success" style="margin-top: var(--space-3);">{{ session('success') }}</div>
         @endif
 
         @if(session('error'))
-            <div class="alert alert-error">{{ session('error') }}</div>
+            <div class="alert alert-danger" style="margin-top: var(--space-3);">{{ session('error') }}</div>
         @endif
 
         <!-- Unlock Banner or Full Access Badge -->
         @if(!$hasPurchased)
-            <div class="unlock-banner">
-                <h3>🔒 Предпросмотр позиции</h3>
+            <div class="unlock-banner" style="margin-top: var(--space-3);">
+                <h3 style="display: flex; align-items: center; justify-content: center; gap: var(--space-2);">
+                    <i data-lucide="lock" style="width: 24px; height: 24px;"></i>
+                    Предпросмотр позиции
+                </h3>
                 <p>Для полного доступа к информации о поставщиках и всем ценам разблокируйте этот отчет</p>
                 <form method="POST" action="{{ route('cabinet.items.purchase', $item->id) }}">
                     @csrf
-                    <button type="submit" class="btn-unlock" {{ auth()->user()->balance < $unlockPrice ? 'disabled' : '' }}>
-                        🔓 Получить полный доступ за {{ number_format($unlockPrice, 0) }} ₽
-                    </button>
+                    <x-button
+                        type="submit"
+                        variant="accent"
+                        size="lg"
+                        icon="unlock"
+                        :disabled="auth()->user()->balance < $unlockPrice"
+                        style="width: 100%; justify-content: center;"
+                    >
+                        Получить полный доступ за {{ number_format($unlockPrice, 0) }} ₽
+                    </x-button>
                     @if(auth()->user()->balance < $unlockPrice)
-                        <p style="color: #991b1b; margin-top: 0.5rem; font-weight: 600;">
+                        <p style="color: var(--danger-700); margin-top: var(--space-2); font-weight: 600; font-size: var(--text-sm);">
                             Недостаточно средств на балансе (доступно: {{ number_format(auth()->user()->balance, 2) }} ₽)
                         </p>
                     @endif
                 </form>
             </div>
         @else
-            <div class="full-access-badge">
-                ✅ У вас есть полный доступ к этому отчету
+            <div class="full-access-badge" style="margin-top: var(--space-3); display: flex; align-items: center; justify-content: center; gap: var(--space-2);">
+                <i data-lucide="check-circle" style="width: 24px; height: 24px;"></i>
+                У вас есть полный доступ к этому отчету
             </div>
         @endif
 
         <div>
-            <h1 style="font-size: 2rem; font-weight: 700; color: #111827; margin-bottom: 0.5rem;">
+            <h1 style="font-size: 2rem; font-weight: 700; margin-bottom: var(--space-2);">
                 {{ $item->name }}
             </h1>
             @if(!$hasPurchased)
-                <p style="color: #9ca3af; font-size: 0.875rem; font-style: italic;">
+                <p class="text-muted" style="font-style: italic;">
                     Информация о заявке скрыта в режиме предпросмотра
                 </p>
             @else
-                <p style="color: #6b7280;">
+                <p class="text-muted">
                     Позиция #{{ $item->position_number }}
                     @if($item->request)
                         из заявки
@@ -346,59 +226,63 @@
     </div>
 
     <!-- Item Details -->
-    <div class="cabinet-card">
-        <h2 style="font-size: 1.25rem; font-weight: 700; color: #111827; margin-bottom: 1rem;">
-            Информация о позиции
-        </h2>
+    <div class="card" style="margin-bottom: var(--space-6);">
+        <div class="card-header">
+            <h2 style="margin: 0; font-size: var(--text-lg); font-weight: 600;">
+                <i data-lucide="package" class="icon-sm" style="display: inline-block; vertical-align: middle; margin-right: var(--space-2);"></i>
+                Информация о позиции
+            </h2>
+        </div>
+        <div class="card-body">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--space-6);">
+                @if($item->brand)
+                <div>
+                    <div class="text-muted" style="font-size: var(--text-xs); margin-bottom: var(--space-1); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Бренд</div>
+                    <div style="font-weight: 600; font-size: var(--text-base);">{{ $item->brand }}</div>
+                </div>
+                @endif
 
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem;">
-            @if($item->brand)
-            <div>
-                <div class="info-label">Бренд</div>
-                <div class="info-value">{{ $item->brand }}</div>
-            </div>
-            @endif
+                @if($item->article)
+                <div>
+                    <div class="text-muted" style="font-size: var(--text-xs); margin-bottom: var(--space-1); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Артикул</div>
+                    <div style="font-weight: 600; font-size: var(--text-base);">{{ $item->article }}</div>
+                </div>
+                @endif
 
-            @if($item->article)
-            <div>
-                <div class="info-label">Артикул</div>
-                <div class="info-value">{{ $item->article }}</div>
-            </div>
-            @endif
+                <div>
+                    <div class="text-muted" style="font-size: var(--text-xs); margin-bottom: var(--space-1); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Количество</div>
+                    <div style="font-weight: 600; font-size: var(--text-base);">{{ rtrim(rtrim(number_format($item->quantity, 3, '.', ''), '0'), '.') }} {{ $item->unit }}</div>
+                </div>
 
-            <div>
-                <div class="info-label">Количество</div>
-                <div class="info-value">{{ rtrim(rtrim(number_format($item->quantity, 3, '.', ''), '0'), '.') }} {{ $item->unit }}</div>
-            </div>
-
-            <div>
-                <div class="info-label">Статус</div>
-                <div class="info-value">
-                    @if($item->status === 'pending')
-                        Ожидает
-                    @elseif($item->status === 'has_offers')
-                        Есть предложения
-                    @elseif($item->status === 'partial_offers')
-                        Частично
-                    @elseif($item->status === 'no_offers')
-                        Нет предложений
-                    @elseif($item->status === 'clarification_needed')
-                        Требуется уточнение
-                    @else
-                        {{ $item->status }}
-                    @endif
+                <div>
+                    <div class="text-muted" style="font-size: var(--text-xs); margin-bottom: var(--space-1); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Статус</div>
+                    <div style="font-weight: 600; font-size: var(--text-base);">
+                        @if($item->status === 'pending')
+                            Ожидает
+                        @elseif($item->status === 'has_offers')
+                            Есть предложения
+                        @elseif($item->status === 'partial_offers')
+                            Частично
+                        @elseif($item->status === 'no_offers')
+                            Нет предложений
+                        @elseif($item->status === 'clarification_needed')
+                            Требуется уточнение
+                        @else
+                            {{ $item->status }}
+                        @endif
+                    </div>
                 </div>
             </div>
-        </div>
 
-        @if($item->characteristics)
-        <div style="margin-top: 1.5rem;">
-            <div class="info-label">Характеристики</div>
-            <div style="color: #374151; line-height: 1.6; margin-top: 0.5rem;">
-                {{ $item->characteristics }}
+            @if($item->characteristics)
+            <div style="margin-top: var(--space-6); padding-top: var(--space-6); border-top: 1px solid var(--neutral-200);">
+                <div class="text-muted" style="font-size: var(--text-xs); margin-bottom: var(--space-2); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Характеристики</div>
+                <div style="line-height: 1.6; font-size: var(--text-sm);">
+                    {{ $item->characteristics }}
+                </div>
             </div>
+            @endif
         </div>
-        @endif
     </div>
 
     <!-- Statistics -->
@@ -410,62 +294,51 @@
             $avgPrice = $prices->avg();
         @endphp
 
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
-            <div class="stat-card">
-                <div class="stat-label">Предложений</div>
-                <div class="stat-value">{{ $offers->count() }}</div>
-            </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4);">
+            <x-stat-card
+                label="Предложений"
+                :value="$offers->count()"
+            />
 
-            <div class="stat-card">
-                <div class="stat-label">Мин. цена</div>
-                <div class="stat-value stat-value-accent">
-                    @if($hasPurchased || $maxPrice == $minPrice)
-                        {{ number_format($minPrice, 2) }} ₽
-                    @else
-                        <span class="price-hidden">***</span>
-                    @endif
-                </div>
-            </div>
+            <x-stat-card
+                label="Мин. цена"
+                :value="($hasPurchased || $maxPrice == $minPrice) ? number_format($minPrice, 2) . ' ₽' : '***'"
+                variant="success"
+            />
 
-            <div class="stat-card">
-                <div class="stat-label">Средняя цена</div>
-                <div class="stat-value">
-                    @if($hasPurchased || $prices->count() == 1)
-                        {{ number_format($avgPrice, 2) }} ₽
-                    @else
-                        <span class="price-hidden">***</span>
-                    @endif
-                </div>
-            </div>
+            <x-stat-card
+                label="Средняя цена"
+                :value="($hasPurchased || $prices->count() == 1) ? number_format($avgPrice, 2) . ' ₽' : '***'"
+            />
 
-            <div class="stat-card">
-                <div class="stat-label">Макс. цена</div>
-                <div class="stat-value">{{ number_format($maxPrice, 2) }} ₽</div>
-            </div>
+            <x-stat-card
+                label="Макс. цена"
+                :value="number_format($maxPrice, 2) . ' ₽'"
+            />
         </div>
     @endif
 
     <!-- Offers Table -->
-    <div class="cabinet-card">
-        <h2 style="font-size: 1.25rem; font-weight: 700; color: #111827; margin-bottom: 1rem;">
+    <div class="card">
+        <h2 style="font-size: 1.25rem; font-weight: 700; margin-bottom: var(--space-3);">
             Предложения поставщиков
         </h2>
 
         @if($offers->isEmpty())
-            <div class="no-offers">
-                По данной позиции пока нет предложений от поставщиков
-            </div>
+            <x-empty-state
+                icon="package-open"
+                title="Нет предложений"
+                description="По данной позиции пока нет предложений от поставщиков"
+            />
         @else
-            <table class="offers-table">
+            <table class="table offers-table">
                 <thead>
                     <tr>
                         <th>Поставщик</th>
                         <th>Цена за ед.</th>
                         <th>Общая цена</th>
-                        @if(!$hasPurchased)
-                            <th>Срок поставки</th>
-                        @else
-                            <th>Срок поставки</th>
+                        <th>Срок поставки</th>
+                        @if($hasPurchased)
                             <th>Условия оплаты</th>
                             <th>Дата ответа</th>
                         @endif
@@ -476,14 +349,14 @@
                     <tr>
                         <td>
                             @if($hasPurchased && $offer->supplier)
-                                <div style="font-weight: 600; color: #111827;">{{ $offer->supplier->name ?? 'Не указан' }}</div>
+                                <div style="font-weight: 600;">{{ $offer->supplier->name ?? 'Не указан' }}</div>
                                 @if($offer->supplier->email)
-                                    <div style="font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem;">
+                                    <div class="text-muted" style="font-size: 0.75rem; margin-top: var(--space-1);">
                                         {{ $offer->supplier->email }}
                                     </div>
                                 @endif
                                 @if($offer->supplier->phone)
-                                    <div style="font-size: 0.75rem; color: #6b7280;">
+                                    <div class="text-muted" style="font-size: 0.75rem;">
                                         {{ $offer->supplier->phone }}
                                     </div>
                                 @endif
@@ -497,16 +370,16 @@
                                     <div class="{{ $hasPurchased && $index === 0 ? 'price-best' : '' }}">
                                         <span class="price-highlight">{{ number_format($offer->price_per_unit_in_rub, 2) }} ₽</span>
                                         @if($offer->currency !== 'RUB')
-                                            <div style="color: #6b7280; font-size: 0.75rem;">{{ number_format($offer->price_per_unit, 2) }} {{ $offer->currency }}</div>
+                                            <div class="text-muted" style="font-size: 0.75rem;">{{ number_format($offer->price_per_unit, 2) }} {{ $offer->currency }}</div>
                                         @endif
                                         @if($offer->price_includes_vat)
-                                            <div style="color: #6b7280; font-size: 0.75rem;">с НДС</div>
+                                            <div class="text-muted" style="font-size: 0.75rem;">с НДС</div>
                                         @else
-                                            <div style="color: #6b7280; font-size: 0.75rem;">без НДС</div>
+                                            <div class="text-muted" style="font-size: 0.75rem;">без НДС</div>
                                         @endif
                                     </div>
                                 @else
-                                    <span style="color: #6b7280;">—</span>
+                                    <span class="text-muted">—</span>
                                 @endif
                             @else
                                 <span class="price-hidden">***</span>
@@ -517,10 +390,10 @@
                                 @if($offer->total_price)
                                     <span style="font-weight: 600;">{{ number_format($offer->total_price_in_rub, 2) }} ₽</span>
                                     @if($offer->currency !== 'RUB')
-                                        <div style="color: #6b7280; font-size: 0.75rem;">{{ number_format($offer->total_price, 2) }} {{ $offer->currency }}</div>
+                                        <div class="text-muted" style="font-size: 0.75rem;">{{ number_format($offer->total_price, 2) }} {{ $offer->currency }}</div>
                                     @endif
                                 @else
-                                    <span style="color: #6b7280;">—</span>
+                                    <span class="text-muted">—</span>
                                 @endif
                             @else
                                 <span class="price-hidden">***</span>
@@ -531,7 +404,7 @@
                                 @if($offer->delivery_days)
                                     <span>{{ $offer->delivery_days }} дн.</span>
                                 @else
-                                    <span style="color: #6b7280;">—</span>
+                                    <span class="text-muted">—</span>
                                 @endif
                             @else
                                 <span class="price-hidden">***</span>
@@ -542,10 +415,10 @@
                                 @if($offer->payment_terms)
                                     <span>{{ $offer->payment_terms }}</span>
                                 @else
-                                    <span style="color: #6b7280;">—</span>
+                                    <span class="text-muted">—</span>
                                 @endif
                             </td>
-                            <td style="color: #6b7280; font-size: 0.875rem;">
+                            <td class="text-muted" style="font-size: 0.875rem;">
                                 @if($offer->response_received_at)
                                     {{ $offer->response_received_at->format('d.m.Y H:i') }}
                                 @else
@@ -556,9 +429,9 @@
                     </tr>
                     @if($hasPurchased && $offer->notes)
                     <tr>
-                        <td colspan="6" style="background: #f9fafb; padding: 0.75rem;">
-                            <div style="color: #6b7280; font-size: 0.75rem; margin-bottom: 0.25rem;">Примечание:</div>
-                            <div style="color: #111827; font-size: 0.875rem;">{{ $offer->notes }}</div>
+                        <td colspan="6" style="background: var(--neutral-50); padding: var(--space-3);">
+                            <div class="text-muted" style="font-size: 0.75rem; margin-bottom: var(--space-1);">Примечание:</div>
+                            <div style="font-size: 0.875rem;">{{ $offer->notes }}</div>
                         </td>
                     </tr>
                     @endif
@@ -574,7 +447,7 @@
                         @if($hasPurchased && $offer->supplier)
                             {{ $offer->supplier->name ?? 'Не указан' }}
                             @if($index === 0)
-                                <span style="background: #d1fae5; color: #065f46; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; margin-left: 0.5rem;">Лучшая</span>
+                                <x-badge variant="success" style="margin-left: var(--space-2);">Лучшая</x-badge>
                             @endif
                         @else
                             Поставщик скрыт
@@ -601,9 +474,9 @@
                         <div class="offer-card-value">
                             @if($hasPurchased || $offer->price_per_unit_in_rub == $maxPrice)
                                 @if($offer->price_per_unit)
-                                    <div style="font-weight: 700; color: #059669;">{{ number_format($offer->price_per_unit_in_rub, 2) }} ₽</div>
+                                    <div style="font-weight: 700; color: var(--green-700);">{{ number_format($offer->price_per_unit_in_rub, 2) }} ₽</div>
                                     @if($offer->currency !== 'RUB')
-                                        <div style="color: #6b7280; font-size: 0.75rem;">{{ number_format($offer->price_per_unit, 2) }} {{ $offer->currency }}</div>
+                                        <div class="text-muted" style="font-size: 0.75rem;">{{ number_format($offer->price_per_unit, 2) }} {{ $offer->currency }}</div>
                                     @endif
                                 @else
                                     —
@@ -621,7 +494,7 @@
                                 @if($offer->total_price)
                                     <div style="font-weight: 700;">{{ number_format($offer->total_price_in_rub, 2) }} ₽</div>
                                     @if($offer->currency !== 'RUB')
-                                        <div style="color: #6b7280; font-size: 0.75rem;">{{ number_format($offer->total_price, 2) }} {{ $offer->currency }}</div>
+                                        <div class="text-muted" style="font-size: 0.75rem;">{{ number_format($offer->total_price, 2) }} {{ $offer->currency }}</div>
                                     @endif
                                 @else
                                     —
@@ -678,15 +551,31 @@
     <!-- Bottom Unlock Button -->
     @if(!$hasPurchased)
         <div class="unlock-banner">
-            <h3>💡 Получите полный доступ к отчету</h3>
+            <h3 style="display: flex; align-items: center; justify-content: center; gap: var(--space-2);">
+                <i data-lucide="lightbulb" style="width: 24px; height: 24px;"></i>
+                Получите полный доступ к отчету
+            </h3>
             <p>Узнайте всех поставщиков, их контакты и полную информацию о ценах</p>
             <form method="POST" action="{{ route('cabinet.items.purchase', $item->id) }}">
                 @csrf
-                <button type="submit" class="btn-unlock" {{ auth()->user()->balance < $unlockPrice ? 'disabled' : '' }}>
-                    🔓 Разблокировать отчет за {{ number_format($unlockPrice, 0) }} ₽
-                </button>
+                <x-button
+                    type="submit"
+                    variant="accent"
+                    size="lg"
+                    icon="unlock"
+                    :disabled="auth()->user()->balance < $unlockPrice"
+                    style="width: 100%; justify-content: center;"
+                >
+                    Разблокировать отчет за {{ number_format($unlockPrice, 0) }} ₽
+                </x-button>
             </form>
         </div>
     @endif
 </div>
+
+@push('scripts')
+<script>
+    lucide.createIcons();
+</script>
+@endpush
 @endsection
