@@ -2,134 +2,45 @@
 
 @section('title', 'Настройки системы')
 
-@push('styles')
-<style>
-    /* Light theme for admin */
-    .admin-card {
-        background: #ffffff;
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        padding: 1.5rem;
-        margin-bottom: 1.5rem;
-    }
-
-    .form-group {
-        margin-bottom: 1.5rem;
-    }
-
-    .form-label {
-        display: block;
-        margin-bottom: 0.5rem;
-        font-size: 0.875rem;
-        font-weight: 600;
-        color: #374151;
-    }
-
-    .form-help {
-        display: block;
-        margin-top: 0.25rem;
-        font-size: 0.75rem;
-        color: #6b7280;
-    }
-
-    .form-input {
-        background: #ffffff;
-        border: 1px solid #d1d5db;
-        color: #111827;
-        padding: 0.625rem 1rem;
-        border-radius: 8px;
-        outline: none;
-        width: 100%;
-        max-width: 400px;
-    }
-
-    .form-input:focus {
-        border-color: #10b981;
-    }
-
-    .btn-green {
-        background: #10b981;
-        color: white;
-        padding: 0.625rem 1.5rem;
-        border-radius: 8px;
-        border: none;
-        font-weight: 600;
-        cursor: pointer;
-        transition: background 0.2s;
-    }
-
-    .btn-green:hover {
-        background: #059669;
-    }
-
-    .alert {
-        padding: 1rem;
-        border-radius: 8px;
-        margin-bottom: 1rem;
-    }
-
-    .alert-success {
-        background: #d1fae5;
-        color: #065f46;
-        border: 1px solid #a7f3d0;
-    }
-
-    .info-box {
-        background: #dbeafe;
-        border: 1px solid #93c5fd;
-        border-radius: 8px;
-        padding: 1rem;
-        margin-bottom: 1.5rem;
-    }
-
-    .info-box-title {
-        color: #1e40af;
-        font-weight: 600;
-        margin-bottom: 0.5rem;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-
-    .info-box-text {
-        color: #1e40af;
-        font-size: 0.875rem;
-        line-height: 1.5;
-    }
-</style>
-@endpush
+<x-page-header
+    title="Настройки системы"
+    description="Управление параметрами работы системы мониторинга позиций"
+/>
 
 @section('content')
 <div style="max-width: 900px; margin: 0 auto;">
-    <div style="margin-bottom: 2rem;">
-        <h1 style="font-size: 1.875rem; font-weight: 700; color: #111827;">
-            ⚙️ Настройки системы
-        </h1>
-    </div>
-
     @if(session('success'))
-        <div class="alert alert-success">{{ session('success') }}</div>
+        <div class="alert alert-success" style="margin-bottom: var(--space-4);">
+            {{ session('success') }}
+        </div>
     @endif
 
-    <div class="info-box">
-        <div class="info-box-title">
-            💡 Информация
-        </div>
-        <div class="info-box-text">
-            Здесь вы можете настроить основные параметры работы системы мониторинга позиций.
-            Изменения вступают в силу немедленно для всех пользователей.
+    <div class="alert alert-info" style="margin-bottom: var(--space-6);">
+        <div style="display: flex; align-items: start; gap: var(--space-3);">
+            <i data-lucide="info" class="icon-md"></i>
+            <div>
+                <strong>Информация</strong>
+                <p style="margin-top: var(--space-1); margin-bottom: 0;">
+                    Здесь вы можете настроить основные параметры работы системы мониторинга позиций.
+                    Изменения вступают в силу немедленно для всех пользователей.
+                </p>
+            </div>
         </div>
     </div>
 
-    <div class="admin-card">
-        <h2 style="font-size: 1.25rem; font-weight: 700; color: #111827; margin-bottom: 1.5rem;">
-            Настройки ценообразования
-        </h2>
-
+    <div class="card">
+        <div class="card-header">
+            <h2 style="margin: 0; font-size: var(--text-lg); font-weight: 600; display: flex; align-items: center; gap: var(--space-2);">
+                <i data-lucide="settings" class="icon-md"></i>
+                Настройки ценообразования
+            </h2>
+        </div>
+        <div class="card-body">
         <form method="POST" action="{{ route('admin.settings.update') }}">
             @csrf
 
-            <h3 style="font-size: 1rem; font-weight: 600; color: #111827; margin-bottom: 1rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem;">
+            <h3 style="margin: 0 0 var(--space-4) 0; font-size: var(--text-base); font-weight: 600; display: flex; align-items: center; gap: var(--space-2);">
+                <i data-lucide="dollar-sign" class="icon-sm"></i>
                 Базовые настройки системы
             </h3>
 
@@ -143,12 +54,13 @@
                     value="{{ $unlockPrice }}"
                     step="0.01"
                     min="0"
-                    class="form-input"
+                    class="input"
+                    style="max-width: 400px;"
                     required
                 >
-                <span class="form-help">
+                <small class="form-help">
                     Эта сумма будет списываться с баланса пользователя при получении полного доступа к отчету по позиции
-                </span>
+                </small>
             </div>
 
             <div class="form-group">
@@ -161,15 +73,17 @@
                     value="{{ $pricePerItem }}"
                     step="0.01"
                     min="0"
-                    class="form-input"
+                    class="input"
+                    style="max-width: 400px;"
                     required
                 >
-                <span class="form-help">
+                <small class="form-help">
                     Эта сумма замораживается на балансе при создании заявки (за каждую позицию). После обработки заявки средства списываются
-                </span>
+                </small>
             </div>
 
-            <h3 style="font-size: 1rem; font-weight: 600; color: #111827; margin: 2rem 0 1rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem;">
+            <h3 style="margin: var(--space-8) 0 var(--space-4) 0; font-size: var(--text-base); font-weight: 600; display: flex; align-items: center; gap: var(--space-2);">
+                <i data-lucide="tag" class="icon-sm"></i>
                 Тарифы для лендинга
             </h3>
 
@@ -183,12 +97,13 @@
                     value="{{ $pricingMonitoring }}"
                     step="0.01"
                     min="0"
-                    class="form-input"
+                    class="input"
+                    style="max-width: 400px;"
                     required
                 >
-                <span class="form-help">
+                <small class="form-help">
                     Цена за мониторинг одной позиции для разовых операций (отображается на лендинге)
-                </span>
+                </small>
             </div>
 
             <div class="form-group">
@@ -201,152 +116,156 @@
                     value="{{ $pricingReportUnlock }}"
                     step="0.01"
                     min="0"
-                    class="form-input"
+                    class="input"
+                    style="max-width: 400px;"
                     required
                 >
-                <span class="form-help">
+                <small class="form-help">
                     Цена за разблокировку отчета для разовых операций (отображается на лендинге)
-                </span>
+                </small>
             </div>
 
-            <h3 style="font-size: 1rem; font-weight: 600; color: #111827; margin: 2rem 0 1rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem;">
+            <h3 style="margin: var(--space-8) 0 var(--space-4) 0; font-size: var(--text-base); font-weight: 600; display: flex; align-items: center; gap: var(--space-2);">
+                <i data-lucide="zap" class="icon-sm"></i>
                 Тариф «Базовый»
             </h3>
 
-            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;">
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-4);">
                 <div class="form-group">
                     <label class="form-label">Стоимость подписки (₽/мес)</label>
-                    <input type="number" name="subscription_basic_price" value="{{ $subscriptionBasicPrice }}" step="0.01" min="0" class="form-input" required>
+                    <input type="number" name="subscription_basic_price" value="{{ $subscriptionBasicPrice }}" step="0.01" min="0" class="input" required>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Позиций в месяц (шт)</label>
-                    <input type="number" name="subscription_basic_positions" value="{{ $subscriptionBasicPositions }}" min="0" class="form-input" required>
+                    <input type="number" name="subscription_basic_positions" value="{{ $subscriptionBasicPositions }}" min="0" class="input" required>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Отчетов в месяц (шт)</label>
-                    <input type="number" name="subscription_basic_reports" value="{{ $subscriptionBasicReports }}" min="0" class="form-input" required>
+                    <input type="number" name="subscription_basic_reports" value="{{ $subscriptionBasicReports }}" min="0" class="input" required>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Сверх лимита: позиция (₽)</label>
-                    <input type="number" name="subscription_basic_overlimit_position" value="{{ $subscriptionBasicOverlimitPosition }}" step="0.01" min="0" class="form-input" required>
+                    <input type="number" name="subscription_basic_overlimit_position" value="{{ $subscriptionBasicOverlimitPosition }}" step="0.01" min="0" class="input" required>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Сверх лимита: отчет (₽)</label>
-                    <input type="number" name="subscription_basic_overlimit_report" value="{{ $subscriptionBasicOverlimitReport }}" step="0.01" min="0" class="form-input" required>
+                    <input type="number" name="subscription_basic_overlimit_report" value="{{ $subscriptionBasicOverlimitReport }}" step="0.01" min="0" class="input" required>
                 </div>
             </div>
 
-            <h3 style="font-size: 1rem; font-weight: 600; color: #111827; margin: 2rem 0 1rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem;">
+            <h3 style="margin: var(--space-8) 0 var(--space-4) 0; font-size: var(--text-base); font-weight: 600; display: flex; align-items: center; gap: var(--space-2);">
+                <i data-lucide="trending-up" class="icon-sm"></i>
                 Тариф «Расширенный»
             </h3>
 
-            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;">
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-4);">
                 <div class="form-group">
                     <label class="form-label">Стоимость подписки (₽/мес)</label>
-                    <input type="number" name="subscription_advanced_price" value="{{ $subscriptionAdvancedPrice }}" step="0.01" min="0" class="form-input" required>
+                    <input type="number" name="subscription_advanced_price" value="{{ $subscriptionAdvancedPrice }}" step="0.01" min="0" class="input" required>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Позиций в месяц (шт)</label>
-                    <input type="number" name="subscription_advanced_positions" value="{{ $subscriptionAdvancedPositions }}" min="0" class="form-input" required>
+                    <input type="number" name="subscription_advanced_positions" value="{{ $subscriptionAdvancedPositions }}" min="0" class="input" required>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Отчетов в месяц (шт)</label>
-                    <input type="number" name="subscription_advanced_reports" value="{{ $subscriptionAdvancedReports }}" min="0" class="form-input" required>
+                    <input type="number" name="subscription_advanced_reports" value="{{ $subscriptionAdvancedReports }}" min="0" class="input" required>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Сверх лимита: позиция (₽)</label>
-                    <input type="number" name="subscription_advanced_overlimit_position" value="{{ $subscriptionAdvancedOverlimitPosition }}" step="0.01" min="0" class="form-input" required>
+                    <input type="number" name="subscription_advanced_overlimit_position" value="{{ $subscriptionAdvancedOverlimitPosition }}" step="0.01" min="0" class="input" required>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Сверх лимита: отчет (₽)</label>
-                    <input type="number" name="subscription_advanced_overlimit_report" value="{{ $subscriptionAdvancedOverlimitReport }}" step="0.01" min="0" class="form-input" required>
+                    <input type="number" name="subscription_advanced_overlimit_report" value="{{ $subscriptionAdvancedOverlimitReport }}" step="0.01" min="0" class="input" required>
                 </div>
             </div>
 
-            <h3 style="font-size: 1rem; font-weight: 600; color: #111827; margin: 2rem 0 1rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem;">
+            <h3 style="margin: var(--space-8) 0 var(--space-4) 0; font-size: var(--text-base); font-weight: 600; display: flex; align-items: center; gap: var(--space-2);">
+                <i data-lucide="star" class="icon-sm"></i>
                 Тариф «Профессиональный»
             </h3>
 
-            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;">
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-4);">
                 <div class="form-group">
                     <label class="form-label">Стоимость подписки (₽/мес)</label>
-                    <input type="number" name="subscription_pro_price" value="{{ $subscriptionProPrice }}" step="0.01" min="0" class="form-input" required>
+                    <input type="number" name="subscription_pro_price" value="{{ $subscriptionProPrice }}" step="0.01" min="0" class="input" required>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Позиций в месяц (шт)</label>
-                    <input type="number" name="subscription_pro_positions" value="{{ $subscriptionProPositions }}" min="0" class="form-input" required>
+                    <input type="number" name="subscription_pro_positions" value="{{ $subscriptionProPositions }}" min="0" class="input" required>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Отчетов в месяц (шт)</label>
-                    <input type="number" name="subscription_pro_reports" value="{{ $subscriptionProReports }}" min="0" class="form-input" required>
+                    <input type="number" name="subscription_pro_reports" value="{{ $subscriptionProReports }}" min="0" class="input" required>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Сверх лимита: позиция (₽)</label>
-                    <input type="number" name="subscription_pro_overlimit_position" value="{{ $subscriptionProOverlimitPosition }}" step="0.01" min="0" class="form-input" required>
+                    <input type="number" name="subscription_pro_overlimit_position" value="{{ $subscriptionProOverlimitPosition }}" step="0.01" min="0" class="input" required>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Сверх лимита: отчет (₽)</label>
-                    <input type="number" name="subscription_pro_overlimit_report" value="{{ $subscriptionProOverlimitReport }}" step="0.01" min="0" class="form-input" required>
+                    <input type="number" name="subscription_pro_overlimit_report" value="{{ $subscriptionProOverlimitReport }}" step="0.01" min="0" class="input" required>
                 </div>
             </div>
 
-            <button type="submit" class="btn-green" style="margin-top: 2rem;">
-                Сохранить настройки
-            </button>
+            <div style="margin-top: var(--space-8);">
+                <x-button variant="accent" type="submit" icon="check">
+                    Сохранить настройки
+                </x-button>
+            </div>
         </form>
+        </div>
     </div>
 
-    <div class="admin-card">
-        <h2 style="font-size: 1.25rem; font-weight: 700; color: #111827; margin-bottom: 1rem;">
-            📊 Статистика системы
-        </h2>
+    <div class="card" style="margin-top: var(--space-6);">
+        <div class="card-header">
+            <h2 style="margin: 0; font-size: var(--text-lg); font-weight: 600; display: flex; align-items: center; gap: var(--space-2);">
+                <i data-lucide="bar-chart-3" class="icon-md"></i>
+                Статистика системы
+            </h2>
+        </div>
+        <div class="card-body">
 
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
-            <div style="background: #f9fafb; padding: 1rem; border-radius: 8px;">
-                <div style="color: #6b7280; font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.5rem;">
-                    Цена разблокировки
-                </div>
-                <div style="color: #10b981; font-size: 1.5rem; font-weight: 700;">
-                    {{ number_format($unlockPrice, 0) }} ₽
-                </div>
-            </div>
-
-            <div style="background: #f9fafb; padding: 1rem; border-radius: 8px;">
-                <div style="color: #6b7280; font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.5rem;">
-                    Цена за позицию
-                </div>
-                <div style="color: #10b981; font-size: 1.5rem; font-weight: 700;">
-                    {{ number_format($pricePerItem, 0) }} ₽
-                </div>
-            </div>
-
-            <div style="background: #f9fafb; padding: 1rem; border-radius: 8px;">
-                <div style="color: #6b7280; font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.5rem;">
-                    Всего пользователей
-                </div>
-                <div style="color: #111827; font-size: 1.5rem; font-weight: 700;">
-                    {{ \App\Models\User::count() }}
-                </div>
-            </div>
-
-            <div style="background: #f9fafb; padding: 1rem; border-radius: 8px;">
-                <div style="color: #6b7280; font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.5rem;">
-                    Всего покупок
-                </div>
-                <div style="color: #111827; font-size: 1.5rem; font-weight: 700;">
-                    {{ \App\Models\ItemPurchase::count() }}
-                </div>
-            </div>
-
-            <div style="background: #f9fafb; padding: 1rem; border-radius: 8px;">
-                <div style="color: #6b7280; font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.5rem;">
-                    Общая выручка
-                </div>
-                <div style="color: #111827; font-size: 1.5rem; font-weight: 700;">
-                    {{ number_format(\App\Models\ItemPurchase::sum('amount'), 2) }} ₽
-                </div>
-            </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-4);">
+            <x-stat-card
+                icon="dollar-sign"
+                icon-type="success"
+                :value="number_format($unlockPrice, 0) . ' ₽'"
+                label="Цена разблокировки"
+            />
+            <x-stat-card
+                icon="package"
+                icon-type="success"
+                :value="number_format($pricePerItem, 0) . ' ₽'"
+                label="Цена за позицию"
+            />
+            <x-stat-card
+                icon="users"
+                icon-type="primary"
+                :value="\App\Models\User::count()"
+                label="Всего пользователей"
+            />
+            <x-stat-card
+                icon="shopping-cart"
+                icon-type="primary"
+                :value="\App\Models\ItemPurchase::count()"
+                label="Всего покупок"
+            />
+            <x-stat-card
+                icon="trending-up"
+                icon-type="accent"
+                :value="number_format(\App\Models\ItemPurchase::sum('amount'), 2) . ' ₽'"
+                label="Общая выручка"
+            />
+        </div>
         </div>
     </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+    lucide.createIcons();
+</script>
+@endpush
