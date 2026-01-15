@@ -2,6 +2,7 @@
 
 @section('title', 'Заявка ' . ($request->request_number ?? $request->code))
 
+@section('content')
 <x-page-header
     :title="'Заявка ' . ($request->request_number ?? $request->code)"
     :breadcrumbs="[
@@ -15,8 +16,6 @@
         </x-button>
     </x-slot>
 </x-page-header>
-
-@section('content')
 <div style="max-width: 1200px; margin: 0 auto;">
 
     @if(session('success'))

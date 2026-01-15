@@ -2,12 +2,11 @@
 
 @section('title', 'Заявки пользователей')
 
+@section('content')
 <x-page-header
     title="Заявки пользователей"
     description="Управление заявками от клиентов системы"
 />
-
-@section('content')
 <div style="max-width: 1400px; margin: 0 auto;">
 
     @if(session('success'))
