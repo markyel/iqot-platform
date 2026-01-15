@@ -2,6 +2,7 @@
 
 @section('title', 'Отправитель пользователя')
 
+@section('content')
 <x-page-header
     title="Отправитель пользователя: {{ $user->name }}"
     :breadcrumbs="[
@@ -16,8 +17,6 @@
         </x-button>
     </x-slot>
 </x-page-header>
-
-@section('content')
 <div style="max-width: 1400px; margin: 0 auto;">
     @if(session('success'))
         <div class="alert alert-success" style="margin-bottom: var(--space-4);">

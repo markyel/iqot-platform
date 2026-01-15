@@ -2,6 +2,7 @@
 
 @section('title', 'Редактирование отправителя')
 
+@section('content')
 <x-page-header
     title="Редактирование отправителя: {{ $user->name }}"
     :breadcrumbs="[
@@ -10,8 +11,6 @@
         ['label' => 'Редактирование']
     ]"
 />
-
-@section('content')
 <div style="max-width: 1200px; margin: 0 auto;">
     @if(session('error'))
         <div class="alert alert-error" style="margin-bottom: var(--space-4);">

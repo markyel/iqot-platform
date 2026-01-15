@@ -2,12 +2,11 @@
 
 @section('title', 'Настройки системы')
 
+@section('content')
 <x-page-header
     title="Настройки системы"
     description="Управление параметрами работы системы мониторинга позиций"
 />
-
-@section('content')
 <div style="max-width: 900px; margin: 0 auto;">
     @if(session('success'))
         <div class="alert alert-success" style="margin-bottom: var(--space-4);">

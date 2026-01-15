@@ -32,6 +32,39 @@
             --sidebar-collapsed-width: 72px;
         }
 
+        /* Sidebar logo styles */
+        .sidebar-logo {
+            display: flex !important;
+            align-items: center !important;
+            gap: var(--space-3) !important;
+            text-decoration: none !important;
+        }
+
+        .sidebar-logo-icon {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .sidebar-logo-icon svg {
+            width: 36px;
+            height: 36px;
+            fill: var(--neutral-0);
+        }
+
+        .sidebar-logo-text {
+            font-size: var(--text-xl);
+            font-weight: 700;
+            color: var(--neutral-0);
+            letter-spacing: -0.02em;
+            white-space: nowrap;
+            overflow: hidden;
+            transition: opacity 150ms ease, width 250ms ease;
+        }
+
         .sidebar.collapsed {
             width: var(--sidebar-collapsed-width);
         }
@@ -46,8 +79,56 @@
             overflow: hidden;
         }
 
-        .sidebar.collapsed .sidebar-toggle i {
+        /* Sidebar toggle button */
+        .sidebar-toggle {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: var(--radius-md);
+            color: var(--primary-300);
+            cursor: pointer;
+            transition: all 150ms ease;
+            flex-shrink: 0;
+            margin-left: auto;
+        }
+
+        .sidebar-toggle:hover {
+            background: rgba(255, 255, 255, 0.15);
+            color: var(--neutral-0);
+        }
+
+        .sidebar-toggle-icon {
+            transition: transform 250ms ease;
+        }
+
+        .sidebar.collapsed .sidebar-toggle-icon {
             transform: rotate(180deg);
+        }
+
+        /* Sidebar close button (mobile) */
+        .sidebar-close {
+            width: 32px;
+            height: 32px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: var(--radius-md);
+            color: var(--primary-200);
+            cursor: pointer;
+            transition: all 150ms ease;
+            flex-shrink: 0;
+            margin-left: auto;
+        }
+
+        .sidebar-close:hover {
+            background: rgba(255, 255, 255, 0.15);
+            color: var(--neutral-0);
         }
 
         .sidebar.collapsed .sidebar-item {
@@ -228,19 +309,21 @@
             <div class="sidebar-header">
                 <a href="{{ route('cabinet.dashboard') }}" class="sidebar-logo">
                     <div class="sidebar-logo-icon">
-                        <img src="{{ asset('iqot-logo-icon.svg') }}" alt="IQOT" style="width: 36px; height: 36px; filter: brightness(0) invert(1);">
+                        <svg viewBox="0 0 119.81 119.81" xmlns="http://www.w3.org/2000/svg" style="width: 36px; height: 36px; fill: var(--neutral-0);">
+                            <path d="M59.9,0C26.82,0,0,26.82,0,59.9s26.82,59.9,59.9,59.9,59.9-26.82,59.9-59.9S92.99,0,59.9,0ZM22.91,60.5c0-20.43,16.56-36.99,36.99-36.99s36.99,16.56,36.99,36.99c0,9.7-3.74,18.52-9.84,25.12l-17.05-15.39-3.36,3.73,16.75,15.12c-6.39,5.26-14.57,8.41-23.49,8.41-20.43,0-36.99-16.56-36.99-36.99Z"/>
+                        </svg>
                     </div>
                     <span class="sidebar-logo-text">IQOT</span>
                 </a>
 
                 <!-- Desktop: toggle button -->
-                <button class="sidebar-toggle" id="sidebarToggle" style="display: flex; width: 32px; height: 32px; align-items: center; justify-content: center; background: transparent; border: none; border-radius: var(--radius-md); color: var(--primary-200); cursor: pointer; margin-left: auto;">
-                    <i data-lucide="chevrons-left" class="icon-md"></i>
+                <button class="sidebar-toggle" id="sidebarToggle">
+                    <i data-lucide="chevrons-left" class="sidebar-toggle-icon" style="width: 18px; height: 18px;"></i>
                 </button>
 
                 <!-- Mobile: close button -->
-                <button class="sidebar-close" id="sidebarClose" style="display: none; width: 32px; height: 32px; align-items: center; justify-content: center; background: transparent; border: none; border-radius: var(--radius-md); color: var(--primary-200); cursor: pointer; margin-left: auto;">
-                    <i data-lucide="x" class="icon-md"></i>
+                <button class="sidebar-close" id="sidebarClose">
+                    <i data-lucide="x" style="width: 18px; height: 18px;"></i>
                 </button>
             </div>
 
@@ -428,36 +511,6 @@
                 mainContent.classList.add('sidebar-collapsed');
                 isSidebarCollapsed = true;
             }
-        }
-
-        // Desktop: Toggle collapsed
-        if (sidebarToggle) {
-            sidebarToggle.addEventListener('click', () => {
-                if (!isMobile()) {
-                    isSidebarCollapsed = !isSidebarCollapsed;
-                    sidebar.classList.toggle('collapsed', isSidebarCollapsed);
-                    mainContent.classList.toggle('sidebar-collapsed', isSidebarCollapsed);
-                    localStorage.setItem('sidebarCollapsed', isSidebarCollapsed);
-                }
-            });
-        }
-
-        // Mobile: Open sidebar
-        if (mobileMenuBtn) {
-            mobileMenuBtn.addEventListener('click', () => {
-                isMobileSidebarOpen = true;
-                sidebar.classList.add('mobile-open');
-                sidebarOverlay.classList.add('visible');
-                document.body.style.overflow = 'hidden';
-            });
-        }
-
-        // Mobile: Close sidebar
-        function closeMobileSidebar() {
-            isMobileSidebarOpen = false;
-            sidebar.classList.remove('mobile-open');
-            sidebarOverlay.classList.remove('visible');
-            document.body.style.overflow = '';
         }
 
         // Desktop: Toggle collapsed
