@@ -2,203 +2,19 @@
 
 @section('title', 'Заявка ' . $externalRequest->request_number)
 
-@push('styles')
-<style>
-    /* Light theme for admin */
-    .admin-card {
-        background: #ffffff;
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        padding: 1.5rem;
-        margin-bottom: 1.5rem;
-    }
-
-    .back-link {
-        color: #10b981;
-        text-decoration: none;
-        font-weight: 600;
-        display: inline-block;
-        margin-bottom: 1rem;
-    }
-
-    .back-link:hover {
-        color: #059669;
-    }
-
-    .status-badge {
-        display: inline-block;
-        padding: 0.5rem 1rem;
-        border-radius: 9999px;
-        font-size: 0.875rem;
-        font-weight: 600;
-    }
-
-    .status-draft { background: #f3f4f6; color: #6b7280; }
-    .status-new { background: #dbeafe; color: #1e40af; }
-    .status-active { background: #d1fae5; color: #065f46; }
-    .status-collecting { background: #fef3c7; color: #92400e; }
-    .status-completed { background: #d1fae5; color: #065f46; }
-    .status-cancelled { background: #fee2e2; color: #991b1b; }
-    .status-emails-sent { background: #e0e7ff; color: #3730a3; }
-    .status-responses-received { background: #ddd6fe; color: #5b21b6; }
-    .status-queued-for-sending { background: #fef3c7; color: #78350f; }
-
-    .info-label {
-        color: #6b7280;
-        font-size: 0.875rem;
-        margin-bottom: 0.25rem;
-    }
-
-    .info-value {
-        color: #111827;
-        font-weight: 600;
-    }
-
-    .progress-bar {
-        width: 100%;
-        height: 8px;
-        background: #e5e7eb;
-        border-radius: 4px;
-        overflow: hidden;
-        margin-top: 0.5rem;
-    }
-
-    .progress-fill {
-        height: 100%;
-        background: linear-gradient(90deg, #10b981, #059669);
-        transition: width 0.3s;
-    }
-
-    .item-card {
-        background: #f9fafb;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 1.5rem;
-        margin-bottom: 1.5rem;
-    }
-
-    .item-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: start;
-        margin-bottom: 1rem;
-        padding-bottom: 1rem;
-        border-bottom: 1px solid #e5e7eb;
-    }
-
-    .item-name {
-        color: #111827;
-        font-weight: 600;
-        font-size: 1.125rem;
-        margin-bottom: 0.5rem;
-    }
-
-    .item-meta {
-        color: #6b7280;
-        font-size: 0.875rem;
-    }
-
-    .offers-table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 1rem;
-        background: #ffffff;
-        border-radius: 8px;
-        overflow: hidden;
-    }
-
-    .offers-table th {
-        text-align: left;
-        padding: 0.75rem;
-        background: #f9fafb;
-        color: #6b7280;
-        font-size: 0.875rem;
-        font-weight: 600;
-        border-bottom: 2px solid #e5e7eb;
-    }
-
-    .offers-table td {
-        padding: 0.75rem;
-        border-top: 1px solid #f3f4f6;
-        color: #374151;
-        font-size: 0.875rem;
-    }
-
-    .offers-table tbody tr:hover {
-        background: #f9fafb;
-    }
-
-    .price-highlight {
-        color: #059669;
-        font-weight: 700;
-        font-size: 1rem;
-    }
-
-    .price-best {
-        background: #d1fae5;
-        border: 1px solid #a7f3d0;
-        border-radius: 4px;
-        padding: 0.5rem 0.75rem;
-    }
-
-    .supplier-name {
-        color: #111827;
-        font-weight: 600;
-    }
-
-    .no-offers {
-        text-align: center;
-        padding: 2rem;
-        color: #9ca3af;
-        font-style: italic;
-    }
-
-    .stats-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 1rem;
-        margin-bottom: 1.5rem;
-    }
-
-    .stat-card {
-        background: #ffffff;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 1rem;
-    }
-
-    .stat-label {
-        color: #6b7280;
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin-bottom: 0.5rem;
-    }
-
-    .stat-value {
-        color: #111827;
-        font-size: 1.5rem;
-        font-weight: 700;
-    }
-
-    .stat-value-accent {
-        color: #059669;
-    }
-</style>
-@endpush
-
 @section('content')
 <div style="max-width: 1600px; margin: 0 auto;">
-    <div style="margin-bottom: 2rem;">
-        <a href="{{ route('admin.external-requests.index') }}" class="back-link">
-            ← Назад к списку заявок
+    <div style="margin-bottom: var(--space-6);">
+        <a href="{{ route('admin.external-requests.index') }}" style="color: var(--primary-600); text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4);">
+            <i data-lucide="arrow-left" style="width: 16px; height: 16px;"></i>
+            Назад к списку заявок
         </a>
-        <div style="display: flex; justify-content: space-between; align-items: start; margin-top: 1rem;">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-top: var(--space-4);">
             <div>
-                <h1 style="font-size: 2rem; font-weight: 700; color: #111827; margin-bottom: 0.5rem;">
+                <h1 style="font-size: 2rem; font-weight: 700; color: var(--neutral-900); margin-bottom: var(--space-2);">
                     Заявка {{ $externalRequest->request_number }}
                 </h1>
-                <p style="color: #6b7280;">
+                <p style="color: var(--neutral-600);">
                     Создана {{ $externalRequest->created_at ? $externalRequest->created_at->format('d.m.Y в H:i') : '—' }}
                 </p>
             </div>
@@ -207,261 +23,281 @@
                     $statusClass = 'status-' . str_replace('_', '-', $externalRequest->status);
                     $statusLabel = \App\Models\ExternalRequest::getStatusLabels()[$externalRequest->status] ?? $externalRequest->status;
                 @endphp
-                <span class="status-badge {{ $statusClass }}">{{ $statusLabel }}</span>
+                <x-badge :variant="match($externalRequest->status) {
+                    'new' => 'info',
+                    'active', 'completed' => 'success',
+                    'collecting', 'emails_sent', 'responses_received', 'queued_for_sending' => 'warning',
+                    'cancelled' => 'danger',
+                    default => 'neutral'
+                }">{{ $statusLabel }}</x-badge>
             </div>
         </div>
     </div>
 
     <!-- Основная информация о заявке -->
-    <div class="admin-card">
-        <h2 style="color: #111827; font-size: 1.25rem; font-weight: 700; margin-bottom: 1.5rem;">Информация о заявке</h2>
-        
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem;">
-            @if($externalRequest->title)
-            <div>
-                <div class="info-label">Название</div>
-                <div class="info-value">{{ $externalRequest->title }}</div>
-            </div>
-            @endif
-
-            @if($externalRequest->customer_company)
-            <div>
-                <div class="info-label">Компания клиента</div>
-                <div class="info-value">{{ $externalRequest->customer_company }}</div>
-            </div>
-            @endif
-
-            @if($externalRequest->customer_contact_person)
-            <div>
-                <div class="info-label">Контактное лицо</div>
-                <div class="info-value">{{ $externalRequest->customer_contact_person }}</div>
-            </div>
-            @endif
-
-            @if($externalRequest->customer_email)
-            <div>
-                <div class="info-label">Email клиента</div>
-                <div class="info-value">
-                    <a href="mailto:{{ $externalRequest->customer_email }}" style="color: #10b981; text-decoration: none;">
-                        {{ $externalRequest->customer_email }}
-                    </a>
-                </div>
-            </div>
-            @endif
-
-            @if($externalRequest->customer_phone)
-            <div>
-                <div class="info-label">Телефон клиента</div>
-                <div class="info-value">{{ $externalRequest->customer_phone }}</div>
-            </div>
-            @endif
-
-            @if($externalRequest->collection_deadline)
-            <div>
-                <div class="info-label">Срок сбора</div>
-                <div class="info-value">{{ $externalRequest->collection_deadline->format('d.m.Y H:i') }}</div>
-            </div>
-            @endif
+    <div class="card" style="margin-bottom: var(--space-6);">
+        <div class="card-header">
+            <h2 class="card-title">Информация о заявке</h2>
         </div>
+        <div class="card-body">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--space-6); margin-bottom: var(--space-6);">
+                @if($externalRequest->title)
+                <div>
+                    <div class="form-label">Название</div>
+                    <div style="color: var(--neutral-900); font-weight: 600;">{{ $externalRequest->title }}</div>
+                </div>
+                @endif
 
-        <!-- Прогресс выполнения -->
-        <div>
-            <div class="info-label">Прогресс выполнения</div>
-            <div style="display: flex; align-items: center; gap: 1rem;">
-                <div style="flex: 1;">
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: {{ $externalRequest->completion_percentage }}%"></div>
+                @if($externalRequest->customer_company)
+                <div>
+                    <div class="form-label">Компания клиента</div>
+                    <div style="color: var(--neutral-900); font-weight: 600;">{{ $externalRequest->customer_company }}</div>
+                </div>
+                @endif
+
+                @if($externalRequest->customer_contact_person)
+                <div>
+                    <div class="form-label">Контактное лицо</div>
+                    <div style="color: var(--neutral-900); font-weight: 600;">{{ $externalRequest->customer_contact_person }}</div>
+                </div>
+                @endif
+
+                @if($externalRequest->customer_email)
+                <div>
+                    <div class="form-label">Email клиента</div>
+                    <div style="color: var(--neutral-900); font-weight: 600;">
+                        <a href="mailto:{{ $externalRequest->customer_email }}" style="color: var(--primary-600); text-decoration: none;">
+                            {{ $externalRequest->customer_email }}
+                        </a>
                     </div>
                 </div>
-                <div style="color: #111827; font-weight: 700; font-size: 1.125rem;">
-                    {{ number_format($externalRequest->completion_percentage, 0) }}%
+                @endif
+
+                @if($externalRequest->customer_phone)
+                <div>
+                    <div class="form-label">Телефон клиента</div>
+                    <div style="color: var(--neutral-900); font-weight: 600;">{{ $externalRequest->customer_phone }}</div>
+                </div>
+                @endif
+
+                @if($externalRequest->collection_deadline)
+                <div>
+                    <div class="form-label">Срок сбора</div>
+                    <div style="color: var(--neutral-900); font-weight: 600;">{{ $externalRequest->collection_deadline->format('d.m.Y H:i') }}</div>
+                </div>
+                @endif
+            </div>
+
+            <!-- Прогресс выполнения -->
+            <div>
+                <div class="form-label">Прогресс выполнения</div>
+                <div style="display: flex; align-items: center; gap: var(--space-4);">
+                    <div style="flex: 1;">
+                        <div style="width: 100%; height: 8px; background: var(--neutral-200); border-radius: 4px; overflow: hidden;">
+                            <div style="height: 100%; background: var(--primary-600); transition: width 0.3s; width: {{ $externalRequest->completion_percentage }}%"></div>
+                        </div>
+                    </div>
+                    <div style="color: var(--neutral-900); font-weight: 700; font-size: 1.125rem;">
+                        {{ number_format($externalRequest->completion_percentage, 0) }}%
+                    </div>
                 </div>
             </div>
-        </div>
 
-        @if($externalRequest->notes)
-        <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #e5e7eb;">
-            <div class="info-label">Заметки</div>
-            <div style="color: #374151; white-space: pre-wrap; margin-top: 0.5rem;">{{ $externalRequest->notes }}</div>
+            @if($externalRequest->notes)
+            <div style="margin-top: var(--space-6); padding-top: var(--space-6); border-top: 1px solid var(--neutral-200);">
+                <div class="form-label">Заметки</div>
+                <div style="color: var(--neutral-700); white-space: pre-wrap; margin-top: var(--space-2);">{{ $externalRequest->notes }}</div>
+            </div>
+            @endif
         </div>
-        @endif
     </div>
 
     <!-- Статистика -->
-    <div class="stats-grid">
-        <div class="stat-card">
-            <div class="stat-label">Всего позиций</div>
-            <div class="stat-value">{{ $externalRequest->total_items }}</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-label">С предложениями</div>
-            <div class="stat-value stat-value-accent">{{ $externalRequest->items_with_offers }}</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-label">Процент закрытия</div>
-            <div class="stat-value stat-value-accent">
-                {{ $externalRequest->total_items > 0 ? number_format(($externalRequest->items_with_offers / $externalRequest->total_items) * 100, 0) : 0 }}%
-            </div>
-        </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-4); margin-bottom: var(--space-6);">
+        <x-stat-card
+            label="Всего позиций"
+            :value="$externalRequest->total_items"
+        />
+        <x-stat-card
+            label="С предложениями"
+            :value="$externalRequest->items_with_offers"
+            variant="success"
+        />
+        <x-stat-card
+            label="Процент закрытия"
+            :value="($externalRequest->total_items > 0 ? number_format(($externalRequest->items_with_offers / $externalRequest->total_items) * 100, 0) : 0) . '%'"
+            variant="success"
+        />
     </div>
 
     <!-- Товарные позиции с предложениями -->
-    <div class="admin-card">
-        <h2 style="color: #111827; font-size: 1.25rem; font-weight: 700; margin-bottom: 1.5rem;">
-            Товарные позиции ({{ $externalRequest->items->count() }})
-        </h2>
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Товарные позиции ({{ $externalRequest->items->count() }})</h2>
+        </div>
+        <div class="card-body">
+            @forelse($externalRequest->items as $item)
+            <div style="background: var(--neutral-50); border: 1px solid var(--neutral-200); border-radius: 8px; padding: var(--space-6); margin-bottom: var(--space-6);">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: var(--space-4); padding-bottom: var(--space-4); border-bottom: 1px solid var(--neutral-200);">
+                    <div style="flex: 1;">
+                        <div style="color: var(--neutral-600); font-size: 0.875rem; margin-bottom: var(--space-1);">
+                            Позиция #{{ $item->position_number }}
+                        </div>
+                        <div style="color: var(--neutral-900); font-weight: 600; font-size: 1.125rem; margin-bottom: var(--space-2);">{{ $item->name }}</div>
+                        <div style="color: var(--neutral-600); font-size: 0.875rem;">
+                            @if($item->brand)
+                                <span>Бренд: <strong style="color: var(--neutral-700);">{{ $item->brand }}</strong></span> •
+                            @endif
+                            @if($item->article)
+                                <span>Артикул: <strong style="color: var(--neutral-700);">{{ $item->article }}</strong></span> •
+                            @endif
+                            <span>Количество: <strong style="color: var(--neutral-700);">{{ $item->quantity }} {{ $item->unit }}</strong></span>
+                        </div>
+                        @if($item->description)
+                        <div style="color: var(--neutral-600); font-size: 0.875rem; margin-top: var(--space-2);">
+                            {{ $item->description }}
+                        </div>
+                        @endif
+                    </div>
+                    <div>
+                        @php
+                            $itemStatusLabel = \App\Models\ExternalRequestItem::getStatusLabels()[$item->status] ?? $item->status;
+                        @endphp
+                        <x-badge :variant="match($item->status) {
+                            'has_offers' => 'success',
+                            'partial_offers' => 'warning',
+                            'no_offers' => 'danger',
+                            'clarification_needed' => 'info',
+                            default => 'neutral'
+                        }" size="sm">{{ $itemStatusLabel }}</x-badge>
+                    </div>
+                </div>
 
-        @forelse($externalRequest->items as $item)
-        <div class="item-card">
-            <div class="item-header">
-                <div style="flex: 1;">
-                    <div style="color: #6b7280; font-size: 0.875rem; margin-bottom: 0.25rem;">
-                        Позиция #{{ $item->position_number }}
+                @if($item->offers->count() > 0)
+                <!-- Статистика по позиции -->
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); margin-bottom: var(--space-4); padding: var(--space-4); background: white; border: 1px solid var(--neutral-200); border-radius: 6px;">
+                    <div>
+                        <div style="color: var(--neutral-600); font-size: 0.75rem;">Предложений</div>
+                        <div style="color: var(--primary-600); font-weight: 700; font-size: 1.125rem;">{{ $item->offers->count() }}</div>
                     </div>
-                    <div class="item-name">{{ $item->name }}</div>
-                    <div class="item-meta">
-                        @if($item->brand)
-                            <span>Бренд: <strong style="color: #374151;">{{ $item->brand }}</strong></span> •
-                        @endif
-                        @if($item->article)
-                            <span>Артикул: <strong style="color: #374151;">{{ $item->article }}</strong></span> •
-                        @endif
-                        <span>Количество: <strong style="color: #374151;">{{ $item->quantity }} {{ $item->unit }}</strong></span>
+                    @if($item->min_price)
+                    <div>
+                        <div style="color: var(--neutral-600); font-size: 0.75rem;">Мин. цена</div>
+                        <div style="color: var(--neutral-900); font-weight: 700; font-size: 1.125rem;">{{ number_format($item->min_price, 2) }} ₽</div>
                     </div>
-                    @if($item->description)
-                    <div style="color: #6b7280; font-size: 0.875rem; margin-top: 0.5rem;">
-                        {{ $item->description }}
+                    @endif
+                    @if($item->max_price)
+                    <div>
+                        <div style="color: var(--neutral-600); font-size: 0.75rem;">Макс. цена</div>
+                        <div style="color: var(--neutral-900); font-weight: 700; font-size: 1.125rem;">{{ number_format($item->max_price, 2) }} ₽</div>
                     </div>
                     @endif
                 </div>
-                <div>
-                    @php
-                        $itemStatusClass = 'status-badge status-' . str_replace('_', '-', $item->status);
-                        $itemStatusLabel = \App\Models\ExternalRequestItem::getStatusLabels()[$item->status] ?? $item->status;
-                    @endphp
-                    <span class="{{ $itemStatusClass }}" style="font-size: 0.75rem; padding: 0.375rem 0.75rem;">
-                        {{ $itemStatusLabel }}
-                    </span>
-                </div>
-            </div>
 
-            @if($item->offers->count() > 0)
-            <!-- Статистика по позиции -->
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1rem; padding: 1rem; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px;">
-                <div>
-                    <div style="color: #6b7280; font-size: 0.75rem;">Предложений</div>
-                    <div style="color: #059669; font-weight: 700; font-size: 1.125rem;">{{ $item->offers->count() }}</div>
-                </div>
-                @if($item->min_price)
-                <div>
-                    <div style="color: #6b7280; font-size: 0.75rem;">Мин. цена</div>
-                    <div style="color: #111827; font-weight: 700; font-size: 1.125rem;">{{ number_format($item->min_price, 2) }} ₽</div>
-                </div>
-                @endif
-                @if($item->max_price)
-                <div>
-                    <div style="color: #6b7280; font-size: 0.75rem;">Макс. цена</div>
-                    <div style="color: #111827; font-weight: 700; font-size: 1.125rem;">{{ number_format($item->max_price, 2) }} ₽</div>
-                </div>
-                @endif
-            </div>
-
-            <!-- Таблица предложений -->
-            <table class="offers-table">
-                <thead>
-                    <tr>
-                        <th>Поставщик</th>
-                        <th>Цена за ед.</th>
-                        <th>Общая цена</th>
-                        <th>Срок поставки</th>
-                        <th>Условия оплаты</th>
-                        <th>Статус</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach($item->offers as $index => $offer)
-                    <tr>
-                        <td>
-                            <div class="supplier-name">{{ $offer->supplier->name ?? 'Не указан' }}</div>
-                            @if($offer->supplier && $offer->supplier->email)
-                            <div style="color: #6b7280; font-size: 0.75rem; margin-top: 0.25rem;">
-                                {{ $offer->supplier->email }}
-                            </div>
-                            @endif
-                        </td>
-                        <td>
-                            @if($offer->price_per_unit)
-                            <div class="{{ $index === 0 ? 'price-best' : '' }}">
-                                <span class="price-highlight">{{ number_format($offer->price_per_unit_in_rub, 2) }} ₽</span>
-                                @if($offer->currency !== 'RUB')
-                                    <div style="color: #6b7280; font-size: 0.75rem;">{{ number_format($offer->price_per_unit, 2) }} {{ $offer->currency }}</div>
+                <!-- Таблица предложений -->
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Поставщик</th>
+                            <th>Цена за ед.</th>
+                            <th>Общая цена</th>
+                            <th>Срок поставки</th>
+                            <th>Условия оплаты</th>
+                            <th>Статус</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($item->offers as $index => $offer)
+                        <tr>
+                            <td data-label="Поставщик">
+                                <div style="font-weight: 600; color: var(--neutral-900);">{{ $offer->supplier->name ?? 'Не указан' }}</div>
+                                @if($offer->supplier && $offer->supplier->email)
+                                <div style="color: var(--neutral-600); font-size: 0.75rem; margin-top: var(--space-1);">
+                                    {{ $offer->supplier->email }}
+                                </div>
                                 @endif
-                                @if($offer->price_includes_vat)
-                                <div style="color: #6b7280; font-size: 0.75rem;">с НДС</div>
+                            </td>
+                            <td data-label="Цена за ед.">
+                                @if($offer->price_per_unit)
+                                <div style="{{ $index === 0 ? 'background: var(--success-50); border: 1px solid var(--success-200); border-radius: 4px; padding: var(--space-2) var(--space-3);' : '' }}">
+                                    <span style="color: var(--primary-600); font-weight: 700; font-size: 1rem;">{{ number_format($offer->price_per_unit_in_rub, 2) }} ₽</span>
+                                    @if($offer->currency !== 'RUB')
+                                        <div style="color: var(--neutral-600); font-size: 0.75rem;">{{ number_format($offer->price_per_unit, 2) }} {{ $offer->currency }}</div>
+                                    @endif
+                                    @if($offer->price_includes_vat)
+                                    <div style="color: var(--neutral-600); font-size: 0.75rem;">с НДС</div>
+                                    @else
+                                    <div style="color: var(--neutral-600); font-size: 0.75rem;">без НДС</div>
+                                    @endif
+                                </div>
                                 @else
-                                <div style="color: #6b7280; font-size: 0.75rem;">без НДС</div>
+                                <span style="color: var(--neutral-500);">—</span>
                                 @endif
-                            </div>
-                            @else
-                            <span style="color: #6b7280;">—</span>
-                            @endif
-                        </td>
-                        <td>
-                            @if($offer->total_price)
-                            <span style="color: #fff; font-weight: 600;">{{ number_format($offer->total_price_in_rub, 2) }} ₽</span>
-                            @if($offer->currency !== 'RUB')
-                                <div style="color: #6b7280; font-size: 0.75rem;">{{ number_format($offer->total_price, 2) }} {{ $offer->currency }}</div>
-                            @endif
-                            @else
-                            <span style="color: #6b7280;">—</span>
-                            @endif
-                        </td>
-                        <td>
-                            @if($offer->delivery_days)
-                            <span>{{ $offer->delivery_days }} дн.</span>
-                            @else
-                            <span style="color: #6b7280;">—</span>
-                            @endif
-                        </td>
-                        <td>
-                            @if($offer->payment_terms)
-                            <span>{{ $offer->payment_terms }}</span>
-                            @else
-                            <span style="color: #6b7280;">—</span>
-                            @endif
-                        </td>
-                        <td>
-                            @php
-                                $offerStatusClass = 'status-badge status-' . $offer->status;
-                                $offerStatusLabel = \App\Models\ExternalOffer::getStatusLabels()[$offer->status] ?? $offer->status;
-                            @endphp
-                            <span class="{{ $offerStatusClass }}" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">
-                                {{ $offerStatusLabel }}
-                            </span>
-                        </td>
-                    </tr>
-                    @if($offer->notes)
-                    <tr>
-                        <td colspan="6" style="background: #f9fafb; padding: 0.75rem;">
-                            <div style="color: #6b7280; font-size: 0.75rem; margin-bottom: 0.25rem;">Примечание:</div>
-                            <div style="color: #111827; font-size: 0.875rem;">{{ $offer->notes }}</div>
-                        </td>
-                    </tr>
-                    @endif
-                    @endforeach
-                </tbody>
-            </table>
-            @else
-            <div class="no-offers">
-                Нет предложений по данной позиции
+                            </td>
+                            <td data-label="Общая цена">
+                                @if($offer->total_price)
+                                <span style="color: var(--neutral-900); font-weight: 600;">{{ number_format($offer->total_price_in_rub, 2) }} ₽</span>
+                                @if($offer->currency !== 'RUB')
+                                    <div style="color: var(--neutral-600); font-size: 0.75rem;">{{ number_format($offer->total_price, 2) }} {{ $offer->currency }}</div>
+                                @endif
+                                @else
+                                <span style="color: var(--neutral-500);">—</span>
+                                @endif
+                            </td>
+                            <td data-label="Срок поставки">
+                                @if($offer->delivery_days)
+                                <span>{{ $offer->delivery_days }} дн.</span>
+                                @else
+                                <span style="color: var(--neutral-500);">—</span>
+                                @endif
+                            </td>
+                            <td data-label="Условия оплаты">
+                                @if($offer->payment_terms)
+                                <span>{{ $offer->payment_terms }}</span>
+                                @else
+                                <span style="color: var(--neutral-500);">—</span>
+                                @endif
+                            </td>
+                            <td data-label="Статус">
+                                @php
+                                    $offerStatusLabel = \App\Models\ExternalOffer::getStatusLabels()[$offer->status] ?? $offer->status;
+                                @endphp
+                                <x-badge size="sm">{{ $offerStatusLabel }}</x-badge>
+                            </td>
+                        </tr>
+                        @if($offer->notes)
+                        <tr>
+                            <td colspan="6" style="background: var(--neutral-50); padding: var(--space-3);">
+                                <div style="color: var(--neutral-600); font-size: 0.75rem; margin-bottom: var(--space-1);">Примечание:</div>
+                                <div style="color: var(--neutral-900); font-size: 0.875rem;">{{ $offer->notes }}</div>
+                            </td>
+                        </tr>
+                        @endif
+                        @endforeach
+                    </tbody>
+                </table>
+                @else
+                <x-empty-state
+                    icon="package-x"
+                    title="Нет предложений"
+                    description="По данной позиции пока не поступило предложений от поставщиков"
+                />
+                @endif
             </div>
-            @endif
+            @empty
+            <x-empty-state
+                icon="package"
+                title="Нет позиций"
+                description="Товарные позиции в данной заявке отсутствуют"
+            />
+            @endforelse
         </div>
-        @empty
-        <div class="no-offers">
-            Товарные позиции отсутствуют
-        </div>
-        @endforelse
     </div>
 </div>
+
+@push('scripts')
+<script>
+    lucide.createIcons();
+</script>
+@endpush
 @endsection

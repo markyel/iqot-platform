@@ -2,149 +2,46 @@
 
 @section('title', 'Заявки из базы отчетов')
 
-@push('styles')
-<style>
-    /* Light theme for admin */
-    .admin-card {
-        background: #ffffff;
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        padding: 1.5rem;
-        margin-bottom: 1.5rem;
-    }
-
-    .admin-table {
-        width: 100%;
-        background: #ffffff;
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        overflow: hidden;
-    }
-
-    .admin-table thead {
-        background: #f9fafb;
-    }
-
-    .admin-table th {
-        text-align: left;
-        padding: 1rem 1.5rem;
-        color: #6b7280;
-        font-weight: 600;
-        font-size: 0.875rem;
-        border-bottom: 2px solid #e5e7eb;
-    }
-
-    .admin-table td {
-        padding: 1rem 1.5rem;
-        border-top: 1px solid #f3f4f6;
-    }
-
-    .admin-table tbody tr:hover {
-        background: #f9fafb;
-    }
-
-    .status-badge {
-        display: inline-block;
-        padding: 0.375rem 0.75rem;
-        border-radius: 9999px;
-        font-size: 0.75rem;
-        font-weight: 600;
-    }
-
-    .status-draft { background: #f3f4f6; color: #6b7280; }
-    .status-new { background: #dbeafe; color: #1e40af; }
-    .status-active { background: #d1fae5; color: #065f46; }
-    .status-collecting { background: #fef3c7; color: #92400e; }
-    .status-completed { background: #d1fae5; color: #065f46; }
-    .status-cancelled { background: #fee2e2; color: #991b1b; }
-    .status-emails-sent { background: #e0e7ff; color: #3730a3; }
-    .status-responses-received { background: #ddd6fe; color: #5b21b6; }
-    .status-queued-for-sending { background: #fef3c7; color: #78350f; }
-
-    .form-select {
-        background: #ffffff;
-        border: 1px solid #d1d5db;
-        color: #111827;
-        padding: 0.625rem 1rem;
-        border-radius: 8px;
-        outline: none;
-    }
-
-    .form-select:focus {
-        border-color: #10b981;
-    }
-
-    .btn-green {
-        background: #10b981;
-        color: white;
-        padding: 0.625rem 1.5rem;
-        border-radius: 8px;
-        border: none;
-        font-weight: 600;
-        cursor: pointer;
-        transition: background 0.2s;
-    }
-
-    .btn-green:hover {
-        background: #059669;
-    }
-
-    .progress-bar {
-        width: 120px;
-        height: 8px;
-        background: #e5e7eb;
-        border-radius: 4px;
-        overflow: hidden;
-        margin-top: 0.25rem;
-    }
-
-    .progress-fill {
-        height: 100%;
-        background: #10b981;
-        transition: width 0.3s;
-    }
-
-    .status-progress-col {
-        min-width: 180px;
-    }
-</style>
-@endpush
+<x-page-header
+    title="Заявки"
+    description="Заявки из системы ценовых котировок"
+/>
 
 @section('content')
 <div style="max-width: 1600px; margin: 0 auto;">
-    <div style="margin-bottom: 2rem;">
-        <h1 style="font-size: 1.875rem; font-weight: 700; color: #fff; margin-bottom: 0.5rem;">Заявки</h1>
-        <p style="color: #9ca3af;">Заявки из системы ценовых котировок</p>
-    </div>
-
     <!-- Фильтры -->
-    <div class="admin-card">
-        <form method="GET" style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
-            <select name="status" class="form-select">
-                <option value="">Все статусы</option>
-                @foreach(\App\Models\ExternalRequest::getStatusLabels() as $value => $label)
-                    <option value="{{ $value }}" {{ request('status') === $value ? 'selected' : '' }}>{{ $label }}</option>
-                @endforeach
-            </select>
-            
-            <select name="is_customer_request" class="form-select">
-                <option value="">Все типы</option>
-                <option value="1" {{ request('is_customer_request') === '1' ? 'selected' : '' }}>Клиентские заявки</option>
-                <option value="0" {{ request('is_customer_request') === '0' ? 'selected' : '' }}>Внутренние заявки</option>
-            </select>
-            
-            <button type="submit" class="btn-green">Применить</button>
-            
-            @if(request()->hasAny(['status', 'is_customer_request']))
-                <a href="{{ route('admin.external-requests.index') }}" style="color: #9ca3af; text-decoration: none; padding: 0.625rem 1rem;">
-                    Сбросить
-                </a>
-            @endif
-        </form>
+    <div class="card" style="margin-bottom: var(--space-6);">
+        <div class="card-body">
+            <form method="GET" style="display: flex; gap: var(--space-4); align-items: center; flex-wrap: wrap;">
+                <select name="status" class="select">
+                    <option value="">Все статусы</option>
+                    @foreach(\App\Models\ExternalRequest::getStatusLabels() as $value => $label)
+                        <option value="{{ $value }}" {{ request('status') === $value ? 'selected' : '' }}>{{ $label }}</option>
+                    @endforeach
+                </select>
+
+                <select name="is_customer_request" class="select">
+                    <option value="">Все типы</option>
+                    <option value="1" {{ request('is_customer_request') === '1' ? 'selected' : '' }}>Клиентские заявки</option>
+                    <option value="0" {{ request('is_customer_request') === '0' ? 'selected' : '' }}>Внутренние заявки</option>
+                </select>
+
+                <x-button type="submit" variant="primary">
+                    <i data-lucide="filter" style="width: 1rem; height: 1rem;"></i>
+                    Применить
+                </x-button>
+
+                @if(request()->hasAny(['status', 'is_customer_request']))
+                    <x-button tag="a" href="{{ route('admin.external-requests.index') }}" variant="secondary">
+                        Сбросить
+                    </x-button>
+                @endif
+            </form>
+        </div>
     </div>
 
     <!-- Список заявок -->
-    <table class="admin-table">
+    <table class="table">
         <thead>
             <tr>
                 <th style="width: 150px;">Номер</th>
@@ -157,66 +54,84 @@
         <tbody>
             @forelse($requests as $request)
             <tr>
-                <td>
-                    <div style="color: #111827; font-family: monospace; font-weight: 600;">{{ $request->request_number }}</div>
+                <td data-label="Номер">
+                    <div style="color: var(--neutral-900); font-family: var(--font-mono); font-weight: 600;">{{ $request->request_number }}</div>
                     @if($request->is_customer_request)
-                        <span style="color: #10b981; font-size: 0.75rem; display: block; margin-top: 0.25rem;">👤 Клиентская</span>
+                        <x-badge type="success" size="sm" style="margin-top: var(--space-1);">
+                            <i data-lucide="user" style="width: 0.75rem; height: 0.75rem;"></i>
+                            Клиентская
+                        </x-badge>
                     @endif
                 </td>
-                <td>
-                    <div style="color: #111827; font-weight: 500; margin-bottom: 0.5rem;">{{ $request->title ?: '—' }}</div>
+                <td data-label="Заголовок / Позиции">
+                    <div style="color: var(--neutral-900); font-weight: 500; margin-bottom: var(--space-2);">{{ $request->title ?: '—' }}</div>
                     @if($request->items->count() > 0)
-                        <div style="background: #f9fafb; border-radius: 4px; padding: 0.5rem; margin-top: 0.5rem;">
-                            <div style="color: #6b7280; font-size: 0.75rem; margin-bottom: 0.25rem;">Позиции ({{ $request->total_items }}):</div>
+                        <div style="background: var(--neutral-50); border-radius: var(--radius-sm); padding: var(--space-2); margin-top: var(--space-2);">
+                            <div style="color: var(--neutral-600); font-size: 0.75rem; margin-bottom: var(--space-1);">Позиции ({{ $request->total_items }}):</div>
                             @foreach($request->items as $item)
-                                <div style="color: #374151; font-size: 0.75rem; padding: 0.125rem 0;">
+                                <div style="color: var(--neutral-700); font-size: 0.75rem; padding: 0.125rem 0;">
                                     {{ $item->position_number }}. {{ Str::limit($item->name, 50) }}
                                     @if($item->offers_count > 0)
-                                        <span style="color: #059669; font-weight: 600;">({{ $item->offers_count }})</span>
+                                        <span style="color: var(--success-600); font-weight: 600;">({{ $item->offers_count }})</span>
                                     @endif
                                 </div>
                             @endforeach
                             @if($request->total_items > $request->items->count())
-                                <div style="color: #6b7280; font-size: 0.75rem; margin-top: 0.25rem; font-style: italic;">
+                                <div style="color: var(--neutral-600); font-size: 0.75rem; margin-top: var(--space-1); font-style: italic;">
                                     и ещё {{ $request->total_items - $request->items->count() }}...
                                 </div>
                             @endif
                         </div>
                     @endif
                 </td>
-                <td class="status-progress-col">
+                <td data-label="Статус / Прогресс">
                     @php
-                        $statusClass = 'status-' . str_replace('_', '-', $request->status);
+                        $statusMap = [
+                            'draft' => 'secondary',
+                            'new' => 'info',
+                            'active' => 'success',
+                            'collecting' => 'warning',
+                            'completed' => 'success',
+                            'cancelled' => 'danger',
+                            'emails_sent' => 'info',
+                            'responses_received' => 'primary',
+                            'queued_for_sending' => 'warning'
+                        ];
+                        $statusType = $statusMap[$request->status] ?? 'secondary';
                         $statusLabel = \App\Models\ExternalRequest::getStatusLabels()[$request->status] ?? $request->status;
                     @endphp
-                    <div style="margin-bottom: 0.75rem;">
-                        <span class="status-badge {{ $statusClass }}">{{ $statusLabel }}</span>
+                    <div style="margin-bottom: var(--space-3);">
+                        <x-badge type="{{ $statusType }}">{{ $statusLabel }}</x-badge>
                     </div>
-                    <div style="color: #111827; font-size: 0.875rem; font-weight: 600; margin-bottom: 0.25rem;">
+                    <div style="color: var(--neutral-900); font-size: 0.875rem; font-weight: 600; margin-bottom: var(--space-1);">
                         {{ number_format($request->completion_percentage, 0) }}% • {{ $request->items_with_offers }}/{{ $request->total_items }}
                     </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: {{ $request->completion_percentage }}%"></div>
+                    <div style="width: 120px; height: 8px; background: var(--neutral-200); border-radius: var(--radius-sm); overflow: hidden;">
+                        <div style="height: 100%; background: var(--success-500); width: {{ $request->completion_percentage }}%; transition: width 0.3s;"></div>
                     </div>
                 </td>
-                <td style="color: #6b7280; font-size: 0.875rem;">
-                    <div style="color: #111827; font-weight: 500;">{{ $request->created_at ? $request->created_at->format('d.m.Y') : '—' }}</div>
+                <td data-label="Дата создания">
+                    <div style="color: var(--neutral-900); font-weight: 500;">{{ $request->created_at ? $request->created_at->format('d.m.Y') : '—' }}</div>
                     @if($request->collection_deadline)
-                        <div style="color: #6b7280; font-size: 0.75rem; margin-top: 0.25rem;">
+                        <div style="color: var(--neutral-600); font-size: 0.75rem; margin-top: var(--space-1);">
                             До: {{ $request->collection_deadline->format('d.m.Y') }}
                         </div>
                     @endif
                 </td>
-                <td>
-                    <a href="{{ route('admin.external-requests.show', $request) }}" class="btn-green" style="padding: 0.5rem 1rem; font-size: 0.875rem; text-decoration: none; display: inline-block;">
+                <td data-label="Действия">
+                    <x-button tag="a" href="{{ route('admin.external-requests.show', $request) }}" variant="primary" size="sm">
                         Открыть
-                    </a>
+                    </x-button>
                 </td>
             </tr>
             @empty
             <tr>
-                <td colspan="5" style="text-align: center; padding: 3rem; color: #9ca3af;">
-                    Заявок не найдено
+                <td colspan="5">
+                    <x-empty-state
+                        icon="inbox"
+                        title="Заявок не найдено"
+                        description="Попробуйте изменить фильтры или создать новую заявку"
+                    />
                 </td>
             </tr>
             @endforelse
@@ -225,30 +140,32 @@
 
     <!-- Пагинация -->
     @if($requests->hasPages())
-        <div style="margin-top: 2rem; display: flex; justify-content: space-between; align-items: center;">
-            <div style="color: #6b7280; font-size: 0.875rem;">
+        <div style="margin-top: var(--space-8); display: flex; justify-content: space-between; align-items: center;">
+            <div style="color: var(--neutral-600); font-size: 0.875rem;">
                 Показано {{ $requests->firstItem() }}–{{ $requests->lastItem() }} из {{ $requests->total() }}
             </div>
-            <div style="display: flex; gap: 0.5rem;">
+            <div style="display: flex; gap: var(--space-2);">
                 {{-- Предыдущая страница --}}
                 @if($requests->onFirstPage())
-                    <span style="background: #f3f4f6; border: 1px solid #e5e7eb; padding: 0.5rem 1rem; border-radius: 6px; color: #9ca3af; cursor: not-allowed;">
-                        ← Назад
+                    <span style="background: var(--neutral-100); border: 1px solid var(--neutral-200); padding: var(--space-2) var(--space-4); border-radius: var(--radius-md); color: var(--neutral-400); cursor: not-allowed;">
+                        <i data-lucide="chevron-left" style="width: 1rem; height: 1rem;"></i>
+                        Назад
                     </span>
                 @else
-                    <a href="{{ $requests->previousPageUrl() }}" style="background: #ffffff; border: 1px solid #e5e7eb; padding: 0.5rem 1rem; border-radius: 6px; color: #10b981; text-decoration: none; transition: all 0.2s;">
-                        ← Назад
+                    <a href="{{ $requests->previousPageUrl() }}" style="background: white; border: 1px solid var(--neutral-200); padding: var(--space-2) var(--space-4); border-radius: var(--radius-md); color: var(--primary-600); text-decoration: none; transition: all 0.2s; display: inline-flex; align-items: center; gap: var(--space-1);">
+                        <i data-lucide="chevron-left" style="width: 1rem; height: 1rem;"></i>
+                        Назад
                     </a>
                 @endif
 
                 {{-- Номера страниц --}}
                 @foreach($requests->getUrlRange(max(1, $requests->currentPage() - 2), min($requests->lastPage(), $requests->currentPage() + 2)) as $page => $url)
                     @if($page == $requests->currentPage())
-                        <span style="background: #10b981; border: 1px solid #10b981; padding: 0.5rem 0.875rem; border-radius: 6px; color: #fff; font-weight: 600; min-width: 40px; text-align: center;">
+                        <span style="background: var(--primary-600); border: 1px solid var(--primary-600); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); color: white; font-weight: 600; min-width: 40px; text-align: center;">
                             {{ $page }}
                         </span>
                     @else
-                        <a href="{{ $url }}" style="background: #ffffff; border: 1px solid #e5e7eb; padding: 0.5rem 0.875rem; border-radius: 6px; color: #374151; text-decoration: none; transition: all 0.2s; min-width: 40px; text-align: center; display: inline-block;">
+                        <a href="{{ $url }}" style="background: white; border: 1px solid var(--neutral-200); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); color: var(--neutral-700); text-decoration: none; transition: all 0.2s; min-width: 40px; text-align: center; display: inline-block;">
                             {{ $page }}
                         </a>
                     @endif
@@ -256,16 +173,26 @@
 
                 {{-- Следующая страница --}}
                 @if($requests->hasMorePages())
-                    <a href="{{ $requests->nextPageUrl() }}" style="background: #ffffff; border: 1px solid #e5e7eb; padding: 0.5rem 1rem; border-radius: 6px; color: #10b981; text-decoration: none; transition: all 0.2s;">
-                        Вперёд →
+                    <a href="{{ $requests->nextPageUrl() }}" style="background: white; border: 1px solid var(--neutral-200); padding: var(--space-2) var(--space-4); border-radius: var(--radius-md); color: var(--primary-600); text-decoration: none; transition: all 0.2s; display: inline-flex; align-items: center; gap: var(--space-1);">
+                        Вперёд
+                        <i data-lucide="chevron-right" style="width: 1rem; height: 1rem;"></i>
                     </a>
                 @else
-                    <span style="background: #f3f4f6; border: 1px solid #e5e7eb; padding: 0.5rem 1rem; border-radius: 6px; color: #9ca3af; cursor: not-allowed;">
-                        Вперёд →
+                    <span style="background: var(--neutral-100); border: 1px solid var(--neutral-200); padding: var(--space-2) var(--space-4); border-radius: var(--radius-md); color: var(--neutral-400); cursor: not-allowed;">
+                        Вперёд
+                        <i data-lucide="chevron-right" style="width: 1rem; height: 1rem;"></i>
                     </span>
                 @endif
             </div>
         </div>
     @endif
 </div>
+
+@push('scripts')
+<script>
+if (typeof lucide !== 'undefined') {
+    lucide.createIcons();
+}
+</script>
+@endpush
 @endsection
