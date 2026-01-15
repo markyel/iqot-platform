@@ -5,381 +5,534 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', 'Личный кабинет') - IQOT</title>
-    
+
+    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
-    
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- IQOT Design System -->
+    <link rel="stylesheet" href="{{ asset('css/iqot-design-tokens.css') }}">
+
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @stack('styles')
-    
+
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Manrope', sans-serif;
-            background: #f9fafb;
-            color: #111827;
+        /* Additional utility classes */
+        .text-secondary {
+            color: var(--neutral-500);
+            font-size: var(--text-sm);
         }
-        
-        .sidebar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 260px;
-            height: 100vh;
-            background: #ffffff;
-            border-right: 1px solid #e5e7eb;
-            padding: 2rem 0;
-            transition: transform 0.3s ease;
-            z-index: 1000;
+
+        /* Sidebar collapsed state for desktop */
+        :root {
+            --sidebar-collapsed-width: 72px;
         }
 
         .sidebar.collapsed {
-            transform: translateX(-260px);
+            width: var(--sidebar-collapsed-width);
         }
 
-        .sidebar-header {
-            padding: 0 1.5rem 2rem;
-            border-bottom: 1px solid #e5e7eb;
+        .sidebar.collapsed .sidebar-logo-text,
+        .sidebar.collapsed .sidebar-section-title,
+        .sidebar.collapsed .sidebar-item-text,
+        .sidebar.collapsed .sidebar-item-badge,
+        .sidebar.collapsed .sidebar-user-info {
+            opacity: 0;
+            width: 0;
+            overflow: hidden;
         }
 
-        .logo {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: #10b981;
+        .sidebar.collapsed .sidebar-toggle i {
+            transform: rotate(180deg);
         }
 
-        .nav-menu {
-            padding: 1.5rem 0;
-            overflow-y: auto;
-            max-height: calc(100vh - 120px);
+        .sidebar.collapsed .sidebar-item {
+            justify-content: center;
+            position: relative;
         }
 
-        .nav-item {
-            display: block;
-            padding: 0.75rem 1.5rem;
-            color: #6b7280;
-            text-decoration: none;
-            transition: all 0.2s;
+        .sidebar.collapsed .sidebar-item:hover .sidebar-item-tooltip {
+            opacity: 1;
+            visibility: visible;
         }
 
-        .nav-item:hover, .nav-item.active {
-            background: #f3f4f6;
-            color: #10b981;
+        /* Sidebar item tooltip */
+        .sidebar-item-tooltip {
+            position: absolute;
+            left: calc(100% + 12px);
+            top: 50%;
+            transform: translateY(-50%);
+            padding: var(--space-2) var(--space-3);
+            background: var(--neutral-900);
+            color: var(--neutral-0);
+            font-size: var(--text-sm);
+            border-radius: var(--radius-md);
+            white-space: nowrap;
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            transition: opacity 150ms ease;
+            z-index: 300;
+            box-shadow: var(--shadow-lg);
         }
 
+        .sidebar-item-tooltip::before {
+            content: '';
+            position: absolute;
+            left: -6px;
+            top: 50%;
+            transform: translateY(-50%);
+            border: 6px solid transparent;
+            border-right-color: var(--neutral-900);
+            border-left: none;
+        }
+
+        /* Mobile sidebar overlay */
+        .sidebar-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 17, 20, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 150;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 250ms ease, visibility 250ms ease;
+        }
+
+        .sidebar-overlay.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        /* Main content adjustments */
         .main-content {
-            margin-left: 260px;
+            flex: 1;
+            margin-left: var(--sidebar-width);
             min-height: 100vh;
-            transition: margin-left 0.3s ease;
-        }
-
-        .main-content.expanded {
-            margin-left: 0;
-        }
-
-        .header {
-            background: #ffffff;
-            border-bottom: 1px solid #e5e7eb;
-            padding: 1.25rem 2rem;
             display: flex;
-            justify-content: space-between;
-            align-items: center;
+            flex-direction: column;
+            transition: margin-left 250ms cubic-bezier(0, 0, 0.2, 1);
         }
 
-        .menu-toggle {
-            background: #f3f4f6;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
+        .main-content.sidebar-collapsed {
+            margin-left: var(--sidebar-collapsed-width);
+        }
+
+        /* Top header for mobile */
+        .top-header {
+            height: var(--header-height);
+            background: var(--neutral-0);
+            border-bottom: 1px solid var(--neutral-200);
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 var(--space-4);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .mobile-menu-btn {
             width: 40px;
             height: 40px;
             display: flex;
             align-items: center;
             justify-content: center;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .menu-toggle:hover {
-            background: #e5e7eb;
-        }
-
-        .menu-toggle span {
-            display: block;
-            width: 20px;
-            height: 2px;
-            background: #6b7280;
-            position: relative;
-            transition: all 0.3s;
-        }
-
-        .menu-toggle span::before,
-        .menu-toggle span::after {
-            content: '';
-            position: absolute;
-            width: 20px;
-            height: 2px;
-            background: #6b7280;
-            transition: all 0.3s;
-        }
-
-        .menu-toggle span::before {
-            top: -6px;
-        }
-
-        .menu-toggle span::after {
-            top: 6px;
-        }
-
-        .menu-toggle.active span {
             background: transparent;
+            border: none;
+            border-radius: var(--radius-md);
+            color: var(--neutral-600);
+            cursor: pointer;
         }
 
-        .menu-toggle.active span::before {
-            top: 0;
-            transform: rotate(45deg);
+        .mobile-menu-btn:hover {
+            background: var(--neutral-100);
+            color: var(--neutral-800);
         }
 
-        .menu-toggle.active span::after {
-            top: 0;
-            transform: rotate(-45deg);
+        .page-content {
+            flex: 1;
+            padding: var(--space-6);
         }
 
-        .sidebar-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 999;
-        }
-
-        .sidebar-overlay.active {
-            display: block;
-        }
-
-        @media (max-width: 768px) {
+        /* Responsive */
+        @media (max-width: 1024px) {
             .sidebar {
-                transform: translateX(-260px);
+                transform: translateX(-100%);
+                width: var(--sidebar-width);
+                transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
             }
 
-            .sidebar.active {
+            .sidebar.mobile-open {
                 transform: translateX(0);
             }
 
-            .main-content {
+            .sidebar.collapsed {
+                width: var(--sidebar-width);
+            }
+
+            .sidebar.collapsed .sidebar-logo-text,
+            .sidebar.collapsed .sidebar-item-text,
+            .sidebar.collapsed .sidebar-item-badge,
+            .sidebar.collapsed .sidebar-user-info {
+                opacity: 1;
+                width: auto;
+            }
+
+            .sidebar-toggle {
+                display: none !important;
+            }
+
+            .sidebar-close {
+                display: flex !important;
+            }
+
+            .top-header {
+                display: flex;
+            }
+
+            .main-content,
+            .main-content.sidebar-collapsed {
                 margin-left: 0;
             }
         }
-        
-        .content {
-            padding: 2rem;
+
+        @media (max-width: 768px) {
+            .page-content {
+                padding: var(--space-4);
+            }
         }
-        
-        .btn {
-            display: inline-block;
-            padding: 0.625rem 1.25rem;
-            border-radius: 0.5rem;
-            font-weight: 600;
-            text-decoration: none;
-            transition: all 0.2s;
-            border: none;
-            cursor: pointer;
-        }
-        
-        .btn-primary {
-            background: #10b981;
-            color: white;
-        }
-        
-        .btn-primary:hover {
-            background: #059669;
-        }
-        
-        .alert {
-            padding: 1rem 1.25rem;
-            border-radius: 0.5rem;
-            margin-bottom: 1.5rem;
-        }
-        
-        .alert-success {
-            background: #d1fae5;
-            color: #065f46;
-            border: 1px solid #a7f3d0;
-        }
-        
-        .alert-error {
-            background: #fee2e2;
-            color: #991b1b;
-            border: 1px solid #fecaca;
+
+        @media (max-width: 480px) {
+            .sidebar {
+                width: 100%;
+            }
+
+            .page-content {
+                padding: var(--space-3);
+            }
         }
     </style>
 </head>
 <body>
-    <!-- Sidebar Overlay -->
-    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <div class="app-layout">
+        <!-- Sidebar Overlay -->
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
-    <!-- Sidebar -->
-    <div class="sidebar" id="sidebar">
-        <div class="sidebar-header">
-            <div class="logo">IQOT</div>
-        </div>
-        
-        <nav class="nav-menu">
-            <a href="{{ route('cabinet.dashboard') }}" class="nav-item {{ request()->routeIs('cabinet.dashboard') ? 'active' : '' }}">
-                📊 Главная
-            </a>
-            <a href="{{ route('cabinet.requests') }}" class="nav-item {{ request()->routeIs('cabinet.requests*') ? 'active' : '' }}">
-                📝 Мои заявки
-            </a>
-            <a href="{{ route('cabinet.items.index') }}" class="nav-item {{ request()->routeIs('cabinet.items*') ? 'active' : '' }}">
-                📦 Мониторинг позиций
-            </a>
-            <a href="{{ route('cabinet.suppliers') }}" class="nav-item {{ request()->routeIs('cabinet.suppliers*') ? 'active' : '' }}">
-                🏢 Поставщики
-            </a>
-            <a href="{{ route('cabinet.settings') }}" class="nav-item {{ request()->routeIs('cabinet.settings') ? 'active' : '' }}">
-                ⚙️ Настройки
-            </a>
-
-            @if(auth()->user()->is_admin)
-                <div style="border-top: 1px solid #e5e7eb; margin: 1rem 0; padding-top: 1rem;">
-                    <div style="padding: 0 1.5rem; font-size: 0.75rem; font-weight: 600; color: #9ca3af; text-transform: uppercase; margin-bottom: 0.5rem;">
-                        Администрирование
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <a href="{{ route('cabinet.dashboard') }}" class="sidebar-logo">
+                    <div class="sidebar-logo-icon">
+                        <img src="{{ asset('iqot-logo-icon.svg') }}" alt="IQOT" style="width: 36px; height: 36px; filter: brightness(0) invert(1);">
                     </div>
-                    <a href="{{ route('admin.manage.requests.index') }}" class="nav-item {{ request()->routeIs('admin.manage.requests*') ? 'active' : '' }}">
-                        📋 Управление заявками
-                    </a>
-                    <a href="{{ route('admin.questions.index') }}" class="nav-item {{ request()->routeIs('admin.questions.index') ? 'active' : '' }}">
-                        ❓ Вопросы от поставщиков
-                    </a>
-                    <a href="{{ route('admin.questions.consolidated') }}" class="nav-item {{ request()->routeIs('admin.questions.consolidated*') ? 'active' : '' }}">
-                        🔗 Консолидированные вопросы
-                    </a>
-                    <a href="{{ route('admin.requests.index') }}" class="nav-item {{ request()->routeIs('admin.requests*') ? 'active' : '' }}">
-                        📝 Модерация заявок
-                    </a>
-                    <a href="{{ route('admin.items.index') }}" class="nav-item {{ request()->routeIs('admin.items*') ? 'active' : '' }}">
-                        📦 Мониторинг позиций
-                    </a>
-                    <a href="{{ route('admin.demo-requests.index') }}" class="nav-item {{ request()->routeIs('admin.demo-requests*') ? 'active' : '' }}">
-                        🎯 Демо-заявки
-                    </a>
-                    <a href="{{ route('admin.users.index') }}" class="nav-item {{ request()->routeIs('admin.users*') ? 'active' : '' }}">
-                        👥 Пользователи
-                    </a>
-                    <a href="{{ route('admin.settings.index') }}" class="nav-item {{ request()->routeIs('admin.settings*') ? 'active' : '' }}">
-                        ⚙️ Настройки системы
-                    </a>
-                    <a href="/admin" class="nav-item" target="_blank">
-                        🔧 Filament Admin
-                    </a>
-                </div>
-            @endif
-        </nav>
-    </div>
-    
-    <div class="main-content" id="mainContent">
-        <header class="header">
-            <div style="display: flex; align-items: center; gap: 1rem;">
-                <button class="menu-toggle" id="menuToggle">
-                    <span></span>
+                    <span class="sidebar-logo-text">IQOT</span>
+                </a>
+
+                <!-- Desktop: toggle button -->
+                <button class="sidebar-toggle" id="sidebarToggle" style="display: flex; width: 32px; height: 32px; align-items: center; justify-content: center; background: transparent; border: none; border-radius: var(--radius-md); color: var(--primary-200); cursor: pointer; margin-left: auto;">
+                    <i data-lucide="chevrons-left" class="icon-md"></i>
                 </button>
-                <h1>@yield('header', 'Личный кабинет')</h1>
+
+                <!-- Mobile: close button -->
+                <button class="sidebar-close" id="sidebarClose" style="display: none; width: 32px; height: 32px; align-items: center; justify-content: center; background: transparent; border: none; border-radius: var(--radius-md); color: var(--primary-200); cursor: pointer; margin-left: auto;">
+                    <i data-lucide="x" class="icon-md"></i>
+                </button>
             </div>
-            <div>
-                <span style="color: #6b7280; margin-right: 1rem;">{{ auth()->user()->name }}</span>
-                <form method="POST" action="{{ route('logout') }}" style="display: inline;">
-                    @csrf
-                    <button type="submit" class="btn" style="background: #f3f4f6; color: #374151;">Выход</button>
-                </form>
+
+            <nav class="sidebar-nav">
+                <div class="sidebar-section">
+                    <a href="{{ route('cabinet.dashboard') }}" class="sidebar-item {{ request()->routeIs('cabinet.dashboard') ? 'active' : '' }}">
+                        <i data-lucide="home" class="sidebar-item-icon"></i>
+                        <span class="sidebar-item-text">Главная</span>
+                        <span class="sidebar-item-tooltip">Главная</span>
+                    </a>
+                    <a href="{{ route('cabinet.requests') }}" class="sidebar-item {{ request()->routeIs('cabinet.requests*') ? 'active' : '' }}">
+                        <i data-lucide="file-text" class="sidebar-item-icon"></i>
+                        <span class="sidebar-item-text">Мои заявки</span>
+                        <span class="sidebar-item-tooltip">Мои заявки</span>
+                    </a>
+                    <a href="{{ route('cabinet.items.index') }}" class="sidebar-item {{ request()->routeIs('cabinet.items*') ? 'active' : '' }}">
+                        <i data-lucide="package" class="sidebar-item-icon"></i>
+                        <span class="sidebar-item-text">Мониторинг позиций</span>
+                        <span class="sidebar-item-tooltip">Мониторинг позиций</span>
+                    </a>
+                    <a href="{{ route('cabinet.suppliers') }}" class="sidebar-item {{ request()->routeIs('cabinet.suppliers*') ? 'active' : '' }}">
+                        <i data-lucide="building-2" class="sidebar-item-icon"></i>
+                        <span class="sidebar-item-text">Поставщики</span>
+                        <span class="sidebar-item-tooltip">Поставщики</span>
+                    </a>
+                    <a href="{{ route('cabinet.settings') }}" class="sidebar-item {{ request()->routeIs('cabinet.settings') ? 'active' : '' }}">
+                        <i data-lucide="settings" class="sidebar-item-icon"></i>
+                        <span class="sidebar-item-text">Настройки</span>
+                        <span class="sidebar-item-tooltip">Настройки</span>
+                    </a>
+                </div>
+
+                @if(auth()->user()->is_admin)
+                    <div class="sidebar-section">
+                        <div class="sidebar-section-title">Администрирование</div>
+                        <a href="{{ route('admin.manage.requests.index') }}" class="sidebar-item {{ request()->routeIs('admin.manage.requests*') ? 'active' : '' }}">
+                            <i data-lucide="clipboard-list" class="sidebar-item-icon"></i>
+                            <span class="sidebar-item-text">Управление заявками</span>
+                            <span class="sidebar-item-tooltip">Управление заявками</span>
+                        </a>
+                        <a href="{{ route('admin.questions.index') }}" class="sidebar-item {{ request()->routeIs('admin.questions.index') ? 'active' : '' }}">
+                            <i data-lucide="message-circle-question" class="sidebar-item-icon"></i>
+                            <span class="sidebar-item-text">Вопросы от поставщиков</span>
+                            <span class="sidebar-item-tooltip">Вопросы от поставщиков</span>
+                        </a>
+                        <a href="{{ route('admin.questions.consolidated') }}" class="sidebar-item {{ request()->routeIs('admin.questions.consolidated*') ? 'active' : '' }}">
+                            <i data-lucide="link" class="sidebar-item-icon"></i>
+                            <span class="sidebar-item-text">Консолидированные вопросы</span>
+                            <span class="sidebar-item-tooltip">Консолидированные вопросы</span>
+                        </a>
+                        <a href="{{ route('admin.requests.index') }}" class="sidebar-item {{ request()->routeIs('admin.requests*') ? 'active' : '' }}">
+                            <i data-lucide="file-check" class="sidebar-item-icon"></i>
+                            <span class="sidebar-item-text">Модерация заявок</span>
+                            <span class="sidebar-item-tooltip">Модерация заявок</span>
+                        </a>
+                        <a href="{{ route('admin.items.index') }}" class="sidebar-item {{ request()->routeIs('admin.items*') ? 'active' : '' }}">
+                            <i data-lucide="package-search" class="sidebar-item-icon"></i>
+                            <span class="sidebar-item-text">Мониторинг позиций</span>
+                            <span class="sidebar-item-tooltip">Мониторинг позиций</span>
+                        </a>
+                        <a href="{{ route('admin.demo-requests.index') }}" class="sidebar-item {{ request()->routeIs('admin.demo-requests*') ? 'active' : '' }}">
+                            <i data-lucide="target" class="sidebar-item-icon"></i>
+                            <span class="sidebar-item-text">Демо-заявки</span>
+                            <span class="sidebar-item-tooltip">Демо-заявки</span>
+                        </a>
+                        <a href="{{ route('admin.users.index') }}" class="sidebar-item {{ request()->routeIs('admin.users*') ? 'active' : '' }}">
+                            <i data-lucide="users" class="sidebar-item-icon"></i>
+                            <span class="sidebar-item-text">Пользователи</span>
+                            <span class="sidebar-item-tooltip">Пользователи</span>
+                        </a>
+                        <a href="{{ route('admin.settings.index') }}" class="sidebar-item {{ request()->routeIs('admin.settings*') ? 'active' : '' }}">
+                            <i data-lucide="settings-2" class="sidebar-item-icon"></i>
+                            <span class="sidebar-item-text">Настройки системы</span>
+                            <span class="sidebar-item-tooltip">Настройки системы</span>
+                        </a>
+                        <a href="/admin" class="sidebar-item" target="_blank">
+                            <i data-lucide="wrench" class="sidebar-item-icon"></i>
+                            <span class="sidebar-item-text">Filament Admin</span>
+                            <span class="sidebar-item-tooltip">Filament Admin</span>
+                        </a>
+                    </div>
+                @endif
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="sidebar-user">
+                    <div class="sidebar-user-avatar">
+                        {{ strtoupper(substr(auth()->user()->name, 0, 1)) }}
+                    </div>
+                    <div class="sidebar-user-info">
+                        <div class="sidebar-user-name">{{ auth()->user()->name }}</div>
+                        <div class="sidebar-user-email">{{ auth()->user()->email }}</div>
+                    </div>
+                </div>
             </div>
-        </header>
-        
-        <main class="content">
-            @if(session('success'))
-                <div class="alert alert-success">
-                    {{ session('success') }}
+        </aside>
+
+
+        <!-- Main Content -->
+        <main class="main-content" id="mainContent">
+            <!-- Mobile Header -->
+            <header class="top-header">
+                <button class="mobile-menu-btn" id="mobileMenuBtn">
+                    <i data-lucide="menu" class="icon-md"></i>
+                </button>
+                <div class="mobile-logo" style="font-size: var(--text-lg); font-weight: var(--font-bold); color: var(--neutral-900);">
+                    IQOT
                 </div>
-            @endif
-            
-            @if(session('error'))
-                <div class="alert alert-error">
-                    {{ session('error') }}
+                <div class="mobile-actions">
+                    <form method="POST" action="{{ route('logout') }}" style="display: inline;">
+                        @csrf
+                        <button type="submit" class="btn btn-ghost btn-sm">
+                            <i data-lucide="log-out" class="icon-sm"></i>
+                        </button>
+                    </form>
                 </div>
-            @endif
-            
-            @if($errors->any())
-                <div class="alert alert-error">
-                    <ul style="margin: 0; padding-left: 1.25rem;">
-                        @foreach($errors->all() as $error)
-                            <li>{{ $error }}</li>
-                        @endforeach
-                    </ul>
-                </div>
-            @endif
-            
-            @yield('content')
+            </header>
+
+            <div class="page-content">
+                <!-- Alerts -->
+                @if(session('success'))
+                    <div class="alert alert-success">
+                        <i data-lucide="check-circle" class="alert-icon"></i>
+                        <div class="alert-content">
+                            {{ session('success') }}
+                        </div>
+                    </div>
+                @endif
+
+                @if(session('error'))
+                    <div class="alert alert-error">
+                        <i data-lucide="x-circle" class="alert-icon"></i>
+                        <div class="alert-content">
+                            {{ session('error') }}
+                        </div>
+                    </div>
+                @endif
+
+                @if($errors->any())
+                    <div class="alert alert-error">
+                        <i data-lucide="alert-triangle" class="alert-icon"></i>
+                        <div class="alert-content">
+                            <ul style="margin: 0; padding-left: 1.25rem;">
+                                @foreach($errors->all() as $error)
+                                    <li>{{ $error }}</li>
+                                @endforeach
+                            </ul>
+                        </div>
+                    </div>
+                @endif
+
+                @yield('content')
+            </div>
         </main>
     </div>
     
     @stack('scripts')
 
     <script>
-        const menuToggle = document.getElementById('menuToggle');
+        // Initialize Lucide icons
+        lucide.createIcons();
+
+        // DOM Elements
         const sidebar = document.getElementById('sidebar');
-        const mainContent = document.getElementById('mainContent');
+        const sidebarToggle = document.getElementById('sidebarToggle');
+        const sidebarClose = document.getElementById('sidebarClose');
         const sidebarOverlay = document.getElementById('sidebarOverlay');
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+        const mainContent = document.getElementById('mainContent');
 
-        // Check if mobile
+        // State
+        let isSidebarCollapsed = false;
+        let isMobileSidebarOpen = false;
+
+        // Определение мобильного режима
         function isMobile() {
-            return window.innerWidth <= 768;
+            return window.innerWidth <= 1024;
         }
 
-        // Load saved state from localStorage (only for desktop)
+        // Load saved state (desktop only)
         if (!isMobile()) {
-            const sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
-            if (sidebarCollapsed) {
+            const saved = localStorage.getItem('sidebarCollapsed') === 'true';
+            if (saved) {
                 sidebar.classList.add('collapsed');
-                mainContent.classList.add('expanded');
-                menuToggle.classList.add('active');
+                mainContent.classList.add('sidebar-collapsed');
+                isSidebarCollapsed = true;
             }
         }
 
-        menuToggle.addEventListener('click', function() {
-            if (isMobile()) {
-                // Mobile behavior: toggle active class
-                sidebar.classList.toggle('active');
-                sidebarOverlay.classList.toggle('active');
-                menuToggle.classList.toggle('active');
-            } else {
-                // Desktop behavior: toggle collapsed class
-                const isCollapsed = sidebar.classList.toggle('collapsed');
-                mainContent.classList.toggle('expanded');
-                menuToggle.classList.toggle('active');
-                localStorage.setItem('sidebarCollapsed', isCollapsed);
+        // Desktop: Toggle collapsed
+        if (sidebarToggle) {
+            sidebarToggle.addEventListener('click', () => {
+                if (!isMobile()) {
+                    isSidebarCollapsed = !isSidebarCollapsed;
+                    sidebar.classList.toggle('collapsed', isSidebarCollapsed);
+                    mainContent.classList.toggle('sidebar-collapsed', isSidebarCollapsed);
+                    localStorage.setItem('sidebarCollapsed', isSidebarCollapsed);
+                }
+            });
+        }
+
+        // Mobile: Open sidebar
+        if (mobileMenuBtn) {
+            mobileMenuBtn.addEventListener('click', () => {
+                isMobileSidebarOpen = true;
+                sidebar.classList.add('mobile-open');
+                sidebarOverlay.classList.add('visible');
+                document.body.style.overflow = 'hidden';
+            });
+        }
+
+        // Mobile: Close sidebar
+        function closeMobileSidebar() {
+            isMobileSidebarOpen = false;
+            sidebar.classList.remove('mobile-open');
+            sidebarOverlay.classList.remove('visible');
+            document.body.style.overflow = '';
+        }
+
+        // Desktop: Toggle collapsed
+        if (sidebarToggle) {
+            sidebarToggle.addEventListener('click', () => {
+                if (!isMobile()) {
+                    isSidebarCollapsed = !isSidebarCollapsed;
+                    sidebar.classList.toggle('collapsed', isSidebarCollapsed);
+                    mainContent.classList.toggle('sidebar-collapsed', isSidebarCollapsed);
+                    localStorage.setItem('sidebarCollapsed', isSidebarCollapsed);
+                }
+            });
+        }
+
+        // Mobile: Open sidebar
+        if (mobileMenuBtn) {
+            mobileMenuBtn.addEventListener('click', () => {
+                isMobileSidebarOpen = true;
+                sidebar.classList.add('mobile-open');
+                sidebarOverlay.classList.add('visible');
+                document.body.style.overflow = 'hidden';
+            });
+        }
+
+        // Mobile: Close sidebar
+        function closeMobileSidebar() {
+            isMobileSidebarOpen = false;
+            sidebar.classList.remove('mobile-open');
+            sidebarOverlay.classList.remove('visible');
+            document.body.style.overflow = '';
+        }
+
+        if (sidebarClose) {
+            sidebarClose.addEventListener('click', closeMobileSidebar);
+        }
+
+        if (sidebarOverlay) {
+            sidebarOverlay.addEventListener('click', closeMobileSidebar);
+        }
+
+        // Close on nav item click (mobile)
+        document.querySelectorAll('.sidebar-item').forEach(item => {
+            item.addEventListener('click', () => {
+                if (isMobile() && isMobileSidebarOpen) {
+                    closeMobileSidebar();
+                }
+            });
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            // Escape — close mobile menu
+            if (e.key === 'Escape' && isMobileSidebarOpen) {
+                closeMobileSidebar();
+            }
+
+            // Ctrl/Cmd + B — toggle sidebar
+            if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+                e.preventDefault();
+                if (isMobile()) {
+                    isMobileSidebarOpen ? closeMobileSidebar() : mobileMenuBtn.click();
+                } else if (sidebarToggle) {
+                    sidebarToggle.click();
+                }
             }
         });
 
-        // Close sidebar on overlay click (mobile)
-        sidebarOverlay.addEventListener('click', function() {
-            sidebar.classList.remove('active');
-            sidebarOverlay.classList.remove('active');
-            menuToggle.classList.remove('active');
-        });
-
-        // Reset classes on window resize
-        window.addEventListener('resize', function() {
+        // Handle resize
+        window.addEventListener('resize', () => {
             if (!isMobile()) {
-                // Desktop: remove mobile classes
-                sidebar.classList.remove('active');
-                sidebarOverlay.classList.remove('active');
-            } else {
-                // Mobile: remove desktop classes
-                sidebar.classList.remove('collapsed');
-                mainContent.classList.remove('expanded');
+                closeMobileSidebar();
+                // Restore saved state
+                const saved = localStorage.getItem('sidebarCollapsed') === 'true';
+                sidebar.classList.toggle('collapsed', saved);
+                mainContent.classList.toggle('sidebar-collapsed', saved);
             }
         });
     </script>
