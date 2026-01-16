@@ -22,9 +22,14 @@ class LandingController extends Controller
      */
     public function index(): View
     {
+        // Получаем стартовый тариф (Pay-as-you-go)
+        $startTariff = \App\Models\TariffPlan::where('is_active', true)
+            ->where('code', 'start')
+            ->first();
+
         $pricing = [
-            'monitoring' => \App\Models\SystemSetting::get('pricing_monitoring', 396),
-            'report_unlock' => \App\Models\SystemSetting::get('pricing_report_unlock', 99),
+            'monitoring' => $startTariff ? $startTariff->price_per_item_over_limit : 396,
+            'report_unlock' => $startTariff ? $startTariff->price_per_report_over_limit : 99,
         ];
 
         return view('landing.index', compact('pricing'));
@@ -133,29 +138,38 @@ class LandingController extends Controller
      */
     public function pricing(): View
     {
+        // Получаем тарифные планы из базы
+        $tariffPlans = \App\Models\TariffPlan::where('is_active', true)
+            ->orderBy('monthly_price')
+            ->get()
+            ->keyBy('code');
+
+        // Базовые цены без тарифа (Pay-as-you-go) - тариф "start"
+        $startTariff = $tariffPlans->get('start');
+
         $pricing = [
-            'monitoring' => \App\Models\SystemSetting::get('pricing_monitoring', 396),
-            'report_unlock' => \App\Models\SystemSetting::get('pricing_report_unlock', 99),
+            'monitoring' => $startTariff ? $startTariff->price_per_item_over_limit : 396,
+            'report_unlock' => $startTariff ? $startTariff->price_per_report_over_limit : 99,
             'subscription_basic' => [
-                'price' => \App\Models\SystemSetting::get('subscription_basic_price', 5000),
-                'positions' => \App\Models\SystemSetting::get('subscription_basic_positions', 15),
-                'reports' => \App\Models\SystemSetting::get('subscription_basic_reports', 5),
-                'overlimit_position' => \App\Models\SystemSetting::get('subscription_basic_overlimit_position', 300),
-                'overlimit_report' => \App\Models\SystemSetting::get('subscription_basic_overlimit_report', 89),
+                'price' => $tariffPlans->get('basic')?->monthly_price ?? 5000,
+                'positions' => $tariffPlans->get('basic')?->items_limit ?? 15,
+                'reports' => $tariffPlans->get('basic')?->reports_limit ?? 5,
+                'overlimit_position' => $tariffPlans->get('basic')?->price_per_item_over_limit ?? 300,
+                'overlimit_report' => $tariffPlans->get('basic')?->price_per_report_over_limit ?? 89,
             ],
             'subscription_advanced' => [
-                'price' => \App\Models\SystemSetting::get('subscription_advanced_price', 15000),
-                'positions' => \App\Models\SystemSetting::get('subscription_advanced_positions', 50),
-                'reports' => \App\Models\SystemSetting::get('subscription_advanced_reports', 15),
-                'overlimit_position' => \App\Models\SystemSetting::get('subscription_advanced_overlimit_position', 270),
-                'overlimit_report' => \App\Models\SystemSetting::get('subscription_advanced_overlimit_report', 79),
+                'price' => $tariffPlans->get('extended')?->monthly_price ?? 15000,
+                'positions' => $tariffPlans->get('extended')?->items_limit ?? 50,
+                'reports' => $tariffPlans->get('extended')?->reports_limit ?? 15,
+                'overlimit_position' => $tariffPlans->get('extended')?->price_per_item_over_limit ?? 270,
+                'overlimit_report' => $tariffPlans->get('extended')?->price_per_report_over_limit ?? 79,
             ],
             'subscription_pro' => [
-                'price' => \App\Models\SystemSetting::get('subscription_pro_price', 50000),
-                'positions' => \App\Models\SystemSetting::get('subscription_pro_positions', 200),
-                'reports' => \App\Models\SystemSetting::get('subscription_pro_reports', 50),
-                'overlimit_position' => \App\Models\SystemSetting::get('subscription_pro_overlimit_position', 240),
-                'overlimit_report' => \App\Models\SystemSetting::get('subscription_pro_overlimit_report', 69),
+                'price' => $tariffPlans->get('professional')?->monthly_price ?? 50000,
+                'positions' => $tariffPlans->get('professional')?->items_limit ?? 200,
+                'reports' => $tariffPlans->get('professional')?->reports_limit ?? 50,
+                'overlimit_position' => $tariffPlans->get('professional')?->price_per_item_over_limit ?? 240,
+                'overlimit_report' => $tariffPlans->get('professional')?->price_per_report_over_limit ?? 69,
             ],
         ];
 

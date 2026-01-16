@@ -1,118 +1,152 @@
 @extends('layouts.cabinet')
 
 @section('title', 'Мои заявки')
-@section('header', 'Мои заявки')
-
-@push('styles')
-<style>
-    .card { background: white; border-radius: 0.75rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem; padding: 1.5rem; }
-    .badge { padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
-    .badge-pending { background: #fef3c7; color: #92400e; }
-    .badge-draft { background: #f3f4f6; color: #6b7280; }
-    .badge-sending { background: #dbeafe; color: #1e40af; }
-    .badge-collecting { background: #e0e7ff; color: #3730a3; }
-    .badge-completed { background: #d1fae5; color: #065f46; }
-    .badge-cancelled { background: #fee2e2; color: #991b1b; }
-    .btn { padding: 0.625rem 1.25rem; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-block; }
-    .btn-primary { background: #3b82f6; color: white; }
-    .btn-primary:hover { background: #2563eb; }
-    .table { width: 100%; border-collapse: collapse; }
-    .table th, .table td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #e5e7eb; }
-    .table th { background: #f9fafb; font-weight: 600; color: #6b7280; font-size: 0.875rem; }
-    .table tbody tr:hover { background: #f9fafb; }
-</style>
-@endpush
 
 @section('content')
-<div style="max-width: 1200px; margin: 0 auto;">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
-        <div>
-            <h1 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem;">Мои заявки</h1>
-            <p style="color: #6b7280;">Список ваших заявок на мониторинг позиций</p>
-        </div>
-        <a href="{{ route('cabinet.my.requests.create') }}" class="btn btn-primary">+ Создать заявку</a>
-    </div>
+<x-page-header title="Мои заявки" description="Список ваших заявок на мониторинг позиций">
+    <x-slot name="actions">
+        <x-button variant="primary" :href="route('cabinet.my.requests.create')" icon="plus">
+            Создать заявку
+        </x-button>
+    </x-slot>
+</x-page-header>
 
-    @if($requests->count() > 0)
-    <div class="card" style="padding: 0; overflow: hidden;">
-        <table class="table">
-            <thead>
-                <tr>
-                    <th style="width: 150px;">Номер</th>
-                    <th>Название</th>
-                    <th style="width: 120px;">Статус</th>
-                    <th style="width: 80px; text-align: center;">Позиций</th>
-                    <th style="width: 100px; text-align: right;">Стоимость</th>
-                    <th style="width: 150px;">Дата создания</th>
-                    <th style="width: 150px;"></th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach($requests as $request)
-                <tr>
-                    <td>
-                        <a href="{{ route('cabinet.my.requests.show', $request->id) }}" style="color: #3b82f6; text-decoration: none; font-weight: 600;">
-                            {{ $request->request_number ?? $request->code }}
-                        </a>
-                    </td>
-                    <td>{{ $request->title }}</td>
-                    <td>
-                        @php
-                            $statusClass = match($request->status) {
-                                'draft' => 'badge-draft',
-                                'pending' => 'badge-pending',
-                                'sending' => 'badge-sending',
-                                'collecting' => 'badge-collecting',
-                                'completed' => 'badge-completed',
-                                'cancelled' => 'badge-cancelled',
-                                default => 'badge-draft'
-                            };
-                            $statusText = \App\Models\Request::statuses()[$request->status] ?? $request->status;
-                        @endphp
-                        <span class="badge {{ $statusClass }}">{{ $statusText }}</span>
-                    </td>
-                    <td style="text-align: center;">{{ $request->items_count }}</td>
-                    <td style="text-align: right; font-weight: 600; color: #6b7280;">
-                        @if($request->balanceHold)
-                            {{ number_format($request->balanceHold->amount, 2) }} ₽
-                        @else
-                            —
-                        @endif
-                    </td>
-                    <td style="color: #6b7280; font-size: 0.875rem;">
-                        {{ $request->created_at->format('d.m.Y H:i') }}
-                    </td>
-                    <td style="text-align: right;">
-                        <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
-                            <a href="{{ route('cabinet.my.requests.show', $request->id) }}" style="color: #3b82f6; text-decoration: none; font-weight: 600; font-size: 0.875rem;">
-                                Подробнее
+@if($requests->count() > 0)
+    <div style="display: grid; gap: var(--space-4);">
+        @foreach($requests as $request)
+        @php
+            $statusType = match($request->status) {
+                'draft' => 'secondary',
+                'pending' => 'warning',
+                'sending' => 'info',
+                'collecting' => 'info',
+                'completed' => 'success',
+                'cancelled' => 'danger',
+                default => 'secondary'
+            };
+            $statusText = \App\Models\Request::statuses()[$request->status] ?? $request->status;
+
+            // Иконки и цвета для статусов
+            $statusConfig = match($request->status) {
+                'draft' => ['icon' => 'file-text', 'bg' => 'var(--neutral-50)', 'border' => 'var(--neutral-200)'],
+                'pending' => ['icon' => 'clock', 'bg' => 'var(--warning-50)', 'border' => 'var(--warning-200)'],
+                'sending' => ['icon' => 'send', 'bg' => 'var(--info-50)', 'border' => 'var(--info-200)'],
+                'collecting' => ['icon' => 'refresh-cw', 'bg' => 'var(--info-50)', 'border' => 'var(--info-200)'],
+                'completed' => ['icon' => 'check-circle', 'bg' => 'var(--success-50)', 'border' => 'var(--success-200)'],
+                'cancelled' => ['icon' => 'x-circle', 'bg' => 'var(--danger-50)', 'border' => 'var(--danger-200)'],
+                default => ['icon' => 'file-text', 'bg' => 'var(--neutral-50)', 'border' => 'var(--neutral-200)']
+            };
+        @endphp
+
+        <div class="card request-card" style="border-left: 4px solid {{ $statusConfig['border'] }}; background: linear-gradient(to right, {{ $statusConfig['bg'] }}, var(--neutral-0));">
+            <div class="card-body">
+                <div style="display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-4); align-items: start;">
+                    <!-- Иконка статуса -->
+                    <div style="width: 48px; height: 48px; border-radius: var(--radius-lg); background: {{ $statusConfig['bg'] }}; border: 2px solid {{ $statusConfig['border'] }}; display: flex; align-items: center; justify-content: center;">
+                        <i data-lucide="{{ $statusConfig['icon'] }}" style="width: 24px; height: 24px; color: {{ $statusConfig['border'] }};"></i>
+                    </div>
+
+                    <!-- Основная информация -->
+                    <div>
+                        <div style="display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2);">
+                            <a href="{{ route('cabinet.my.requests.show', $request->id) }}" style="font-size: var(--text-lg); font-weight: 600; color: var(--primary-600); text-decoration: none;">
+                                {{ $request->request_number ?? $request->code }}
                             </a>
-                            @if($request->synced_to_main_db && $request->main_db_request_id)
-                            <a href="{{ route('cabinet.my.requests.report', $request->id) }}" style="color: #10b981; text-decoration: none; font-weight: 600; font-size: 0.875rem;">
-                                📊 Отчет
-                            </a>
-                            @endif
+                            <x-badge :type="$statusType" size="sm">
+                                {{ $statusText }}
+                            </x-badge>
                         </div>
-                    </td>
-                </tr>
-                @endforeach
-            </tbody>
-        </table>
+
+                        <h3 style="font-size: var(--text-base); font-weight: 500; margin-bottom: var(--space-3); color: var(--neutral-900);">
+                            {{ $request->title }}
+                        </h3>
+
+                        <div style="display: flex; gap: var(--space-6); flex-wrap: wrap;">
+                            <div style="display: flex; align-items: center; gap: var(--space-2);">
+                                <i data-lucide="layers" style="width: 16px; height: 16px; color: var(--neutral-500);"></i>
+                                <span style="font-size: var(--text-sm); color: var(--neutral-600);">
+                                    <strong>{{ $request->items_count }}</strong> позиций
+                                </span>
+                            </div>
+
+                            @if($request->balanceHold)
+                            <div style="display: flex; align-items: center; gap: var(--space-2);">
+                                <i data-lucide="wallet" style="width: 16px; height: 16px; color: var(--neutral-500);"></i>
+                                <span style="font-size: var(--text-sm); color: var(--neutral-600);">
+                                    @if($request->balanceHold->status === 'held')
+                                        Заморожено: <strong>{{ number_format($request->balanceHold->amount, 2) }} ₽</strong>
+                                    @elseif($request->balanceHold->status === 'charged')
+                                        Списано: <strong>{{ number_format($request->balanceHold->charges->sum('amount'), 2) }} ₽</strong>
+                                    @else
+                                        <strong>{{ number_format($request->balanceHold->amount, 2) }} ₽</strong>
+                                    @endif
+                                </span>
+                            </div>
+                            @endif
+
+                            <div style="display: flex; align-items: center; gap: var(--space-2);">
+                                <i data-lucide="calendar" style="width: 16px; height: 16px; color: var(--neutral-500);"></i>
+                                <span style="font-size: var(--text-sm); color: var(--neutral-600);">
+                                    {{ $request->created_at->format('d.m.Y H:i') }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Действия -->
+                    <div style="display: flex; gap: var(--space-2); align-items: center;">
+                        <x-button variant="secondary" size="sm" :href="route('cabinet.my.requests.show', $request->id)" icon="eye">
+                            Подробнее
+                        </x-button>
+
+                        @if($request->synced_to_main_db && $request->main_db_request_id)
+                        <x-button variant="accent" size="sm" :href="route('cabinet.my.requests.report', $request->id)" icon="bar-chart">
+                            Отчет
+                        </x-button>
+                        @endif
+                    </div>
+                </div>
+            </div>
+        </div>
+        @endforeach
     </div>
 
     @if($requests->hasPages())
-    <div style="margin-top: 1.5rem;">
+    <div style="margin-top: var(--space-6);">
         {{ $requests->links() }}
     </div>
     @endif
 
-    @else
-    <div class="card" style="text-align: center; padding: 3rem;">
-        <div style="font-size: 3rem; margin-bottom: 1rem;">📋</div>
-        <h2 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 0.5rem;">У вас пока нет заявок</h2>
-        <p style="color: #6b7280; margin-bottom: 1.5rem;">Создайте первую заявку для мониторинга позиций</p>
-        <a href="{{ route('cabinet.my.requests.create') }}" class="btn btn-primary">Создать заявку</a>
-    </div>
-    @endif
-</div>
+@else
+    <x-empty-state
+        icon="inbox"
+        title="У вас пока нет заявок"
+        description="Создайте первую заявку для мониторинга позиций"
+    >
+        <x-button variant="primary" :href="route('cabinet.my.requests.create')" icon="plus">
+            Создать заявку
+        </x-button>
+    </x-empty-state>
+@endif
+
+@push('scripts')
+<script>
+if (typeof lucide !== 'undefined') {
+    lucide.createIcons();
+}
+</script>
+@endpush
+
+@push('styles')
+<style>
+.request-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.request-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+</style>
+@endpush
 @endsection

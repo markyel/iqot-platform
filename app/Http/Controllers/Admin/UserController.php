@@ -27,7 +27,7 @@ class UserController extends Controller
             $query->where('is_admin', $request->get('is_admin') == 1);
         }
 
-        $users = $query->orderBy('created_at', 'desc')->paginate(20);
+        $users = $query->with('tariffs.tariffPlan')->orderBy('created_at', 'desc')->paginate(20);
 
         // Load purchase counts
         foreach ($users as $user) {
@@ -44,7 +44,24 @@ class UserController extends Controller
         $user->purchases_count = ItemPurchase::where('user_id', $user->id)->count();
         $user->purchases_sum = ItemPurchase::where('user_id', $user->id)->sum('amount');
 
-        return view('admin.users.show', compact('user'));
+        // Тариф и лимиты
+        $tariff = $user->getActiveTariff();
+        $limitsInfo = $tariff ? app(\App\Services\TariffService::class)->getUserLimitsInfo($user) : null;
+
+        // Статистика по заявкам
+        $requestsStats = [
+            'total' => $user->requests()->count(),
+            'draft' => $user->requests()->where('status', 'draft')->count(),
+            'pending' => $user->requests()->where('status', 'pending')->count(),
+            'completed' => $user->requests()->where('status', 'completed')->count(),
+            'cancelled' => $user->requests()->where('status', 'cancelled')->count(),
+        ];
+
+        // Статистика по отчетам
+        $reportAccessCount = \App\Models\ReportAccess::where('user_id', $user->id)->count();
+        $itemPurchasesCount = ItemPurchase::where('user_id', $user->id)->count();
+
+        return view('admin.users.show', compact('user', 'tariff', 'limitsInfo', 'requestsStats', 'reportAccessCount', 'itemPurchasesCount'));
     }
 
     public function updateBalance(Request $request, User $user)

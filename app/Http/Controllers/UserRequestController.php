@@ -6,6 +6,10 @@ use App\Services\N8nParseService;
 use App\Models\SystemSetting;
 use App\Models\Request as RequestModel;
 use App\Models\RequestItem;
+use App\Models\Category;
+use App\Models\ProductType;
+use App\Models\ApplicationDomain;
+use App\Models\ReportAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -32,12 +36,35 @@ class UserRequestController extends Controller
                 ->with('error', 'Для создания заявок необходимо настроить email-отправителя. Обратитесь к администратору для активации вашего аккаунта.');
         }
 
-        $pricePerItem = (float) SystemSetting::get('price_per_item', 50);
+        // Получаем информацию о тарифе и лимитах
+        $tariff = $user->getActiveTariff();
+        $limitsInfo = app(\App\Services\TariffService::class)->getUserLimitsInfo($user);
+
+        // Определяем цену за позицию с учетом лимитов
+        $pricePerItem = 0;
+        if ($tariff) {
+            // Если есть лимит и он исчерпан - берем цену сверх лимита
+            if ($limitsInfo['items_limit'] !== null && $limitsInfo['items_used'] >= $limitsInfo['items_limit']) {
+                $pricePerItem = (float) $tariff->tariffPlan->price_per_item_over_limit;
+            }
+            // Если лимит не исчерпан или безлимитный тариф - цена 0
+        } else {
+            // Нет тарифа - используем системную настройку
+            $pricePerItem = (float) SystemSetting::get('price_per_item', 50);
+        }
+
+        $categories = Category::getActiveForSelect();
+        $productTypes = ProductType::getActiveForSelect();
+        $applicationDomains = ApplicationDomain::getActiveForSelect();
 
         return view('requests.create', [
             'user' => $user,
             'pricePerItem' => $pricePerItem,
-            'availableBalance' => $user->available_balance
+            'availableBalance' => $user->available_balance,
+            'categories' => $categories,
+            'productTypes' => $productTypes,
+            'applicationDomains' => $applicationDomains,
+            'limitsInfo' => $limitsInfo,
         ]);
     }
 
@@ -98,13 +125,33 @@ class UserRequestController extends Controller
             ], 400);
         }
 
-        // Расчёт стоимости
-        $pricePerItem = (float) SystemSetting::get('price_per_item', 50);
+        // Расчёт стоимости с учетом тарифа
         $itemsCount = count($request->items);
-        $totalCost = $itemsCount * $pricePerItem;
+        $tariff = $user->getActiveTariff();
+        $totalCost = 0;
+
+        if ($tariff) {
+            $limitsInfo = app(\App\Services\TariffService::class)->getUserLimitsInfo($user);
+            $itemsUsed = $limitsInfo['items_used'] ?? 0;
+            $itemsLimit = $limitsInfo['items_limit'];
+
+            // Рассчитываем стоимость только за позиции сверх лимита
+            if ($itemsLimit !== null) {
+                $totalItems = $itemsUsed + $itemsCount;
+                if ($totalItems > $itemsLimit) {
+                    $itemsOverLimit = $totalItems - $itemsLimit;
+                    $totalCost = $itemsOverLimit * $tariff->tariffPlan->price_per_item_over_limit;
+                }
+            }
+            // Если безлимитный тариф - totalCost остается 0
+        } else {
+            // Нет тарифа - используем системную настройку
+            $pricePerItem = (float) SystemSetting::get('price_per_item', 50);
+            $totalCost = $itemsCount * $pricePerItem;
+        }
 
         // Проверка баланса
-        if (!$user->canAfford($totalCost)) {
+        if ($totalCost > 0 && !$user->canAfford($totalCost)) {
             return response()->json([
                 'success' => false,
                 'error' => 'insufficient_balance',
@@ -116,7 +163,7 @@ class UserRequestController extends Controller
 
         // Создаём заявку в транзакции
         try {
-            $result = DB::transaction(function () use ($user, $request, $itemsCount, $totalCost) {
+            $result = DB::transaction(function () use ($user, $request, $itemsCount, $totalCost, $tariff) {
 
                 // 1. Генерируем номер заявки
                 $requestNumber = 'REQ-' . date('Ymd') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
@@ -161,8 +208,15 @@ class UserRequestController extends Controller
                     ]);
                 }
 
-                // 5. Замораживаем средства
-                $user->holdBalance($totalCost, $newRequest->id, "Заморозка для заявки {$requestNumber}");
+                // 5. Замораживаем средства (если есть стоимость)
+                if ($totalCost > 0) {
+                    $user->holdBalance($totalCost, $newRequest->id, "Заморозка для заявки {$requestNumber}");
+                }
+
+                // 6. Увеличиваем счетчик использованных позиций в тарифе
+                if ($tariff) {
+                    $tariff->useItems($itemsCount);
+                }
 
                 return [
                     'request_id' => $newRequest->id,
@@ -214,7 +268,7 @@ class UserRequestController extends Controller
     public function index()
     {
         $requests = Auth::user()->requests()
-            ->with(['items', 'balanceHold'])
+            ->with(['items', 'balanceHold.charges'])
             ->orderByDesc('created_at')
             ->paginate(20);
 
@@ -257,8 +311,10 @@ class UserRequestController extends Controller
      */
     public function showReport($id)
     {
+        $user = Auth::user();
+
         // Получаем заявку пользователя
-        $request = Auth::user()->requests()->findOrFail($id);
+        $request = $user->requests()->findOrFail($id);
 
         // Проверяем, что заявка синхронизирована с главной БД
         if (!$request->synced_to_main_db || !$request->main_db_request_id) {
@@ -283,6 +339,38 @@ class UserRequestController extends Controller
         if (!$externalRequest) {
             return redirect()->route('cabinet.my.requests.show', $id)
                 ->with('error', 'Отчет не найден. Возможно, заявка еще обрабатывается.');
+        }
+
+        // Проверяем, открывал ли пользователь этот отчет ранее
+        $existingAccess = ReportAccess::where('user_id', $user->id)
+            ->where('request_id', $request->id)
+            ->first();
+
+        if (!$existingAccess) {
+            // Первый доступ к отчету - проверяем тариф и списываем средства
+            $tariff = $user->getActiveTariff();
+
+            if ($tariff) {
+                $reportPrice = $tariff->tariffPlan->getReportCost($user);
+
+                // Проверяем достаточно ли средств
+                if ($user->available_balance < $reportPrice) {
+                    return redirect()->route('cabinet.my.requests.show', $id)
+                        ->with('error', "Недостаточно средств для открытия отчета. Необходимо: {$reportPrice} ₽, доступно: {$user->available_balance} ₽");
+                }
+
+                // Списываем средства
+                $user->decrement('balance', $reportPrice);
+
+                // Создаем запись о доступе
+                ReportAccess::create([
+                    'user_id' => $user->id,
+                    'request_id' => $request->id,
+                    'report_number' => $request->request_number,
+                    'price' => $reportPrice,
+                    'accessed_at' => now(),
+                ]);
+            }
         }
 
         return view('requests.report', compact('externalRequest', 'request'));

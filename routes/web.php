@@ -46,6 +46,12 @@ Route::middleware(['auth', 'verified'])->prefix('cabinet')->name('cabinet.')->gr
     Route::get('/settings', [CabinetController::class, 'settings'])->name('settings');
     Route::put('/settings', [CabinetController::class, 'updateSettings'])->name('settings.update');
 
+    // Тарифы
+    Route::get('/tariff', [\App\Http\Controllers\TariffController::class, 'index'])->name('tariff.index');
+    Route::get('/tariff/transactions', [\App\Http\Controllers\TariffController::class, 'transactions'])->name('tariff.transactions');
+    Route::get('/tariff/limits-usage', [\App\Http\Controllers\TariffController::class, 'limitsUsage'])->name('tariff.limits-usage');
+    Route::post('/tariff/switch', [\App\Http\Controllers\TariffController::class, 'switch'])->name('tariff.switch');
+
     // Мониторинг позиций
     Route::get('/items', [\App\Http\Controllers\Cabinet\ItemController::class, 'index'])->name('items.index');
     Route::get('/items/{item}', [\App\Http\Controllers\Cabinet\ItemController::class, 'show'])->name('items.show');
@@ -151,6 +157,8 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
     Route::prefix('requests')->name('requests.')->group(function () {
         Route::get('/', [\App\Http\Controllers\Admin\RequestController::class, 'index'])->name('index');
         Route::get('/{id}', [\App\Http\Controllers\Admin\RequestController::class, 'show'])->name('show');
+        Route::get('/{id}/edit', [\App\Http\Controllers\Admin\RequestController::class, 'edit'])->name('edit');
+        Route::put('/{id}', [\App\Http\Controllers\Admin\RequestController::class, 'update'])->name('update');
         Route::post('/{id}/approve', [\App\Http\Controllers\Admin\RequestController::class, 'approve'])->name('approve');
         Route::post('/{id}/reject', [\App\Http\Controllers\Admin\RequestController::class, 'reject'])->name('reject');
         Route::get('/test-connection', [\App\Http\Controllers\Admin\RequestController::class, 'testConnection'])->name('test-connection');
@@ -186,6 +194,16 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
     // Настройки системы
     Route::get('/settings', [\App\Http\Controllers\Admin\SettingsController::class, 'index'])->name('settings.index');
     Route::post('/settings', [\App\Http\Controllers\Admin\SettingsController::class, 'update'])->name('settings.update');
+
+    // Управление тарифными планами
+    Route::prefix('tariff-plans')->name('tariff-plans.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\TariffPlanController::class, 'index'])->name('index');
+        Route::get('/create', [\App\Http\Controllers\Admin\TariffPlanController::class, 'create'])->name('create');
+        Route::post('/', [\App\Http\Controllers\Admin\TariffPlanController::class, 'store'])->name('store');
+        Route::get('/{id}/edit', [\App\Http\Controllers\Admin\TariffPlanController::class, 'edit'])->name('edit');
+        Route::put('/{id}', [\App\Http\Controllers\Admin\TariffPlanController::class, 'update'])->name('update');
+        Route::delete('/{id}', [\App\Http\Controllers\Admin\TariffPlanController::class, 'destroy'])->name('destroy');
+    });
 });
 
 // Filament админка доступна по /admin

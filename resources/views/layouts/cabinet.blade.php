@@ -349,6 +349,11 @@
                         <span class="sidebar-item-text">Поставщики</span>
                         <span class="sidebar-item-tooltip">Поставщики</span>
                     </a>
+                    <a href="{{ route('cabinet.tariff.index') }}" class="sidebar-item {{ request()->routeIs('cabinet.tariff*') ? 'active' : '' }}">
+                        <i data-lucide="credit-card" class="sidebar-item-icon"></i>
+                        <span class="sidebar-item-text">Мой тариф</span>
+                        <span class="sidebar-item-tooltip">Мой тариф</span>
+                    </a>
                     <a href="{{ route('cabinet.settings') }}" class="sidebar-item {{ request()->routeIs('cabinet.settings') ? 'active' : '' }}">
                         <i data-lucide="settings" class="sidebar-item-icon"></i>
                         <span class="sidebar-item-text">Настройки</span>
@@ -394,6 +399,11 @@
                             <span class="sidebar-item-text">Пользователи</span>
                             <span class="sidebar-item-tooltip">Пользователи</span>
                         </a>
+                        <a href="{{ route('admin.tariff-plans.index') }}" class="sidebar-item {{ request()->routeIs('admin.tariff-plans*') ? 'active' : '' }}">
+                            <i data-lucide="credit-card" class="sidebar-item-icon"></i>
+                            <span class="sidebar-item-text">Тарифные планы</span>
+                            <span class="sidebar-item-tooltip">Тарифные планы</span>
+                        </a>
                         <a href="{{ route('admin.settings.index') }}" class="sidebar-item {{ request()->routeIs('admin.settings*') ? 'active' : '' }}">
                             <i data-lucide="settings-2" class="sidebar-item-icon"></i>
                             <span class="sidebar-item-text">Настройки системы</span>
@@ -409,15 +419,92 @@
             </nav>
 
             <div class="sidebar-footer">
-                <div class="sidebar-user">
-                    <div class="sidebar-user-avatar">
-                        {{ strtoupper(substr(auth()->user()->name, 0, 1)) }}
+                @php
+                    $user = auth()->user();
+                @endphp
+
+                @if($user->is_admin)
+                    <div class="sidebar-tariff-card" style="cursor: default; background: linear-gradient(135deg, var(--danger-600), var(--warning-600)); border-color: var(--danger-400);">
+                        <div style="display: flex; align-items: center; gap: var(--space-3);">
+                            <div style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                                <i data-lucide="shield-check" style="width: 20px; height: 20px; color: var(--neutral-0);"></i>
+                            </div>
+                            <div class="sidebar-tariff-info">
+                                <div style="font-size: var(--text-sm); font-weight: 600; color: var(--neutral-0); margin-bottom: 2px;">
+                                    АДМИНИСТРАТОР
+                                </div>
+                                <div style="font-size: var(--text-xs); color: rgba(255, 255, 255, 0.8);">
+                                    {{ $user->name }}
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="sidebar-user-info">
-                        <div class="sidebar-user-name">{{ auth()->user()->name }}</div>
-                        <div class="sidebar-user-email">{{ auth()->user()->email }}</div>
+                @else
+                    @php
+                        $tariff = $user->getActiveTariff();
+                        $limitsInfo = app(\App\Services\TariffService::class)->getUserLimitsInfo($user);
+                    @endphp
+
+                    <a href="{{ route('cabinet.tariff.index') }}" class="sidebar-tariff-card">
+                    <div style="display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2);">
+                        <div style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: linear-gradient(135deg, var(--primary-500), var(--accent-500)); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                            <i data-lucide="zap" style="width: 20px; height: 20px; color: var(--neutral-0);"></i>
+                        </div>
+                        <div class="sidebar-tariff-info">
+                            <div style="font-size: var(--text-sm); font-weight: 600; color: var(--neutral-0); margin-bottom: 2px;">
+                                {{ $tariff ? $tariff->tariffPlan->name : 'Нет тарифа' }}
+                            </div>
+                            @if($tariff)
+                                <div style="font-size: var(--text-xs); color: var(--primary-200);">
+                                    @if($limitsInfo['items_limit'] !== null || $limitsInfo['reports_limit'] !== null)
+                                        @if($limitsInfo['items_limit'] !== null)
+                                            {{ $limitsInfo['items_remaining'] }} из {{ $limitsInfo['items_limit'] }} поз.
+                                        @endif
+                                        @if($limitsInfo['reports_limit'] !== null)
+                                            @if($limitsInfo['items_limit'] !== null) · @endif
+                                            {{ $limitsInfo['reports_remaining'] }} отч.
+                                        @endif
+                                    @else
+                                        Без включенных кредитов
+                                    @endif
+                                </div>
+                            @else
+                                <div style="font-size: var(--text-xs); color: var(--primary-200);">
+                                    Выберите тариф
+                                </div>
+                            @endif
+                        </div>
                     </div>
-                </div>
+
+                    @if($tariff && ($limitsInfo['items_limit'] !== null || $limitsInfo['reports_limit'] !== null))
+                    <div class="sidebar-tariff-progress">
+                        @if($limitsInfo['items_limit'] !== null)
+                        <div style="margin-bottom: var(--space-1);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <span style="font-size: var(--text-xs); color: var(--primary-200);">Позиции</span>
+                                <span style="font-size: var(--text-xs); color: var(--neutral-0); font-weight: 500;">{{ $limitsInfo['items_used'] }}/{{ $limitsInfo['items_limit'] }}</span>
+                            </div>
+                            <div style="height: 4px; background: rgba(255,255,255,0.15); border-radius: var(--radius-full); overflow: hidden;">
+                                <div style="height: 100%; background: linear-gradient(90deg, var(--success-400), var(--primary-400)); border-radius: var(--radius-full); width: {{ min(100, $limitsInfo['items_used_percentage'] ?? 0) }}%; transition: width 0.3s ease;"></div>
+                            </div>
+                        </div>
+                        @endif
+
+                        @if($limitsInfo['reports_limit'] !== null)
+                        <div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <span style="font-size: var(--text-xs); color: var(--primary-200);">Отчеты</span>
+                                <span style="font-size: var(--text-xs); color: var(--neutral-0); font-weight: 500;">{{ $limitsInfo['reports_used'] }}/{{ $limitsInfo['reports_limit'] }}</span>
+                            </div>
+                            <div style="height: 4px; background: rgba(255,255,255,0.15); border-radius: var(--radius-full); overflow: hidden;">
+                                <div style="height: 100%; background: linear-gradient(90deg, var(--accent-400), var(--warning-400)); border-radius: var(--radius-full); width: {{ min(100, $limitsInfo['reports_used_percentage'] ?? 0) }}%; transition: width 0.3s ease;"></div>
+                            </div>
+                        </div>
+                        @endif
+                    </div>
+                    @endif
+                    </a>
+                @endif
             </div>
         </aside>
 

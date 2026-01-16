@@ -4,6 +4,8 @@ namespace App\Providers;
 
 use App\Services\N8nSenderService;
 use App\Services\N8nParseService;
+use App\Models\ExternalRequestItem;
+use App\Observers\ExternalRequestItemObserver;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -21,6 +23,7 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        //
+        // Регистрируем Observer для отслеживания изменений в позициях заявок
+        ExternalRequestItem::observe(ExternalRequestItemObserver::class);
     }
 }

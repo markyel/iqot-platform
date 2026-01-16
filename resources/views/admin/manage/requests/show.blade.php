@@ -54,21 +54,16 @@
             </a>
         @endif
 
-        @if(in_array($request['status'] ?? '', ['draft', 'new']))
-            <a href="{{ route('admin.manage.requests.edit', $request['id']) }}" class="btn btn-primary btn-md">
-                <i data-lucide="edit" class="icon-sm"></i>
-                Редактировать
-            </a>
+        <a href="{{ route('admin.manage.requests.edit', $request['id']) }}" class="btn btn-primary btn-md">
+            <i data-lucide="edit" class="icon-sm"></i>
+            Редактировать
+        </a>
 
-            <button type="button" class="btn btn-danger btn-md" onclick="if(confirm('Вы уверены, что хотите отменить заявку?')) { document.getElementById('cancel-form').submit(); }">
+        @if(in_array($request['status'] ?? '', ['draft', 'new']))
+            <button type="button" class="btn btn-danger btn-md" onclick="openCancelModal()">
                 <i data-lucide="x-circle" class="icon-sm"></i>
                 Отменить заявку
             </button>
-
-            <form id="cancel-form" action="{{ route('admin.manage.requests.cancel', $request['id']) }}" method="POST" style="display: none;">
-                @csrf
-                <input type="hidden" name="reason" value="Отменена администратором">
-            </form>
         @endif
     </x-slot:actions>
 </x-page-header>
@@ -284,12 +279,66 @@
 </div>
 @endif
 
+<!-- Modal для отмены заявки -->
+<div id="cancelModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 500px;">
+        <div class="modal-header">
+            <h3 style="margin: 0; font-size: var(--text-lg); font-weight: 600;">Отмена заявки</h3>
+            <button type="button" class="modal-close" onclick="closeCancelModal()">
+                <i data-lucide="x" class="icon-sm"></i>
+            </button>
+        </div>
+        <form id="cancel-form" action="{{ route('admin.manage.requests.cancel', $request['id']) }}" method="POST">
+            @csrf
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="reason" class="label">Причина отмены</label>
+                    <textarea
+                        name="reason"
+                        id="reason"
+                        class="textarea"
+                        rows="4"
+                        placeholder="Укажите причину отмены заявки (необязательно)"
+                    ></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeCancelModal()">Отмена</button>
+                <button type="submit" class="btn btn-danger">Отменить заявку</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 @push('scripts')
 <script>
 // Reinitialize Lucide icons
 if (typeof lucide !== 'undefined') {
     lucide.createIcons();
 }
+
+function openCancelModal() {
+    document.getElementById('cancelModal').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    // Reinitialize icons in modal
+    setTimeout(() => {
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+    }, 50);
+}
+
+function closeCancelModal() {
+    document.getElementById('cancelModal').style.display = 'none';
+    document.body.style.overflow = '';
+}
+
+// Close modal on outside click
+document.getElementById('cancelModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeCancelModal();
+    }
+});
 </script>
 @endpush
 @endsection

@@ -70,6 +70,77 @@ class RequestController extends Controller
     }
 
     /**
+     * Форма редактирования заявки
+     */
+    public function edit($id)
+    {
+        $request = RequestModel::with(['user', 'items'])->findOrFail($id);
+
+        // Проверка что заявку можно редактировать
+        if ($request->synced_to_main_db) {
+            return redirect()
+                ->route('admin.requests.show', $id)
+                ->with('error', 'Нельзя редактировать заявку, которая уже отправлена в обработку');
+        }
+
+        return view('admin.requests.edit', compact('request'));
+    }
+
+    /**
+     * Обновление заявки
+     */
+    public function update($id, Request $request)
+    {
+        $requestModel = RequestModel::with(['user', 'items'])->findOrFail($id);
+
+        // Проверка что заявку можно редактировать
+        if ($requestModel->synced_to_main_db) {
+            return back()->with('error', 'Нельзя редактировать заявку, которая уже отправлена в обработку');
+        }
+
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'notes' => 'nullable|string|max:2000',
+            'items' => 'required|array|min:1',
+            'items.*.id' => 'required|exists:request_items,id',
+            'items.*.name' => 'required|string|max:500',
+            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.unit' => 'required|string|max:50',
+            'items.*.brand' => 'nullable|string|max:100',
+            'items.*.article' => 'nullable|string|max:100',
+            'items.*.category' => 'required|string|max:100',
+            'items.*.product_type_id' => 'nullable|integer',
+            'items.*.domain_id' => 'nullable|integer',
+            'items.*.description' => 'nullable|string|max:1000',
+        ]);
+
+        // Обновляем заявку
+        $requestModel->update([
+            'title' => $validated['title'],
+            'notes' => $validated['notes'],
+        ]);
+
+        // Обновляем позиции
+        foreach ($validated['items'] as $itemData) {
+            $requestModel->items()->where('id', $itemData['id'])->update([
+                'name' => $itemData['name'],
+                'quantity' => $itemData['quantity'],
+                'unit' => $itemData['unit'],
+                'brand' => $itemData['brand'] ?? null,
+                'article' => $itemData['article'] ?? null,
+                'category' => $itemData['category'],
+                'product_type_id' => !empty($itemData['product_type_id']) ? $itemData['product_type_id'] : null,
+                'domain_id' => !empty($itemData['domain_id']) ? $itemData['domain_id'] : null,
+                'description' => $itemData['description'] ?? null,
+            ]);
+        }
+
+        return redirect()
+            ->route('admin.requests.show', $id)
+            ->with('success', 'Заявка успешно обновлена');
+    }
+
+    /**
      * Одобрить заявку и отправить в работу (синхронизация в основную БД)
      */
     public function approve($id)
@@ -95,10 +166,8 @@ class RequestController extends Controller
         $result = $this->syncService->syncToMainDb($request);
 
         if ($result['success']) {
-            // Списываем средства с баланса (заморозка → списание)
-            if ($request->balanceHold && $request->balanceHold->status === 'held') {
-                $request->balanceHold->charge();
-            }
+            // Средства остаются замороженными до выполнения позиций (3+ предложения)
+            // Списание произойдет автоматически при получении достаточного количества предложений
 
             return back()->with('success', "Заявка #{$request->request_number} отправлена в обработку (ID в основной БД: {$result['main_request_id']})");
         }

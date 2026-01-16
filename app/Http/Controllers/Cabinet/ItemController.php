@@ -55,10 +55,16 @@ class ItemController extends Controller
     {
         $item->load(['request', 'offers.supplier']);
 
-        // Check if user has access (purchased or owns the request)
-        $hasPurchased = auth()->user()->hasAccessToItem($item);
+        $user = auth()->user();
 
-        $unlockPrice = Setting::get('item_unlock_price', 99);
+        // Check if user has access (purchased or owns the request)
+        $hasPurchased = $user->hasAccessToItem($item);
+
+        // Get unlock price from user's active tariff (respects limits)
+        $tariff = $user->getActiveTariff();
+        $unlockPrice = $tariff
+            ? $tariff->tariffPlan->getReportCost($user)
+            : (float) Setting::get('item_unlock_price', 99);
 
         // Get offers with received or processed status
         $offers = $item->offers()
@@ -72,22 +78,29 @@ class ItemController extends Controller
     public function purchase(Request $request, ExternalRequestItem $item)
     {
         $user = auth()->user();
-        $unlockPrice = (float) Setting::get('item_unlock_price', 99);
 
         // Check if user already has access (purchased or owns the request)
         if ($user->hasAccessToItem($item)) {
             return redirect()->back()->with('error', 'У вас уже есть доступ к этому отчету');
         }
 
-        // Check balance
-        if ($user->balance < $unlockPrice) {
+        // Get unlock price from user's active tariff (respects limits)
+        $tariff = $user->getActiveTariff();
+        $unlockPrice = $tariff
+            ? $tariff->tariffPlan->getReportCost($user)
+            : (float) Setting::get('item_unlock_price', 99);
+
+        // Check balance only if price > 0
+        if ($unlockPrice > 0 && $user->balance < $unlockPrice) {
             return redirect()->back()->with('error', 'Недостаточно средств на балансе');
         }
 
         DB::beginTransaction();
         try {
-            // Deduct balance
-            $user->decrement('balance', $unlockPrice);
+            // Deduct balance only if price > 0
+            if ($unlockPrice > 0) {
+                $user->decrement('balance', $unlockPrice);
+            }
 
             // Create purchase record
             ItemPurchase::create([
@@ -96,9 +109,18 @@ class ItemController extends Controller
                 'amount' => $unlockPrice,
             ]);
 
+            // Increment reports_used counter in user's tariff
+            if ($tariff) {
+                $tariff->useReport();
+            }
+
             DB::commit();
 
-            return redirect()->back()->with('success', 'Полный доступ к отчету получен');
+            if ($unlockPrice > 0) {
+                return redirect()->back()->with('success', "Полный доступ к отчету получен. Списано: {$unlockPrice} ₽");
+            } else {
+                return redirect()->back()->with('success', 'Полный доступ к отчету получен бесплатно (в пределах лимита тарифа)');
+            }
         } catch (\Exception $e) {
             DB::rollBack();
             return redirect()->back()->with('error', 'Произошла ошибка при обработке платежа');

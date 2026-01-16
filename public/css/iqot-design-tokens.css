@@ -949,6 +949,41 @@ body {
   flex: 1;
   padding: var(--space-4) var(--space-3);
   overflow-y: auto;
+  /* Firefox: скроллбар скрыт по умолчанию, виден при hover */
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.3s ease;
+}
+
+.sidebar-nav:hover {
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+/* Webkit (Chrome, Safari, Edge): изящный скроллбар */
+.sidebar-nav::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+  transition: background 0.3s ease;
+}
+
+.sidebar-nav:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb:active {
+  background: rgba(255, 255, 255, 0.5);
 }
 
 .sidebar-section {
@@ -1053,6 +1088,45 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Sidebar Tariff Card */
+.sidebar-tariff-card {
+  display: block;
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  text-decoration: none;
+  transition: all var(--duration-normal) var(--ease-in-out);
+}
+
+.sidebar-tariff-card:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.sidebar-tariff-info {
+  flex: 1;
+  min-width: 0;
+  transition: opacity 150ms ease, width 250ms ease;
+}
+
+.sidebar-tariff-progress {
+  transition: opacity 150ms ease, height 250ms ease;
+  overflow: hidden;
+}
+
+.sidebar.collapsed .sidebar-tariff-info,
+.sidebar.collapsed .sidebar-tariff-progress {
+  opacity: 0;
+  height: 0;
+  width: 0;
+  overflow: hidden;
 }
 
 

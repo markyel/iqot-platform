@@ -84,6 +84,112 @@ class User extends Authenticatable implements FilamentUser
     }
 
     /**
+     * Тарифы пользователя
+     */
+    public function tariffs(): HasMany
+    {
+        return $this->hasMany(UserTariff::class);
+    }
+
+    /**
+     * Активный тариф пользователя
+     */
+    public function activeTariff()
+    {
+        return $this->hasOne(UserTariff::class)->where('is_active', true)->latest();
+    }
+
+    /**
+     * Получить активный тариф пользователя
+     */
+    public function getActiveTariff(): ?UserTariff
+    {
+        return $this->tariffs()->where('is_active', true)->with('tariffPlan')->first();
+    }
+
+    /**
+     * Получить тарифный план пользователя
+     */
+    public function getTariffPlan(): ?TariffPlan
+    {
+        $activeTariff = $this->getActiveTariff();
+        return $activeTariff ? $activeTariff->tariffPlan : null;
+    }
+
+    /**
+     * Проверить, может ли пользователь создать заявку с указанным количеством позиций
+     */
+    public function canCreateRequestWithItems(int $itemsCount): bool
+    {
+        $activeTariff = $this->getActiveTariff();
+
+        if (!$activeTariff) {
+            return false; // Нет активного тарифа
+        }
+
+        return $activeTariff->canCreateRequest($itemsCount);
+    }
+
+    /**
+     * Рассчитать стоимость создания заявки с учетом тарифа
+     */
+    public function calculateRequestCostWithTariff(int $itemsCount): float
+    {
+        $activeTariff = $this->getActiveTariff();
+
+        if (!$activeTariff) {
+            // Если нет тарифа, используем старую логику (цена за позицию)
+            $pricePerItem = SystemSetting::get('price_per_item', 50);
+            return $itemsCount * $pricePerItem;
+        }
+
+        return $activeTariff->calculateRequestCost($itemsCount);
+    }
+
+    /**
+     * Назначить тариф пользователю
+     */
+    public function assignTariff(TariffPlan $tariffPlan): UserTariff
+    {
+        // Деактивируем все предыдущие тарифы
+        $this->tariffs()->where('is_active', true)->update(['is_active' => false]);
+
+        // Создаем новый активный тариф
+        return $this->tariffs()->create([
+            'tariff_plan_id' => $tariffPlan->id,
+            'started_at' => now(),
+            'expires_at' => $tariffPlan->monthly_price > 0 ? now()->addMonth() : null,
+            'is_active' => true,
+            'items_used' => 0,
+            'reports_used' => 0,
+        ]);
+    }
+
+    /**
+     * Переключить тариф пользователя
+     */
+    public function switchTariff(TariffPlan $newTariffPlan): UserTariff
+    {
+        $currentTariff = $this->getActiveTariff();
+
+        // Если есть текущий тариф, деактивируем его
+        if ($currentTariff) {
+            $currentTariff->deactivate();
+        }
+
+        // Списываем абонентскую плату с баланса, если тариф платный
+        if ($newTariffPlan->monthly_price > 0) {
+            if (!$this->canAfford($newTariffPlan->monthly_price)) {
+                throw new \Exception('Недостаточно средств на балансе для активации тарифа');
+            }
+
+            $this->decrement('balance', $newTariffPlan->monthly_price);
+        }
+
+        return $this->assignTariff($newTariffPlan);
+    }
+
+    /**
      * Доступный баланс (за вычетом замороженных средств)
      */
     public function getAvailableBalanceAttribute(): float
@@ -93,6 +199,16 @@ class User extends Authenticatable implements FilamentUser
             ->sum('amount');
 
         return (float) ($this->balance - $heldAmount);
+    }
+
+    /**
+     * Замороженный баланс
+     */
+    public function getHeldBalanceAttribute(): float
+    {
+        return (float) $this->balanceHolds()
+            ->where('status', 'held')
+            ->sum('amount');
     }
 
     /**

@@ -47,17 +47,21 @@
                 <th style="width: 60px;">ID</th>
                 <th>Пользователь</th>
                 <th>Компания</th>
+                <th style="width: 150px;">Тариф</th>
                 <th style="width: 100px;">Роль</th>
                 <th style="width: 80px;">Sender</th>
                 <th style="width: 120px;">Баланс</th>
                 <th style="width: 100px;">Покупок</th>
                 <th style="width: 120px;">Потрачено</th>
                 <th style="width: 150px;">Дата регистрации</th>
-                <th style="width: 120px;">Действия</th>
+                <th style="width: 180px;">Действия</th>
             </tr>
         </thead>
         <tbody>
             @forelse($users as $user)
+            @php
+                $activeTariff = $user->getActiveTariff();
+            @endphp
             <tr>
                 <td data-label="ID" style="color: var(--text-secondary); font-family: var(--font-mono);">{{ $user->id }}</td>
                 <td data-label="Пользователь">
@@ -72,6 +76,18 @@
                 </td>
                 <td data-label="Компания" style="color: var(--text-primary);">
                     {{ $user->company ?? '—' }}
+                </td>
+                <td data-label="Тариф">
+                    @if($activeTariff)
+                        <div style="font-weight: 600; color: var(--primary-600);">{{ $activeTariff->tariffPlan->name }}</div>
+                        @if($activeTariff->expires_at)
+                            <div style="font-size: 0.75rem; color: var(--text-secondary);">
+                                до {{ $activeTariff->expires_at->format('d.m.Y') }}
+                            </div>
+                        @endif
+                    @else
+                        <span style="color: var(--text-secondary);">—</span>
+                    @endif
                 </td>
                 <td data-label="Роль">
                     @if($user->is_admin)
@@ -100,10 +116,18 @@
                     {{ $user->created_at->format('d.m.Y') }}
                 </td>
                 <td data-label="Действия">
-                    <div style="display: flex; gap: var(--space-2);">
+                    <div style="display: flex; gap: var(--space-2); flex-wrap: wrap;">
+                        <x-button
+                            :href="route('admin.users.show', $user)"
+                            variant="primary"
+                            size="sm"
+                            icon="eye"
+                        >
+                            Подробнее
+                        </x-button>
                         <x-button
                             type="button"
-                            variant="primary"
+                            variant="accent"
                             size="sm"
                             icon="wallet"
                             onclick="openBalanceModal({{ $user->id }}, '{{ addslashes($user->name) }}', {{ $user->balance ?? 0 }})"
@@ -123,7 +147,7 @@
             </tr>
             @empty
             <tr>
-                <td colspan="10">
+                <td colspan="11">
                     <x-empty-state
                         icon="users"
                         title="Пользователи не найдены"
