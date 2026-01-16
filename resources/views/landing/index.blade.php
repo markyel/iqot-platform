@@ -2231,7 +2231,12 @@
                     <button class="lang-btn active" data-lang="ru">RU</button>
                     <button class="lang-btn" data-lang="en">EN</button>
                 </div>
-                <a href="#" class="btn btn-primary" data-demo-modal data-ru="Оставить заявку" data-en="Request Demo">Оставить заявку</a>
+                @auth
+                    <a href="{{ route('cabinet.dashboard') }}" class="btn btn-outline" data-ru="Личный кабинет" data-en="Dashboard">Личный кабинет</a>
+                @else
+                    <a href="{{ route('login') }}" class="btn btn-outline" data-ru="Войти" data-en="Sign In">Войти</a>
+                    <a href="{{ route('register') }}" class="btn btn-primary" data-ru="Регистрация" data-en="Sign Up">Регистрация</a>
+                @endauth
             </div>
             <button class="mobile-menu-btn">
                 <span></span>
