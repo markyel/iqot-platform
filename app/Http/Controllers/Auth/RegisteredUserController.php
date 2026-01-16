@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\TariffPlan;
+use App\Models\Setting;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -43,10 +45,38 @@ class RegisteredUserController extends Controller
             'password' => Hash::make($request->password),
         ]);
 
+        // Назначаем тариф по умолчанию
+        $this->assignDefaultTariff($user);
+
         event(new Registered($user));
 
         Auth::login($user);
 
         return redirect(route('cabinet.dashboard', absolute: false));
+    }
+
+    /**
+     * Назначение тарифа по умолчанию новому пользователю
+     */
+    private function assignDefaultTariff(User $user): void
+    {
+        // Получаем ID тарифа по умолчанию из настроек
+        $defaultTariffId = Setting::where('key', 'default_tariff_plan_id')->value('value');
+
+        if (!$defaultTariffId) {
+            // Если настройка не найдена, используем тариф "Старт"
+            $startTariff = TariffPlan::where('code', 'start')->first();
+            $defaultTariffId = $startTariff?->id;
+        }
+
+        if ($defaultTariffId) {
+            $user->tariffs()->create([
+                'tariff_plan_id' => $defaultTariffId,
+                'is_active' => true,
+                'started_at' => now(),
+                'items_used' => 0,
+                'reports_used' => 0,
+            ]);
+        }
     }
 }
