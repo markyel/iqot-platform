@@ -490,13 +490,10 @@ class ManageRequestController extends Controller
      */
     public function downloadPdfReport($id)
     {
-        // Находим готовый отчет по request_id из n8n
-        $report = Report::where('callback_url', route('api.webhooks.report-ready-pdf'))
+        // Находим готовый отчет по request_id
+        $report = Report::where('request_id', $id)
             ->where('status', 'ready')
             ->whereNotNull('pdf_content')
-            ->whereHas('request_id', function($query) use ($id) {
-                // Здесь нужно найти связь с n8n request
-            })
             ->first();
 
         if (!$report) {
