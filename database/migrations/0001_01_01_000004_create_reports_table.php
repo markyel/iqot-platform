@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('reports', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('request_id')->nullable()->constrained()->nullOnDelete();
+            $table->unsignedBigInteger('request_id')->nullable();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->string('code')->unique(); // RPT-20251216-0001
             $table->string('title');
