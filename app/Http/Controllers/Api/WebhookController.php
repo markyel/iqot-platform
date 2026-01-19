@@ -219,6 +219,8 @@ class WebhookController extends Controller
                     ['id' => $validated['report_id']],
                     [
                         'user_id' => $validated['user_id'],
+                        'code' => 'PDF-' . strtoupper(uniqid()),
+                        'title' => 'PDF отчет',
                         'status' => 'ready',
                         'file_path' => $path,
                         'pdf_content' => $validated['file']['content_base64'], // Сохраняем base64
