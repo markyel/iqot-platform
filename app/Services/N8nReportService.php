@@ -35,7 +35,7 @@ class N8nReportService
             'action' => 'generate_report',
             'user_id' => $userId,
             'request_ids' => $requestIds,
-            'callback_url' => $this->callbackBaseUrl . '/api/webhooks/report-ready-pdf',
+            'callback_url' => rtrim($this->callbackBaseUrl, '/') . '/api/webhooks/report-ready-pdf',
             'report_options' => $options,
         ]);
     }
