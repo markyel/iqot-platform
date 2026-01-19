@@ -113,6 +113,12 @@
                                     <i data-lucide="bar-chart-3" style="width: 12px; height: 12px; display: inline-block; vertical-align: middle;"></i>
                                     Отчетов: <strong>{{ $tariff->reports_limit ?? '∞' }}</strong>
                                 </div>
+                                @if($tariff->pdf_reports_enabled)
+                                <div style="margin-top: 4px; color: var(--color-success);">
+                                    <i data-lucide="file-down" style="width: 12px; height: 12px; display: inline-block; vertical-align: middle;"></i>
+                                    PDF отчеты
+                                </div>
+                                @endif
                             </div>
                         </td>
                         <td data-label="Сверх лимита">

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\N8nParseService;
+use App\Services\N8nReportService;
 use App\Models\SystemSetting;
 use App\Models\Request as RequestModel;
 use App\Models\RequestItem;
@@ -10,6 +11,7 @@ use App\Models\Category;
 use App\Models\ProductType;
 use App\Models\ApplicationDomain;
 use App\Models\ReportAccess;
+use App\Models\Report;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -17,10 +19,12 @@ use Illuminate\Support\Facades\DB;
 class UserRequestController extends Controller
 {
     private N8nParseService $parseService;
+    private N8nReportService $reportService;
 
-    public function __construct(N8nParseService $parseService)
+    public function __construct(N8nParseService $parseService, N8nReportService $reportService)
     {
         $this->parseService = $parseService;
+        $this->reportService = $reportService;
     }
 
     /**
@@ -374,5 +378,86 @@ class UserRequestController extends Controller
         }
 
         return view('requests.report', compact('externalRequest', 'request'));
+    }
+
+    /**
+     * Генерация PDF отчета по заявке
+     */
+    public function generatePdfReport($id)
+    {
+        $user = Auth::user();
+        $request = $user->requests()->findOrFail($id);
+
+        // Проверяем, что заявка синхронизирована с главной БД
+        if (!$request->synced_to_main_db || !$request->main_db_request_id) {
+            return back()->with('error', 'Генерация PDF доступна только для обработанных заявок.');
+        }
+
+        // Проверяем тарифный план
+        $tariff = $user->getActiveTariff();
+        if (!$tariff || !$tariff->tariffPlan->canGeneratePdfReports()) {
+            return back()->with('error', 'Генерация PDF отчетов не доступна в вашем тарифном плане.');
+        }
+
+        // Вызываем API генерации отчета
+        $result = $this->reportService->generateReport(
+            [$request->main_db_request_id],
+            $user->id,
+            [
+                'include_supplier_profiles' => true,
+                'include_price_comparison' => true,
+            ]
+        );
+
+        if (!($result['success'] ?? false)) {
+            return back()->with('error', $result['message'] ?? 'Ошибка при запуске генерации отчета.');
+        }
+
+        // Создаем запись о генерации отчета
+        $reportCode = 'PDF-' . date('Ymd') . '-' . str_pad($result['report_id'], 6, '0', STR_PAD_LEFT);
+
+        Report::create([
+            'id' => $result['report_id'],
+            'request_id' => $request->id,
+            'user_id' => $user->id,
+            'code' => $reportCode,
+            'title' => "PDF отчет по заявке {$request->request_number}",
+            'type' => 'single',
+            'report_type' => 'request',
+            'status' => 'generating',
+            'callback_url' => route('api.webhooks.report-ready-pdf'),
+        ]);
+
+        return back()->with('success', 'Генерация PDF отчета запущена. Вы получите уведомление когда отчет будет готов.');
+    }
+
+    /**
+     * Скачать PDF отчет
+     */
+    public function downloadPdfReport($id)
+    {
+        $user = Auth::user();
+        $request = $user->requests()->findOrFail($id);
+
+        // Находим готовый отчет
+        $report = Report::where('request_id', $request->id)
+            ->where('user_id', $user->id)
+            ->where('status', 'ready')
+            ->whereNotNull('pdf_content')
+            ->first();
+
+        if (!$report) {
+            return back()->with('error', 'PDF отчет не найден или еще не готов.');
+        }
+
+        // Проверяем срок истечения
+        if ($report->pdf_expires_at && $report->pdf_expires_at->isPast()) {
+            return back()->with('error', 'Срок действия PDF истек. Запустите генерацию повторно.');
+        }
+
+        // Отдаем PDF
+        return response($report->pdf_content)
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'attachment; filename="' . basename($report->file_path) . '"');
     }
 }

@@ -43,6 +43,7 @@ return [
         'sender_auth_token' => env('N8N_SENDER_AUTH_TOKEN'),
         'parse_webhook_url' => env('N8N_PARSE_WEBHOOK_URL', env('N8N_WEBHOOK_URL', 'https://liftway.app.n8n.cloud/webhook') . '/parse-request'),
         'parse_auth_token' => env('N8N_PARSE_AUTH_TOKEN'),
+        'report_auth_token' => env('N8N_REPORT_AUTH_TOKEN', env('N8N_AUTH_TOKEN')),
         'system_user_id' => env('N8N_SYSTEM_USER_ID', 1),
     ],
 

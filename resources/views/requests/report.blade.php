@@ -209,6 +209,43 @@
                 @endphp
                 <span class="status-badge {{ $statusClass }}">{{ $statusLabel }}</span>
             </div>
+            @php
+                $user = Auth::user();
+                $tariff = $user->getActiveTariff();
+                $canGeneratePdf = $tariff && $tariff->tariffPlan->canGeneratePdfReports();
+                $pdfReport = \App\Models\Report::where('request_id', $request->id)
+                    ->where('user_id', $user->id)
+                    ->whereNotNull('pdf_content')
+                    ->first();
+            @endphp
+            @if($canGeneratePdf)
+            <div style="display: flex; gap: 0.75rem; align-items: center;">
+                @if($pdfReport && $pdfReport->status === 'ready')
+                    @if($pdfReport->pdf_expires_at && $pdfReport->pdf_expires_at->isPast())
+                        <span style="color: #dc2626; font-size: 0.875rem;">PDF истек</span>
+                        <form action="{{ route('cabinet.my.requests.generate-pdf', $request->id) }}" method="POST" style="display: inline;">
+                            @csrf
+                            <button type="submit" style="background: #10b981; color: white; padding: 0.5rem 1rem; border-radius: 6px; border: none; font-weight: 600; cursor: pointer;">
+                                Сгенерировать PDF
+                            </button>
+                        </form>
+                    @else
+                        <a href="{{ route('cabinet.my.requests.download-pdf', $request->id) }}" style="background: #10b981; color: white; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; font-weight: 600;">
+                            Скачать PDF
+                        </a>
+                    @endif
+                @elseif($pdfReport && $pdfReport->status === 'generating')
+                    <span style="color: #f59e0b; font-size: 0.875rem;">Генерация PDF...</span>
+                @else
+                    <form action="{{ route('cabinet.my.requests.generate-pdf', $request->id) }}" method="POST" style="display: inline;">
+                        @csrf
+                        <button type="submit" style="background: #10b981; color: white; padding: 0.5rem 1rem; border-radius: 6px; border: none; font-weight: 600; cursor: pointer;">
+                            Сгенерировать PDF
+                        </button>
+                    </form>
+                @endif
+            </div>
+            @endif
         </div>
     </div>
 

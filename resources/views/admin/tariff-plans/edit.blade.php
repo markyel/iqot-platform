@@ -224,6 +224,28 @@
             </div>
         </div>
 
+        <!-- Дополнительные возможности -->
+        <div class="card" style="margin-bottom: var(--space-6);">
+            <div class="card-header">
+                <h2 class="card-title">Дополнительные возможности</h2>
+            </div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input
+                            type="checkbox"
+                            name="pdf_reports_enabled"
+                            class="checkbox"
+                            value="1"
+                            {{ old('pdf_reports_enabled', $tariffPlan->pdf_reports_enabled) ? 'checked' : '' }}
+                        >
+                        <span>Генерация PDF отчетов</span>
+                    </label>
+                    <small class="form-hint">Разрешить пользователям генерировать PDF версии отчетов по заявкам</small>
+                </div>
+            </div>
+        </div>
+
         <!-- Кнопки действий -->
         <div style="display: flex; gap: var(--space-3); justify-content: flex-end;">
             <x-button variant="secondary" type="button" :href="route('admin.tariff-plans.index')">

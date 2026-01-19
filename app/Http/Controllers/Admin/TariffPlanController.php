@@ -48,6 +48,7 @@ class TariffPlanController extends Controller
 
         // Checkbox отправляет значение только когда отмечен
         $validated['is_active'] = $request->has('is_active');
+        $validated['pdf_reports_enabled'] = $request->has('pdf_reports_enabled');
 
         TariffPlan::create($validated);
 
@@ -86,6 +87,7 @@ class TariffPlanController extends Controller
         ]);
 
         $validated['is_active'] = $request->has('is_active');
+        $validated['pdf_reports_enabled'] = $request->has('pdf_reports_enabled');
 
         $tariffPlan->update($validated);
 

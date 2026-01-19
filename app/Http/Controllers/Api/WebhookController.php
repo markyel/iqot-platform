@@ -9,6 +9,8 @@ use App\Models\Request;
 use App\Models\RequestItem;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request as HttpRequest;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 
 class WebhookController extends Controller
 {
@@ -176,5 +178,102 @@ class WebhookController extends Controller
         $request->suppliers()->updateExistingPivot($validated['supplier_id'], $pivotData);
 
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * PDF отчёт готов (от n8n Report Management API)
+     */
+    public function pdfReportReady(HttpRequest $httpRequest): JsonResponse
+    {
+        $validated = $httpRequest->validate([
+            'event' => 'required|string',
+            'report_id' => 'required|integer',
+            'status' => 'required|in:completed,failed',
+            'request_ids' => 'required|array',
+            'user_id' => 'required|integer',
+            'file' => 'nullable|array',
+            'file.filename' => 'nullable|string',
+            'file.content_base64' => 'nullable|string',
+            'file.mime_type' => 'nullable|string',
+            'file.size_bytes' => 'nullable|integer',
+            'metadata' => 'nullable|array',
+            'error' => 'nullable|string',
+            'message' => 'nullable|string',
+        ]);
+
+        try {
+            if ($validated['status'] === 'completed' && isset($validated['file'])) {
+                // Декодируем PDF
+                $pdfContent = base64_decode($validated['file']['content_base64']);
+                $filename = $validated['file']['filename'];
+
+                // Сохраняем PDF
+                $path = "reports/{$validated['user_id']}/{$filename}";
+                Storage::disk('local')->put($path, $pdfContent);
+
+                // Вычисляем срок истечения (7 дней)
+                $expiresAt = now()->addDays(7);
+
+                // Обновляем или создаём запись
+                $report = Report::updateOrCreate(
+                    ['id' => $validated['report_id']],
+                    [
+                        'user_id' => $validated['user_id'],
+                        'status' => 'ready',
+                        'file_path' => $path,
+                        'pdf_content' => $pdfContent,
+                        'pdf_expires_at' => $expiresAt,
+                        'items_count' => $validated['metadata']['items_total'] ?? null,
+                        'items_with_offers' => $validated['metadata']['items_with_offers'] ?? null,
+                        'suppliers_contacted' => $validated['metadata']['suppliers_responded'] ?? null,
+                        'suppliers_responded' => $validated['metadata']['suppliers_responded'] ?? null,
+                        'summary' => [
+                            'completion_percentage' => $validated['metadata']['completion_percentage'] ?? null,
+                            'requests_count' => $validated['metadata']['requests_count'] ?? null,
+                        ],
+                        'generated_at' => $validated['metadata']['generated_at'] ?? now(),
+                        'error_code' => null,
+                        'error_message' => null,
+                    ]
+                );
+
+                Log::info('PDF report ready', [
+                    'report_id' => $validated['report_id'],
+                    'user_id' => $validated['user_id'],
+                    'filename' => $filename,
+                ]);
+
+            } elseif ($validated['status'] === 'failed') {
+                // Сохраняем информацию об ошибке
+                $report = Report::updateOrCreate(
+                    ['id' => $validated['report_id']],
+                    [
+                        'user_id' => $validated['user_id'],
+                        'status' => 'error',
+                        'error_code' => $validated['error'] ?? 'UNKNOWN',
+                        'error_message' => $validated['message'] ?? 'Неизвестная ошибка',
+                    ]
+                );
+
+                Log::error('PDF report generation failed', [
+                    'report_id' => $validated['report_id'],
+                    'error' => $validated['error'] ?? 'UNKNOWN',
+                    'message' => $validated['message'] ?? null,
+                ]);
+            }
+
+            return response()->json(['received' => true]);
+
+        } catch (\Exception $e) {
+            Log::error('Error processing PDF report webhook', [
+                'report_id' => $validated['report_id'] ?? null,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'received' => false,
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 }

@@ -10,6 +10,8 @@ use App\Models\ApplicationDomain;
 use App\Services\N8nRequestService;
 use App\Services\N8nParseService;
 use App\Services\N8nQuestionsService;
+use App\Services\N8nReportService;
+use App\Models\Report;
 use Illuminate\Http\Request;
 
 class ManageRequestController extends Controller
@@ -17,12 +19,14 @@ class ManageRequestController extends Controller
     private N8nRequestService $n8nService;
     private N8nParseService $parseService;
     private N8nQuestionsService $questionsService;
+    private N8nReportService $reportService;
 
-    public function __construct(N8nRequestService $n8nService, N8nParseService $parseService, N8nQuestionsService $questionsService)
+    public function __construct(N8nRequestService $n8nService, N8nParseService $parseService, N8nQuestionsService $questionsService, N8nReportService $reportService)
     {
         $this->n8nService = $n8nService;
         $this->parseService = $parseService;
         $this->questionsService = $questionsService;
+        $this->reportService = $reportService;
     }
 
     /**
@@ -428,5 +432,84 @@ class ManageRequestController extends Controller
         $result = $this->parseService->parseRequest($validated['text']);
 
         return response()->json($result);
+    }
+
+    /**
+     * Генерация PDF отчета по заявке (для админа)
+     */
+    public function generatePdfReport($id)
+    {
+        // Получаем заявку из n8n
+        $result = $this->n8nService->getRequest($id);
+
+        // n8n возвращает массив с одним элементом
+        if (is_array($result) && isset($result[0])) {
+            $result = $result[0];
+        }
+
+        if (!($result['success'] ?? false) || !isset($result['request'])) {
+            return back()->with('error', 'Заявка не найдена');
+        }
+
+        $requestData = $result['request'];
+
+        // Вызываем API генерации отчета
+        $reportResult = $this->reportService->generateReport(
+            [$id],
+            auth()->id(),
+            [
+                'include_supplier_profiles' => true,
+                'include_price_comparison' => true,
+            ]
+        );
+
+        if (!($reportResult['success'] ?? false)) {
+            return back()->with('error', $reportResult['message'] ?? 'Ошибка при запуске генерации отчета.');
+        }
+
+        // Создаем запись о генерации отчета
+        $reportCode = 'PDF-' . date('Ymd') . '-' . str_pad($reportResult['report_id'], 6, '0', STR_PAD_LEFT);
+
+        Report::create([
+            'id' => $reportResult['report_id'],
+            'user_id' => auth()->id(),
+            'code' => $reportCode,
+            'title' => "PDF отчет по заявке {$requestData['request_number']}",
+            'type' => 'single',
+            'report_type' => 'request',
+            'status' => 'generating',
+            'callback_url' => route('api.webhooks.report-ready-pdf'),
+        ]);
+
+        return back()->with('success', 'Генерация PDF отчета запущена.');
+    }
+
+    /**
+     * Скачать PDF отчет (для админа)
+     */
+    public function downloadPdfReport($id)
+    {
+        // Находим готовый отчет по request_id из n8n
+        $report = Report::where('callback_url', route('api.webhooks.report-ready-pdf'))
+            ->where('status', 'ready')
+            ->whereNotNull('pdf_content')
+            ->whereHas('request_id', function($query) use ($id) {
+                // Здесь нужно найти связь с n8n request
+            })
+            ->first();
+
+        if (!$report) {
+            return back()->with('error', 'PDF отчет не найден или еще не готов.');
+        }
+
+        // Проверяем срок истечения
+        if ($report->pdf_expires_at && $report->pdf_expires_at->isPast()) {
+            return back()->with('error', 'Срок действия PDF истек. Запустите генерацию повторно.');
+        }
+
+        // Отдаем PDF
+        return response($report->pdf_content)
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'attachment; filename="' . basename($report->file_path) . '"');
     }
 }

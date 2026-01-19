@@ -1,0 +1,430 @@
+<?php $__env->startSection('title', 'Заявка ' . ($request['request_number'] ?? 'N/A')); ?>
+
+<?php $__env->startPush('styles'); ?>
+<style>
+    .info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: var(--space-6);
+    }
+
+    .info-item {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-1);
+    }
+
+    .info-label {
+        font-size: var(--text-xs);
+        text-transform: uppercase;
+        color: var(--neutral-500);
+        font-weight: 600;
+        letter-spacing: 0.05em;
+    }
+
+    .info-value {
+        color: var(--neutral-900);
+        font-size: var(--text-base);
+        font-weight: 500;
+    }
+</style>
+<?php $__env->stopPush(); ?>
+
+<?php $__env->startSection('content'); ?>
+<?php if (isset($component)) { $__componentOriginalf8d4ea307ab1e58d4e472a43c8548d8e = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginalf8d4ea307ab1e58d4e472a43c8548d8e = $attributes; } ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.page-header','data' => ['title' => 'Заявка '.e($request['request_number'] ?? 'N/A').'','description' => 'Детальная информация о заявке']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('page-header'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes(['title' => 'Заявка '.e($request['request_number'] ?? 'N/A').'','description' => 'Детальная информация о заявке']); ?>
+     <?php $__env->slot('actions', null, []); ?> 
+        <a href="<?php echo e(route('admin.manage.requests.index')); ?>" class="btn btn-secondary btn-md">
+            <i data-lucide="arrow-left" class="icon-sm"></i>
+            Назад к списку
+        </a>
+
+        <?php
+            $externalRequest = \App\Models\ExternalRequest::where('request_number', $request['request_number'] ?? '')->first();
+        ?>
+
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($externalRequest): ?>
+            <a href="<?php echo e(route('admin.manage.requests.report', $request['id'])); ?>" class="btn btn-accent btn-md">
+                <i data-lucide="bar-chart-3" class="icon-sm"></i>
+                Просмотреть отчет
+            </a>
+        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+
+        <a href="<?php echo e(route('admin.manage.requests.edit', $request['id'])); ?>" class="btn btn-primary btn-md">
+            <i data-lucide="edit" class="icon-sm"></i>
+            Редактировать
+        </a>
+
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(in_array($request['status'] ?? '', ['draft', 'new'])): ?>
+            <button type="button" class="btn btn-danger btn-md" onclick="openCancelModal()">
+                <i data-lucide="x-circle" class="icon-sm"></i>
+                Отменить заявку
+            </button>
+        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+     <?php $__env->endSlot(); ?>
+ <?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginalf8d4ea307ab1e58d4e472a43c8548d8e)): ?>
+<?php $attributes = $__attributesOriginalf8d4ea307ab1e58d4e472a43c8548d8e; ?>
+<?php unset($__attributesOriginalf8d4ea307ab1e58d4e472a43c8548d8e); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginalf8d4ea307ab1e58d4e472a43c8548d8e)): ?>
+<?php $component = $__componentOriginalf8d4ea307ab1e58d4e472a43c8548d8e; ?>
+<?php unset($__componentOriginalf8d4ea307ab1e58d4e472a43c8548d8e); ?>
+<?php endif; ?>
+
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(session('success')): ?>
+<div class="alert alert-success" style="margin-bottom: var(--space-6);">
+    <i data-lucide="check-circle" class="icon-sm"></i>
+    <strong><?php echo e(session('success')); ?></strong>
+</div>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(session('error')): ?>
+<div class="alert alert-error" style="margin-bottom: var(--space-6);">
+    <i data-lucide="alert-circle" class="icon-sm"></i>
+    <strong><?php echo e(session('error')); ?></strong>
+</div>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+
+<!-- Основная информация -->
+<div class="card" style="margin-bottom: var(--space-6);">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-3);">
+        <h3 style="margin: 0; font-size: var(--text-lg); font-weight: 600;">Основная информация</h3>
+        <?php if (isset($component)) { $__componentOriginal2ddbc40e602c342e508ac696e52f8719 = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginal2ddbc40e602c342e508ac696e52f8719 = $attributes; } ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.badge','data' => ['type' => $request['status'] ?? 'draft']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('badge'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes(['type' => \Illuminate\View\Compilers\BladeCompiler::sanitizeComponentAttribute($request['status'] ?? 'draft')]); ?>
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php switch($request['status'] ?? 'draft'):
+                case ('draft'): ?> Черновик <?php break; ?>
+                <?php case ('new'): ?> В очереди <?php break; ?>
+                <?php case ('active'): ?> Активна <?php break; ?>
+                <?php case ('queued_for_sending'): ?> В очереди на отправку <?php break; ?>
+                <?php case ('emails_sent'): ?> Письма отправлены <?php break; ?>
+                <?php case ('collecting'): ?> Сбор ответов <?php break; ?>
+                <?php case ('responses_received'): ?> Ответы получены <?php break; ?>
+                <?php case ('completed'): ?> Завершена <?php break; ?>
+                <?php case ('cancelled'): ?> Отменена <?php break; ?>
+                <?php default: ?> <?php echo e($request['status'] ?? '-'); ?>
+
+            <?php endswitch; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+         <?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginal2ddbc40e602c342e508ac696e52f8719)): ?>
+<?php $attributes = $__attributesOriginal2ddbc40e602c342e508ac696e52f8719; ?>
+<?php unset($__attributesOriginal2ddbc40e602c342e508ac696e52f8719); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginal2ddbc40e602c342e508ac696e52f8719)): ?>
+<?php $component = $__componentOriginal2ddbc40e602c342e508ac696e52f8719; ?>
+<?php unset($__componentOriginal2ddbc40e602c342e508ac696e52f8719); ?>
+<?php endif; ?>
+    </div>
+    <div class="card-body">
+        <div class="info-grid">
+            <div class="info-item">
+                <div class="info-label">Номер заявки</div>
+                <div class="info-value">
+                    <span class="text-code"><?php echo e($request['request_number'] ?? '-'); ?></span>
+                </div>
+            </div>
+
+            <div class="info-item">
+                <div class="info-label">Тип заявки</div>
+                <div class="info-value">
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($request['is_customer_request'] ?? false): ?>
+                        <?php if (isset($component)) { $__componentOriginal2ddbc40e602c342e508ac696e52f8719 = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginal2ddbc40e602c342e508ac696e52f8719 = $attributes; } ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.badge','data' => ['type' => 'primary']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('badge'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes(['type' => 'primary']); ?>Именная <?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginal2ddbc40e602c342e508ac696e52f8719)): ?>
+<?php $attributes = $__attributesOriginal2ddbc40e602c342e508ac696e52f8719; ?>
+<?php unset($__attributesOriginal2ddbc40e602c342e508ac696e52f8719); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginal2ddbc40e602c342e508ac696e52f8719)): ?>
+<?php $component = $__componentOriginal2ddbc40e602c342e508ac696e52f8719; ?>
+<?php unset($__componentOriginal2ddbc40e602c342e508ac696e52f8719); ?>
+<?php endif; ?>
+                    <?php else: ?>
+                        <?php if (isset($component)) { $__componentOriginal2ddbc40e602c342e508ac696e52f8719 = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginal2ddbc40e602c342e508ac696e52f8719 = $attributes; } ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.badge','data' => ['type' => 'default']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('badge'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes(['type' => 'default']); ?>Анонимная <?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginal2ddbc40e602c342e508ac696e52f8719)): ?>
+<?php $attributes = $__attributesOriginal2ddbc40e602c342e508ac696e52f8719; ?>
+<?php unset($__attributesOriginal2ddbc40e602c342e508ac696e52f8719); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginal2ddbc40e602c342e508ac696e52f8719)): ?>
+<?php $component = $__componentOriginal2ddbc40e602c342e508ac696e52f8719; ?>
+<?php unset($__componentOriginal2ddbc40e602c342e508ac696e52f8719); ?>
+<?php endif; ?>
+                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                </div>
+            </div>
+
+            <div class="info-item">
+                <div class="info-label">Дата создания</div>
+                <div class="info-value"><?php echo e(isset($request['created_at']) ? \Carbon\Carbon::parse($request['created_at'])->format('d.m.Y H:i') : '-'); ?></div>
+            </div>
+
+            <div class="info-item">
+                <div class="info-label">Последнее обновление</div>
+                <div class="info-value"><?php echo e(isset($request['updated_at']) ? \Carbon\Carbon::parse($request['updated_at'])->format('d.m.Y H:i') : '-'); ?></div>
+            </div>
+
+            <div class="info-item">
+                <div class="info-label">Заголовок</div>
+                <div class="info-value"><?php echo e($request['title'] ?? '-'); ?></div>
+            </div>
+
+            <div class="info-item">
+                <div class="info-label">Всего позиций</div>
+                <div class="info-value"><?php echo e($request['total_items'] ?? 0); ?></div>
+            </div>
+        </div>
+
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!empty($request['notes'])): ?>
+        <div style="margin-top: var(--space-6); padding-top: var(--space-6); border-top: 1px solid var(--neutral-200);">
+            <div class="info-label">Заметки</div>
+            <div class="info-value" style="white-space: pre-wrap; margin-top: var(--space-2);"><?php echo e($request['notes']); ?></div>
+        </div>
+        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    </div>
+</div>
+
+<!-- Данные клиента -->
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($request['is_customer_request'] ?? false): ?>
+<div class="card" style="margin-bottom: var(--space-6);">
+    <div class="card-header">
+        <h3 style="margin: 0; font-size: var(--text-lg); font-weight: 600;">
+            <i data-lucide="user" class="icon-sm" style="display: inline-block; vertical-align: middle; margin-right: var(--space-2);"></i>
+            Данные клиента
+        </h3>
+    </div>
+    <div class="card-body">
+        <div class="info-grid">
+            <div class="info-item">
+                <div class="info-label">Компания</div>
+                <div class="info-value"><?php echo e($request['customer_company'] ?? '-'); ?></div>
+            </div>
+
+            <div class="info-item">
+                <div class="info-label">Контактное лицо</div>
+                <div class="info-value"><?php echo e($request['customer_contact_person'] ?? '-'); ?></div>
+            </div>
+
+            <div class="info-item">
+                <div class="info-label">Email</div>
+                <div class="info-value"><?php echo e($request['customer_email'] ?? '-'); ?></div>
+            </div>
+
+            <div class="info-item">
+                <div class="info-label">Телефон</div>
+                <div class="info-value"><?php echo e($request['customer_phone'] ?? '-'); ?></div>
+            </div>
+
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!empty($request['client_organization_id'])): ?>
+            <div class="info-item">
+                <div class="info-label">ID организации</div>
+                <div class="info-value"><?php echo e($request['client_organization_id']); ?></div>
+            </div>
+            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+        </div>
+    </div>
+</div>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+
+<!-- Позиции заявки -->
+<div class="card" style="margin-bottom: var(--space-6);">
+    <div class="card-header">
+        <h3 style="margin: 0; font-size: var(--text-lg); font-weight: 600;">
+            <i data-lucide="package" class="icon-sm" style="display: inline-block; vertical-align: middle; margin-right: var(--space-2);"></i>
+            Позиции заявки (<?php echo e(count($request['items'] ?? [])); ?>)
+        </h3>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!empty($request['items']) && count($request['items']) > 0): ?>
+        <div class="table-container">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th style="width: 60px;">#</th>
+                        <th>Название</th>
+                        <th style="width: 150px;">Бренд</th>
+                        <th style="width: 150px;">Артикул</th>
+                        <th style="width: 100px;">Кол-во</th>
+                        <th style="width: 100px;">Ед. изм.</th>
+                        <th style="width: 180px;">Категория</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $request['items']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $index => $item): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                    <tr>
+                        <td data-label="#"><?php echo e($index + 1); ?></td>
+                        <td data-label="Название"><?php echo e($item['name'] ?? '-'); ?></td>
+                        <td data-label="Бренд"><?php echo e($item['brand'] ?? '-'); ?></td>
+                        <td data-label="Артикул"><span class="text-code"><?php echo e($item['article'] ?? '-'); ?></span></td>
+                        <td data-label="Кол-во"><?php echo e($item['quantity'] ?? 1); ?></td>
+                        <td data-label="Ед. изм."><?php echo e($item['unit'] ?? 'шт'); ?></td>
+                        <td data-label="Категория"><?php echo e($item['category'] ?? '-'); ?></td>
+                    </tr>
+                    <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php else: ?>
+        <?php if (isset($component)) { $__componentOriginal074a021b9d42f490272b5eefda63257c = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginal074a021b9d42f490272b5eefda63257c = $attributes; } ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.empty-state','data' => ['icon' => 'package','title' => 'Нет позиций','description' => 'В заявке пока нет ни одной позиции']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('empty-state'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes(['icon' => 'package','title' => 'Нет позиций','description' => 'В заявке пока нет ни одной позиции']); ?>
+<?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginal074a021b9d42f490272b5eefda63257c)): ?>
+<?php $attributes = $__attributesOriginal074a021b9d42f490272b5eefda63257c; ?>
+<?php unset($__attributesOriginal074a021b9d42f490272b5eefda63257c); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginal074a021b9d42f490272b5eefda63257c)): ?>
+<?php $component = $__componentOriginal074a021b9d42f490272b5eefda63257c; ?>
+<?php unset($__componentOriginal074a021b9d42f490272b5eefda63257c); ?>
+<?php endif; ?>
+        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    </div>
+</div>
+
+<!-- Информация о рассылке -->
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!in_array($request['status'] ?? '', ['draft', 'new'])): ?>
+<div class="card" style="margin-bottom: var(--space-6);">
+    <div class="card-header">
+        <h3 style="margin: 0; font-size: var(--text-lg); font-weight: 600;">
+            <i data-lucide="send" class="icon-sm" style="display: inline-block; vertical-align: middle; margin-right: var(--space-2);"></i>
+            Информация о рассылке
+        </h3>
+    </div>
+    <div class="card-body">
+        <div class="alert alert-info">
+            <i data-lucide="info" class="icon-sm"></i>
+            <div>
+                <strong>Статус:</strong>
+                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php switch($request['status'] ?? ''):
+                    case ('active'): ?> Активна <?php break; ?>
+                    <?php case ('queued_for_sending'): ?> В очереди на отправку <?php break; ?>
+                    <?php case ('emails_sent'): ?> Письма отправлены <?php break; ?>
+                    <?php case ('collecting'): ?> Сбор ответов <?php break; ?>
+                    <?php case ('responses_received'): ?> Ответы получены <?php break; ?>
+                    <?php case ('completed'): ?> Завершена <?php break; ?>
+                    <?php case ('cancelled'): ?> Отменена <?php break; ?>
+                    <?php default: ?> <?php echo e($request['status'] ?? '-'); ?>
+
+                <?php endswitch; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                <br><br>
+                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(in_array($request['status'] ?? '', ['active', 'queued_for_sending', 'emails_sent', 'collecting'])): ?>
+                    Заявка находится в процессе обработки. Рассылка поставщикам выполняется автоматически каждые 60 минут.
+                <?php elseif($request['status'] === 'completed'): ?>
+                    Заявка завершена. Все ответы собраны.
+                <?php elseif($request['status'] === 'cancelled'): ?>
+                    Заявка отменена.
+                <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+
+<!-- Modal для отмены заявки -->
+<div id="cancelModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 500px;">
+        <div class="modal-header">
+            <h3 style="margin: 0; font-size: var(--text-lg); font-weight: 600;">Отмена заявки</h3>
+            <button type="button" class="modal-close" onclick="closeCancelModal()">
+                <i data-lucide="x" class="icon-sm"></i>
+            </button>
+        </div>
+        <form id="cancel-form" action="<?php echo e(route('admin.manage.requests.cancel', $request['id'])); ?>" method="POST">
+            <?php echo csrf_field(); ?>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="reason" class="label">Причина отмены</label>
+                    <textarea
+                        name="reason"
+                        id="reason"
+                        class="textarea"
+                        rows="4"
+                        placeholder="Укажите причину отмены заявки (необязательно)"
+                    ></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeCancelModal()">Отмена</button>
+                <button type="submit" class="btn btn-danger">Отменить заявку</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<?php $__env->startPush('scripts'); ?>
+<script>
+// Reinitialize Lucide icons
+if (typeof lucide !== 'undefined') {
+    lucide.createIcons();
+}
+
+function openCancelModal() {
+    document.getElementById('cancelModal').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    // Reinitialize icons in modal
+    setTimeout(() => {
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+    }, 50);
+}
+
+function closeCancelModal() {
+    document.getElementById('cancelModal').style.display = 'none';
+    document.body.style.overflow = '';
+}
+
+// Close modal on outside click
+document.getElementById('cancelModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeCancelModal();
+    }
+});
+</script>
+<?php $__env->stopPush(); ?>
+<?php $__env->stopSection(); ?>
+
+<?php echo $__env->make('layouts.cabinet', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH C:\Users\Boag\PhpstormProjects\iqot-platform\resources\views/admin/manage/requests/show.blade.php ENDPATH**/ ?>

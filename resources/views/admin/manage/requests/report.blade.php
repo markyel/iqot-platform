@@ -5,10 +5,50 @@
 @section('content')
 <div style="max-width: 1600px; margin: 0 auto;">
     <div style="margin-bottom: var(--space-6);">
-        <a href="{{ route('admin.manage.requests.show', $externalRequest->id) }}" style="color: var(--primary-600); text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4);">
-            <i data-lucide="arrow-left" style="width: 1rem; height: 1rem;"></i>
-            Назад к заявке
-        </a>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
+            <a href="{{ route('admin.manage.requests.show', $externalRequest->id) }}" style="color: var(--primary-600); text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: var(--space-2);">
+                <i data-lucide="arrow-left" style="width: 1rem; height: 1rem;"></i>
+                Назад к заявке
+            </a>
+
+            @php
+                $pdfReport = \App\Models\Report::where('request_id', $externalRequest->id)
+                    ->whereNotNull('pdf_content')
+                    ->first();
+            @endphp
+            <div style="display: flex; gap: 0.75rem; align-items: center;">
+                @if($pdfReport && $pdfReport->status === 'ready')
+                    @if($pdfReport->pdf_expires_at && $pdfReport->pdf_expires_at->isPast())
+                        <span style="color: #dc2626; font-size: 0.875rem;">PDF истек</span>
+                        <form action="{{ route('admin.manage.requests.generate-pdf', $externalRequest->id) }}" method="POST" style="display: inline;">
+                            @csrf
+                            <button type="submit" style="background: var(--primary-600); color: white; border: none; padding: 0.5rem 1rem; border-radius: var(--radius-md); font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 0.5rem;">
+                                <i data-lucide="file-text" style="width: 1rem; height: 1rem;"></i>
+                                Сгенерировать PDF
+                            </button>
+                        </form>
+                    @else
+                        <a href="{{ route('admin.manage.requests.download-pdf', $externalRequest->id) }}" style="background: var(--success-600); color: white; text-decoration: none; padding: 0.5rem 1rem; border-radius: var(--radius-md); font-weight: 600; display: inline-flex; align-items: center; gap: 0.5rem;">
+                            <i data-lucide="download" style="width: 1rem; height: 1rem;"></i>
+                            Скачать PDF
+                        </a>
+                    @endif
+                @elseif($pdfReport && $pdfReport->status === 'generating')
+                    <span style="color: #f59e0b; font-size: 0.875rem; display: inline-flex; align-items: center; gap: 0.5rem;">
+                        <i data-lucide="loader-2" style="width: 1rem; height: 1rem; animation: spin 1s linear infinite;"></i>
+                        Генерация PDF...
+                    </span>
+                @else
+                    <form action="{{ route('admin.manage.requests.generate-pdf', $externalRequest->id) }}" method="POST" style="display: inline;">
+                        @csrf
+                        <button type="submit" style="background: var(--primary-600); color: white; border: none; padding: 0.5rem 1rem; border-radius: var(--radius-md); font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 0.5rem;">
+                            <i data-lucide="file-text" style="width: 1rem; height: 1rem;"></i>
+                            Сгенерировать PDF
+                        </button>
+                    </form>
+                @endif
+            </div>
+        </div>
         <div style="display: flex; justify-content: space-between; align-items: start; margin-top: var(--space-4);">
             <div>
                 <h1 style="font-size: 2rem; font-weight: 700; color: var(--neutral-900); margin-bottom: var(--space-2);">
@@ -316,5 +356,14 @@ if (typeof lucide !== 'undefined') {
     lucide.createIcons();
 }
 </script>
+@endpush
+
+@push('styles')
+<style>
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+</style>
 @endpush
 @endsection

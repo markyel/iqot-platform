@@ -29,6 +29,9 @@ Route::prefix('webhooks')->name('webhooks.')->group(function () {
     
     // Статус email-рассылки
     Route::post('/email-status', [WebhookController::class, 'emailStatus'])->name('email.status');
+
+    // PDF отчёт готов (от n8n Report Management API)
+    Route::post('/report-ready-pdf', [WebhookController::class, 'pdfReportReady'])->name('report.ready-pdf');
 });
 
 // Защищённые API роуты (требуют Sanctum токен)

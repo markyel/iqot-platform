@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IQOT Design System — Component Library</title>
+  
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <style>
+    /* Import design tokens inline for demo */
+    :root {
+      --primary-900: #0C1929;
+      --primary-800: #162D4D;
+      --primary-700: #1E3A5F;
+      --primary-600: #274B78;
+      --primary-500: #3366A0;
+      --primary-400: #5588C2;
+      --primary-300: #7FAAD8;
+      --primary-200: #B3CEE8;
+      --primary-100: #E6F0F8;
+      --primary-50:  #F5F9FC;
+      
+      --accent-700: #B84D00;
+      --accent-600: #E86100;
+      --accent-500: #FF7A1A;
+      --accent-400: #FF9547;
+      --accent-300: #FFB580;
+      --accent-200: #FFD4B3;
+      --accent-100: #FFF0E6;
+      
+      --neutral-950: #0F1114;
+      --neutral-900: #1A1D21;
+      --neutral-800: #2D3138;
+      --neutral-700: #404650;
+      --neutral-600: #545B68;
+      --neutral-500: #6B7280;
+      --neutral-400: #9CA3AF;
+      --neutral-300: #C4C9D2;
+      --neutral-200: #E2E5EA;
+      --neutral-100: #F3F4F6;
+      --neutral-50:  #F9FAFB;
+      --neutral-0:   #FFFFFF;
+      
+      --success-700: #15803D;
+      --success-600: #16A34A;
+      --success-500: #22C55E;
+      --success-200: #BBF7D0;
+      --success-100: #DCFCE7;
+      --success-50:  #F0FDF4;
+      
+      --warning-700: #B45309;
+      --warning-600: #D97706;
+      --warning-500: #F59E0B;
+      --warning-200: #FDE68A;
+      --warning-100: #FEF3C7;
+      --warning-50:  #FFFBEB;
+      
+      --error-700: #B91C1C;
+      --error-600: #DC2626;
+      --error-500: #EF4444;
+      --error-200: #FECACA;
+      --error-100: #FEE2E2;
+      --error-50:  #FEF2F2;
+      
+      --info-700: #0369A1;
+      --info-600: #0284C7;
+      --info-500: #0EA5E9;
+      --info-200: #BAE6FD;
+      --info-100: #E0F2FE;
+      --info-50:  #F0F9FF;
+      
+      --font-primary: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+      
+      --text-xs:   0.75rem;
+      --text-sm:   0.875rem;
+      --text-base: 1rem;
+      --text-lg:   1.125rem;
+      --text-xl:   1.25rem;
+      --text-2xl:  1.5rem;
+      --text-3xl:  1.875rem;
+      
+      --font-normal:   400;
+      --font-medium:   500;
+      --font-semibold: 600;
+      --font-bold:     700;
+      
+      --space-1:   0.25rem;
+      --space-2:   0.5rem;
+      --space-3:   0.75rem;
+      --space-4:   1rem;
+      --space-5:   1.25rem;
+      --space-6:   1.5rem;
+      --space-8:   2rem;
+      --space-10:  2.5rem;
+      --space-12:  3rem;
+      --space-16:  4rem;
+      
+      --radius-sm:   4px;
+      --radius-md:   6px;
+      --radius-lg:   8px;
+      --radius-xl:   12px;
+      --radius-full: 9999px;
+      
+      --shadow-sm:  0 1px 2px rgba(0, 0, 0, 0.05);
+      --shadow-md:  0 4px 6px rgba(0, 0, 0, 0.07);
+      --shadow-lg:  0 10px 15px rgba(0, 0, 0, 0.10);
+      
+      --duration-fast:   100ms;
+      --duration-normal: 150ms;
+      --duration-slow:   300ms;
+      --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+    
+    html {
+      font-size: 16px;
+      -webkit-font-smoothing: antialiased;
+    }
+    
+    body {
+      margin: 0;
+      font-family: var(--font-primary);
+      font-size: var(--text-base);
+      line-height: 1.5;
+      color: var(--neutral-700);
+      background: var(--neutral-100);
+    }
+    
+    /* Demo Layout */
+    .demo-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: var(--space-8);
+    }
+    
+    .demo-header {
+      text-align: center;
+      margin-bottom: var(--space-12);
+      padding: var(--space-10);
+      background: linear-gradient(135deg, var(--primary-900) 0%, var(--primary-700) 100%);
+      border-radius: var(--radius-xl);
+      color: var(--neutral-0);
+    }
+    
+    .demo-header h1 {
+      font-size: 2.5rem;
+      font-weight: var(--font-bold);
+      margin: 0 0 var(--space-2) 0;
+      letter-spacing: -0.02em;
+    }
+    
+    .demo-header p {
+      font-size: var(--text-lg);
+      color: var(--primary-200);
+      margin: 0;
+    }
+    
+    .demo-section {
+      margin-bottom: var(--space-10);
+    }
+    
+    .demo-section-title {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-bold);
+      color: var(--neutral-800);
+      margin: 0 0 var(--space-6) 0;
+      padding-bottom: var(--space-3);
+      border-bottom: 2px solid var(--neutral-200);
+    }
+    
+    .demo-subsection {
+      margin-bottom: var(--space-8);
+    }
+    
+    .demo-subsection-title {
+      font-size: var(--text-lg);
+      font-weight: var(--font-semibold);
+      color: var(--neutral-700);
+      margin: 0 0 var(--space-4) 0;
+    }
+    
+    .demo-grid {
+      display: grid;
+      gap: var(--space-4);
+    }
+    
+    .demo-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--space-3);
+    }
+    
+    .demo-card {
+      background: var(--neutral-0);
+      border: 1px solid var(--neutral-200);
+      border-radius: var(--radius-lg);
+      padding: var(--space-6);
+    }
+    
+    /* Color Palette Display */
+    .color-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+      gap: var(--space-3);
+    }
+    
+    .color-swatch {
+      aspect-ratio: 1;
+      border-radius: var(--radius-md);
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: var(--space-2);
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+    }
+    
+    .color-swatch.light-text { color: var(--neutral-0); }
+    .color-swatch.dark-text { color: var(--neutral-800); }
+    
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-2);
+      font-family: var(--font-primary);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      line-height: 1;
+      text-decoration: none;
+      white-space: nowrap;
+      cursor: pointer;
+      border: 1px solid transparent;
+      border-radius: var(--radius-md);
+      transition: all var(--duration-normal) var(--ease-in-out);
+    }
+    
+    .btn:focus-visible {
+      outline: 2px solid var(--primary-500);
+      outline-offset: 2px;
+    }
+    
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .btn-sm { height: 32px; padding: 0 var(--space-3); font-size: var(--text-xs); }
+    .btn-md { height: 40px; padding: 0 var(--space-4); }
+    .btn-lg { height: 48px; padding: 0 var(--space-6); font-size: var(--text-base); }
+    
+    .btn-primary { background: var(--primary-600); color: var(--neutral-0); }
+    .btn-primary:hover { background: var(--primary-700); }
+    
+    .btn-accent { background: var(--accent-600); color: var(--neutral-0); }
+    .btn-accent:hover { background: var(--accent-700); }
+    
+    .btn-secondary { background: var(--neutral-0); color: var(--neutral-700); border-color: var(--neutral-300); }
+    .btn-secondary:hover { background: var(--neutral-50); border-color: var(--neutral-400); }
+    
+    .btn-ghost { background: transparent; color: var(--neutral-600); }
+    .btn-ghost:hover { background: var(--neutral-100); color: var(--neutral-800); }
+    
+    .btn-danger { background: var(--error-600); color: var(--neutral-0); }
+    .btn-danger:hover { background: var(--error-700); }
+    
+    .btn-success { background: var(--success-600); color: var(--neutral-0); }
+    .btn-success:hover { background: var(--success-700); }
+    
+    /* Inputs */
+    .input {
+      width: 100%;
+      height: 40px;
+      padding: var(--space-2) var(--space-3);
+      font-family: var(--font-primary);
+      font-size: var(--text-sm);
+      color: var(--neutral-800);
+      background: var(--neutral-0);
+      border: 1px solid var(--neutral-300);
+      border-radius: var(--radius-md);
+      transition: all var(--duration-normal) var(--ease-in-out);
+    }
+    
+    .input::placeholder { color: var(--neutral-400); }
+    .input:hover { border-color: var(--neutral-400); }
+    .input:focus { outline: none; border-color: var(--primary-500); box-shadow: 0 0 0 3px var(--primary-100); }
+    
+    .input-error { border-color: var(--error-500); }
+    .input-error:focus { border-color: var(--error-500); box-shadow: 0 0 0 3px var(--error-100); }
+    
+    .form-group { display: flex; flex-direction: column; gap: var(--space-2); }
+    .form-label { font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--neutral-700); }
+    .form-label-required::after { content: '*'; color: var(--error-500); margin-left: var(--space-1); }
+    .form-hint { font-size: var(--text-xs); color: var(--neutral-500); }
+    .form-error { font-size: var(--text-xs); color: var(--error-600); }
+    
+    /* Badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: 2px 8px;
+      font-family: var(--font-primary);
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+      line-height: 1.5;
+      border-radius: var(--radius-full);
+      white-space: nowrap;
+    }
+    
+    .badge-draft { background: var(--neutral-100); color: var(--neutral-600); }
+    .badge-pending { background: var(--warning-100); color: var(--warning-700); }
+    .badge-in-progress { background: var(--info-100); color: var(--info-700); }
+    .badge-completed { background: var(--success-100); color: var(--success-700); }
+    .badge-cancelled { background: var(--error-100); color: var(--error-700); }
+    .badge-question-pending { background: var(--accent-100); color: var(--accent-700); }
+    
+    .badge-dot::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    
+    /* Cards */
+    .card {
+      background: var(--neutral-0);
+      border: 1px solid var(--neutral-200);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+    
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--space-4) var(--space-5);
+      border-bottom: 1px solid var(--neutral-200);
+    }
+    
+    .card-title {
+      font-size: var(--text-lg);
+      font-weight: var(--font-semibold);
+      color: var(--neutral-800);
+      margin: 0;
+    }
+    
+    .card-body { padding: var(--space-5); }
+    
+    .card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: var(--space-3);
+      padding: var(--space-4) var(--space-5);
+      background: var(--neutral-50);
+      border-top: 1px solid var(--neutral-200);
+    }
+    
+    .card-accent { border-left: 4px solid var(--accent-500); }
+    .card-success { border-left: 4px solid var(--success-500); background: var(--success-50); }
+    .card-warning { border-left: 4px solid var(--warning-500); background: var(--warning-50); }
+    
+    /* Alerts */
+    .alert {
+      display: flex;
+      gap: var(--space-3);
+      padding: var(--space-4);
+      border-radius: var(--radius-lg);
+      font-size: var(--text-sm);
+    }
+    
+    .alert-icon { flex-shrink: 0; width: 20px; height: 20px; }
+    .alert-content { flex: 1; }
+    .alert-title { font-weight: var(--font-semibold); margin-bottom: var(--space-1); }
+    
+    .alert-info { background: var(--info-50); border: 1px solid var(--info-200); color: var(--info-700); }
+    .alert-success { background: var(--success-50); border: 1px solid var(--success-200); color: var(--success-700); }
+    .alert-warning { background: var(--warning-50); border: 1px solid var(--warning-200); color: var(--warning-700); }
+    .alert-error { background: var(--error-50); border: 1px solid var(--error-200); color: var(--error-700); }
+    
+    /* Table */
+    .table-container {
+      overflow-x: auto;
+      border: 1px solid var(--neutral-200);
+      border-radius: var(--radius-lg);
+    }
+    
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--text-sm);
+    }
+    
+    .table th {
+      padding: var(--space-3) var(--space-4);
+      font-weight: var(--font-semibold);
+      text-align: left;
+      color: var(--neutral-600);
+      background: var(--neutral-50);
+      border-bottom: 1px solid var(--neutral-200);
+      white-space: nowrap;
+    }
+    
+    .table td {
+      padding: var(--space-3) var(--space-4);
+      color: var(--neutral-700);
+      border-bottom: 1px solid var(--neutral-100);
+      vertical-align: middle;
+    }
+    
+    .table tbody tr:hover { background: var(--neutral-50); }
+    .table tbody tr:last-child td { border-bottom: none; }
+    
+    .table-cell-mono {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      color: var(--primary-700);
+    }
+    
+    .table-cell-price {
+      font-family: var(--font-mono);
+      font-weight: var(--font-semibold);
+      text-align: right;
+    }
+    
+    .table-cell-actions { text-align: right; }
+    
+    /* Stats */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: var(--space-4);
+    }
+    
+    .stat-card {
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+      padding: var(--space-5);
+      background: var(--neutral-0);
+      border: 1px solid var(--neutral-200);
+      border-radius: var(--radius-lg);
+    }
+    
+    .stat-icon {
+      width: 48px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--radius-lg);
+      flex-shrink: 0;
+    }
+    
+    .stat-icon-primary { background: var(--primary-100); color: var(--primary-600); }
+    .stat-icon-accent { background: var(--accent-100); color: var(--accent-600); }
+    .stat-icon-success { background: var(--success-100); color: var(--success-600); }
+    
+    .stat-value {
+      font-family: var(--font-mono);
+      font-size: var(--text-2xl);
+      font-weight: var(--font-bold);
+      color: var(--neutral-900);
+      line-height: 1;
+    }
+    
+    .stat-label {
+      font-size: var(--text-sm);
+      color: var(--neutral-500);
+      margin-top: var(--space-1);
+    }
+    
+    /* Question Card */
+    .question-card {
+      background: var(--neutral-0);
+      border: 1px solid var(--neutral-200);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+    
+    .question-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-4);
+      background: var(--neutral-50);
+      border-bottom: 1px solid var(--neutral-200);
+    }
+    
+    .question-meta {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      font-size: var(--text-sm);
+      color: var(--neutral-600);
+    }
+    
+    .question-separator { color: var(--neutral-300); }
+    .question-item { font-weight: var(--font-medium); }
+    .question-body { padding: var(--space-5); }
+    
+    .question-text {
+      font-size: var(--text-base);
+      color: var(--neutral-800);
+      line-height: 1.625;
+      margin: 0 0 var(--space-4) 0;
+    }
+    
+    .question-suppliers {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+    }
+    
+    .supplier-tag {
+      padding: var(--space-1) var(--space-2);
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+      color: var(--primary-700);
+      background: var(--primary-50);
+      border-radius: var(--radius-sm);
+    }
+    
+    .question-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-4);
+      border-top: 1px solid var(--neutral-100);
+    }
+    
+    .question-time { font-size: var(--text-sm); color: var(--neutral-500); }
+    .question-actions { display: flex; gap: var(--space-2); }
+    
+    /* Text Code */
+    .text-code {
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--primary-700);
+      background: var(--primary-50);
+      padding: 0.125rem 0.375rem;
+      border-radius: var(--radius-sm);
+    }
+    
+    /* Typography Demo */
+    .typo-demo {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-4);
+    }
+    
+    .typo-item {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-6);
+    }
+    
+    .typo-label {
+      flex-shrink: 0;
+      width: 120px;
+      font-size: var(--text-xs);
+      color: var(--neutral-400);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+    /* Textarea */
+    .textarea {
+      min-height: 100px;
+      resize: vertical;
+      line-height: 1.5;
+      padding: var(--space-3);
+    }
+    
+    /* Select */
+    .select {
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 40px;
+    }
+  </style>
+</head>
+<body>
+  <div class="demo-container">
+    
+    <!-- Header -->
+    <header class="demo-header">
+      <h1>IQOT Design System</h1>
+      <p>Компонентная библиотека для личного кабинета и админки</p>
+    </header>
+    
+    <!-- Colors -->
+    <section class="demo-section">
+      <h2 class="demo-section-title">Цветовая палитра</h2>
+      
+      <div class="demo-subsection">
+        <h3 class="demo-subsection-title">Primary — Индустриальный синий</h3>
+        <div class="color-grid">
+          <div class="color-swatch light-text" style="background: var(--primary-900)">900</div>
+          <div class="color-swatch light-text" style="background: var(--primary-800)">800</div>
+          <div class="color-swatch light-text" style="background: var(--primary-700)">700</div>
+          <div class="color-swatch light-text" style="background: var(--primary-600)">600 ●</div>
+          <div class="color-swatch light-text" style="background: var(--primary-500)">500</div>
+          <div class="color-swatch dark-text" style="background: var(--primary-400)">400</div>
+          <div class="color-swatch dark-text" style="background: var(--primary-300)">300</div>
+          <div class="color-swatch dark-text" style="background: var(--primary-200)">200</div>
+          <div class="color-swatch dark-text" style="background: var(--primary-100)">100</div>
+          <div class="color-swatch dark-text" style="background: var(--primary-50); border: 1px solid var(--neutral-200)">50</div>
+        </div>
+      </div>
+      
+      <div class="demo-subsection">
+        <h3 class="demo-subsection-title">Accent — Индустриальный оранжевый</h3>
+        <div class="color-grid">
+          <div class="color-swatch light-text" style="background: var(--accent-700)">700</div>
+          <div class="color-swatch light-text" style="background: var(--accent-600)">600 ●</div>
+          <div class="color-swatch dark-text" style="background: var(--accent-500)">500</div>
+          <div class="color-swatch dark-text" style="background: var(--accent-400)">400</div>
+          <div class="color-swatch dark-text" style="background: var(--accent-300)">300</div>
+          <div class="color-swatch dark-text" style="background: var(--accent-200)">200</div>
+          <div class="color-swatch dark-text" style="background: var(--accent-100)">100</div>
+        </div>
+      </div>
+      
+      <div class="demo-subsection">
+        <h3 class="demo-subsection-title">Semantic — Состояния</h3>
+        <div class="demo-grid" style="grid-template-columns: repeat(4, 1fr);">
+          <div>
+            <div style="font-size: var(--text-sm); color: var(--neutral-500); margin-bottom: var(--space-2);">Success</div>
+            <div class="color-grid" style="grid-template-columns: repeat(3, 1fr);">
+              <div class="color-swatch light-text" style="background: var(--success-600); font-size: 10px;">600</div>
+              <div class="color-swatch dark-text" style="background: var(--success-100); font-size: 10px;">100</div>
+              <div class="color-swatch dark-text" style="background: var(--success-50); font-size: 10px; border: 1px solid var(--neutral-200)">50</div>
+            </div>
+          </div>
+          <div>
+            <div style="font-size: var(--text-sm); color: var(--neutral-500); margin-bottom: var(--space-2);">Warning</div>
+            <div class="color-grid" style="grid-template-columns: repeat(3, 1fr);">
+              <div class="color-swatch light-text" style="background: var(--warning-600); font-size: 10px;">600</div>
+              <div class="color-swatch dark-text" style="background: var(--warning-100); font-size: 10px;">100</div>
+              <div class="color-swatch dark-text" style="background: var(--warning-50); font-size: 10px; border: 1px solid var(--neutral-200)">50</div>
+            </div>
+          </div>
+          <div>
+            <div style="font-size: var(--text-sm); color: var(--neutral-500); margin-bottom: var(--space-2);">Error</div>
+            <div class="color-grid" style="grid-template-columns: repeat(3, 1fr);">
+              <div class="color-swatch light-text" style="background: var(--error-600); font-size: 10px;">600</div>
+              <div class="color-swatch dark-text" style="background: var(--error-100); font-size: 10px;">100</div>
+              <div class="color-swatch dark-text" style="background: var(--error-50); font-size: 10px; border: 1px solid var(--neutral-200)">50</div>
+            </div>
+          </div>
+          <div>
+            <div style="font-size: var(--text-sm); color: var(--neutral-500); margin-bottom: var(--space-2);">Info</div>
+            <div class="color-grid" style="grid-template-columns: repeat(3, 1fr);">
+              <div class="color-swatch light-text" style="background: var(--info-600); font-size: 10px;">600</div>
+              <div class="color-swatch dark-text" style="background: var(--info-100); font-size: 10px;">100</div>
+              <div class="color-swatch dark-text" style="background: var(--info-50); font-size: 10px; border: 1px solid var(--neutral-200)">50</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    
+    <!-- Typography -->
+    <section class="demo-section">
+      <h2 class="demo-section-title">Типографика</h2>
+      
+      <div class="demo-card">
+        <div class="typo-demo">
+          <div class="typo-item">
+            <span class="typo-label">heading-page</span>
+            <span style="font-size: var(--text-3xl); font-weight: var(--font-bold); color: var(--neutral-900); letter-spacing: -0.025em;">Активные заявки</span>
+          </div>
+          <div class="typo-item">
+            <span class="typo-label">heading-section</span>
+            <span style="font-size: var(--text-2xl); font-weight: var(--font-semibold); color: var(--neutral-800);">Список поставщиков</span>
+          </div>
+          <div class="typo-item">
+            <span class="typo-label">heading-card</span>
+            <span style="font-size: var(--text-xl); font-weight: var(--font-semibold); color: var(--neutral-800);">Детали заявки</span>
+          </div>
+          <div class="typo-item">
+            <span class="typo-label">text-body</span>
+            <span style="font-size: var(--text-base); color: var(--neutral-700);">Преобразователь частоты для лифтового оборудования</span>
+          </div>
+          <div class="typo-item">
+            <span class="typo-label">text-secondary</span>
+            <span style="font-size: var(--text-sm); color: var(--neutral-500);">Добавлено 12 января 2026</span>
+          </div>
+          <div class="typo-item">
+            <span class="typo-label">text-caption</span>
+            <span style="font-size: var(--text-xs); font-weight: var(--font-medium); color: var(--neutral-400); text-transform: uppercase; letter-spacing: 0.05em;">Статус заявки</span>
+          </div>
+          <div class="typo-item">
+            <span class="typo-label">text-code</span>
+            <span class="text-code">REQ-20260112-7348</span>
+          </div>
+          <div class="typo-item">
+            <span class="typo-label">text-mono</span>
+            <span style="font-family: var(--font-mono); font-size: var(--text-sm);">FRN18.5LM1S-4EA</span>
+          </div>
+          <div class="typo-item">
+            <span class="typo-label">text-price</span>
+            <span style="font-family: var(--font-mono); font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--neutral-900);">125 000 <span style="font-size: var(--text-sm); font-weight: var(--font-normal); color: var(--neutral-500);">₽</span></span>
+          </div>
+        </div>
+      </div>
+    </section>
+    
+    <!-- Buttons -->
+    <section class="demo-section">
+      <h2 class="demo-section-title">Кнопки</h2>
+      
+      <div class="demo-subsection">
+        <h3 class="demo-subsection-title">Варианты</h3>
+        <div class="demo-row">
+          <button class="btn btn-accent btn-md">
+            <i data-lucide="plus" style="width: 18px; height: 18px;"></i>
+            Новая заявка
+          </button>
+          <button class="btn btn-primary btn-md">
+            <i data-lucide="send" style="width: 18px; height: 18px;"></i>
+            Отправить
+          </button>
+          <button class="btn btn-secondary btn-md">
+            <i data-lucide="filter" style="width: 18px; height: 18px;"></i>
+            Фильтр
+          </button>
+          <button class="btn btn-ghost btn-md">
+            <i data-lucide="pencil" style="width: 18px; height: 18px;"></i>
+            Редактировать
+          </button>
+          <button class="btn btn-danger btn-md">
+            <i data-lucide="trash-2" style="width: 18px; height: 18px;"></i>
+            Удалить
+          </button>
+          <button class="btn btn-success btn-md">
+            <i data-lucide="check" style="width: 18px; height: 18px;"></i>
+            Подтвердить
+          </button>
+        </div>
+      </div>
+      
+      <div class="demo-subsection">
+        <h3 class="demo-subsection-title">Размеры</h3>
+        <div class="demo-row">
+          <button class="btn btn-primary btn-sm">Small</button>
+          <button class="btn btn-primary btn-md">Medium</button>
+          <button class="btn btn-primary btn-lg">Large</button>
+          <button class="btn btn-primary btn-md" disabled>Disabled</button>
+        </div>
+      </div>
+    </section>
+    
+    <!-- Inputs -->
+    <section class="demo-section">
+      <h2 class="demo-section-title">Поля ввода</h2>
+      
+      <div class="demo-card">
+        <div class="demo-grid" style="grid-template-columns: repeat(2, 1fr); gap: var(--space-6);">
+          <div class="form-group">
+            <label class="form-label form-label-required">Наименование товара</label>
+            <input type="text" class="input" placeholder="Введите наименование">
+            <span class="form-hint">Например: Преобразователь частоты Fuji Electric</span>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Артикул</label>
+            <input type="text" class="input" value="FRN18.5LM1S-4EA" style="font-family: var(--font-mono);">
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Email (с ошибкой)</label>
+            <input type="email" class="input input-error" value="invalid-email">
+            <span class="form-error">Введите корректный email адрес</span>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Категория</label>
+            <select class="input select">
+              <option>Выберите категорию</option>
+              <option>Частотные преобразователи</option>
+              <option>Контроллеры</option>
+              <option>Двери лифта</option>
+            </select>
+          </div>
+          
+          <div class="form-group" style="grid-column: span 2;">
+            <label class="form-label">Описание</label>
+            <textarea class="input textarea" placeholder="Опишите требования к товару..."></textarea>
+          </div>
+        </div>
+      </div>
+    </section>
+    
+    <!-- Badges -->
+    <section class="demo-section">
+      <h2 class="demo-section-title">Badges (метки)</h2>
+      
+      <div class="demo-subsection">
+        <h3 class="demo-subsection-title">Статусы заявок</h3>
+        <div class="demo-row">
+          <span class="badge badge-draft">Черновик</span>
+          <span class="badge badge-pending">Ожидает</span>
+          <span class="badge badge-in-progress">В работе</span>
+          <span class="badge badge-completed">Завершена</span>
+          <span class="badge badge-cancelled">Отменена</span>
+        </div>
+      </div>
+      
+      <div class="demo-subsection">
+        <h3 class="demo-subsection-title">С индикатором</h3>
+        <div class="demo-row">
+          <span class="badge badge-dot badge-in-progress">В работе</span>
+          <span class="badge badge-dot badge-question-pending">3 поставщика</span>
+          <span class="badge badge-dot badge-completed">Ответ получен</span>
+        </div>
+      </div>
+    </section>
+    
+    <!-- Alerts -->
+    <section class="demo-section">
+      <h2 class="demo-section-title">Уведомления</h2>
+      
+      <div class="demo-grid" style="gap: var(--space-4);">
+        <div class="alert alert-info">
+          <i data-lucide="info" class="alert-icon"></i>
+          <div class="alert-content">
+            <div class="alert-title">Информация</div>
+            Заявка отправлена 12 поставщикам. Ожидайте ответы в течение 24-48 часов.
+          </div>
+        </div>
+        
+        <div class="alert alert-success">
+          <i data-lucide="check-circle" class="alert-icon"></i>
+          <div class="alert-content">
+            <div class="alert-title">Успешно</div>
+            Ответ отправлен 3 поставщикам.
+          </div>
+        </div>
+        
+        <div class="alert alert-warning">
+          <i data-lucide="alert-triangle" class="alert-icon"></i>
+          <div class="alert-content">
+            <div class="alert-title">Внимание</div>
+            У вас 5 неотвеченных вопросов от поставщиков.
+          </div>
+        </div>
+        
+        <div class="alert alert-error">
+          <i data-lucide="x-circle" class="alert-icon"></i>
+          <div class="alert-content">
+            <div class="alert-title">Ошибка</div>
+            Не удалось отправить email. Проверьте настройки почты.
+          </div>
+        </div>
+      </div>
+    </section>
+    
+    <!-- Stats -->
+    <section class="demo-section">
+      <h2 class="demo-section-title">Статистика</h2>
+      
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon stat-icon-primary">
+            <i data-lucide="file-text" style="width: 24px; height: 24px;"></i>
+          </div>
+          <div>
+            <div class="stat-value">24</div>
+            <div class="stat-label">Активные заявки</div>
+          </div>
+        </div>
+        
+        <div class="stat-card">
+          <div class="stat-icon stat-icon-accent">
+            <i data-lucide="message-circle-question" style="width: 24px; height: 24px;"></i>
+          </div>
+          <div>
+            <div class="stat-value">8</div>
+            <div class="stat-label">Ожидают ответа</div>
+          </div>
+        </div>
+        
+        <div class="stat-card">
+          <div class="stat-icon stat-icon-success">
+            <i data-lucide="receipt" style="width: 24px; height: 24px;"></i>
+          </div>
+          <div>
+            <div class="stat-value">156</div>
+            <div class="stat-label">Получено КП</div>
+          </div>
+        </div>
+      </div>
+    </section>
+    
+    <!-- Cards -->
+    <section class="demo-section">
+      <h2 class="demo-section-title">Карточки</h2>
+      
+      <div class="demo-grid" style="grid-template-columns: repeat(2, 1fr); gap: var(--space-4);">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Стандартная карточка</h3>
+            <span class="badge badge-in-progress">В работе</span>
+          </div>
+          <div class="card-body">
+            <p style="margin: 0; color: var(--neutral-600);">Контент карточки с описанием и дополнительной информацией.</p>
+          </div>
+          <div class="card-footer">
+            <button class="btn btn-ghost btn-sm">Отмена</button>
+            <button class="btn btn-primary btn-sm">Сохранить</button>
+          </div>
+        </div>
+        
+        <div class="card card-accent">
+          <div class="card-header">
+            <h3 class="card-title">С акцентом</h3>
+          </div>
+          <div class="card-body">
+            <p style="margin: 0; color: var(--neutral-600);">Карточка с акцентной левой границей для важных элементов.</p>
+          </div>
+        </div>
+        
+        <div class="card card-success">
+          <div class="card-body">
+            <p style="margin: 0; color: var(--success-700);"><strong>Успешно!</strong> Заявка создана и отправлена поставщикам.</p>
+          </div>
+        </div>
+        
+        <div class="card card-warning">
+          <div class="card-body">
+            <p style="margin: 0; color: var(--warning-700);"><strong>Внимание:</strong> Срок действия КП истекает через 2 дня.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+    
+    <!-- Table -->
+    <section class="demo-section">
+      <h2 class="demo-section-title">Таблица</h2>
+      
+      <div class="card" style="padding: 0;">
+        <div class="card-header">
+          <h3 class="card-title">Список заявок</h3>
+          <div style="display: flex; gap: var(--space-3);">
+            <input type="text" class="input" style="width: 200px;" placeholder="Поиск...">
+            <button class="btn btn-secondary btn-sm">
+              <i data-lucide="filter" style="width: 16px; height: 16px;"></i>
+              Фильтр
+            </button>
+          </div>
+        </div>
+        
+        <div class="table-container" style="border: none; border-radius: 0;">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>№ Заявки</th>
+                <th>Наименование</th>
+                <th>Артикул</th>
+                <th>Статус</th>
+                <th>КП</th>
+                <th>Дата</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="table-cell-mono">REQ-20260112-7348</td>
+                <td>Преобразователь частоты Fuji Electric</td>
+                <td class="table-cell-mono">FRN18.5LM1S-4EA</td>
+                <td><span class="badge badge-in-progress">В работе</span></td>
+                <td>12</td>
+                <td>12 янв 2026</td>
+                <td class="table-cell-actions">
+                  <button class="btn btn-ghost btn-sm">Открыть</button>
+                </td>
+              </tr>
+              <tr>
+                <td class="table-cell-mono">REQ-20260111-6521</td>
+                <td>Контроллер двери VVVF</td>
+                <td class="table-cell-mono">DO3000S-PKG</td>
+                <td><span class="badge badge-completed">Завершена</span></td>
+                <td>8</td>
+                <td>11 янв 2026</td>
+                <td class="table-cell-actions">
+                  <button class="btn btn-ghost btn-sm">Открыть</button>
+                </td>
+              </tr>
+              <tr>
+                <td class="table-cell-mono">REQ-20260110-5890</td>
+                <td>Кнопка вызова лифта</td>
+                <td class="table-cell-mono">HAA24060B4</td>
+                <td><span class="badge badge-pending">Ожидает</span></td>
+                <td>0</td>
+                <td>10 янв 2026</td>
+                <td class="table-cell-actions">
+                  <button class="btn btn-ghost btn-sm">Открыть</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-4) var(--space-5); border-top: 1px solid var(--neutral-200);">
+          <span style="font-size: var(--text-sm); color: var(--neutral-500);">Показано 1-3 из 156</span>
+          <div style="display: flex; gap: var(--space-2);">
+            <button class="btn btn-ghost btn-sm" disabled>Назад</button>
+            <button class="btn btn-ghost btn-sm">Вперёд</button>
+          </div>
+        </div>
+      </div>
+    </section>
+    
+    <!-- Question Card -->
+    <section class="demo-section">
+      <h2 class="demo-section-title">Карточка вопроса (IQOT)</h2>
+      
+      <div class="question-card" style="max-width: 600px;">
+        <div class="question-header">
+          <div class="question-meta">
+            <span class="text-code">REQ-20260112-7348</span>
+            <span class="question-separator">•</span>
+            <span class="question-item">Преобразователь частоты</span>
+          </div>
+          <span class="badge badge-dot badge-question-pending">3 поставщика</span>
+        </div>
+        
+        <div class="question-body">
+          <p class="question-text">Поставщик просит прислать фото шильдика оборудования для точного подбора аналога.</p>
+          <div class="question-suppliers">
+            <span class="supplier-tag">SIEMENS</span>
+            <span class="supplier-tag">Ziplift</span>
+            <span class="supplier-tag">ЛифтКомплект</span>
+          </div>
+        </div>
+        
+        <div class="question-footer">
+          <span class="question-time">12 янв, 14:45</span>
+          <div class="question-actions">
+            <button class="btn btn-ghost btn-sm">Пропустить</button>
+            <button class="btn btn-primary btn-sm">
+              <i data-lucide="message-circle" style="width: 16px; height: 16px;"></i>
+              Ответить
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+    
+  </div>
+  
+  <script>
+    // Initialize Lucide icons
+    lucide.createIcons();
+  </script>
+</body>
+</html>

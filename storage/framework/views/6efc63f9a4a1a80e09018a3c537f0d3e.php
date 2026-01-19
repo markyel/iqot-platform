@@ -1,134 +1,97 @@
 <?php $__env->startSection('title', 'Создание отправителя'); ?>
 
-<?php $__env->startPush('styles'); ?>
-<style>
-    .admin-card {
-        background: #ffffff;
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        padding: 2rem;
-        margin-bottom: 1.5rem;
-    }
-
-    .form-group {
-        margin-bottom: 1.25rem;
-    }
-
-    .form-label {
-        display: block;
-        margin-bottom: 0.5rem;
-        font-size: 0.875rem;
-        font-weight: 600;
-        color: #374151;
-    }
-
-    .form-label .required {
-        color: #ef4444;
-    }
-
-    .form-input, .form-select, .form-textarea {
-        width: 100%;
-        background: #ffffff;
-        border: 1px solid #d1d5db;
-        color: #111827;
-        padding: 0.625rem 1rem;
-        border-radius: 8px;
-        outline: none;
-        font-size: 0.9375rem;
-    }
-
-    .form-input:focus, .form-select:focus, .form-textarea:focus {
-        border-color: #10b981;
-        box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
-    }
-
-    .form-input.is-invalid, .form-select.is-invalid {
-        border-color: #ef4444;
-    }
-
-    .invalid-feedback {
-        color: #ef4444;
-        font-size: 0.875rem;
-        margin-top: 0.25rem;
-    }
-
-    .btn {
-        padding: 0.75rem 1.5rem;
-        border-radius: 8px;
-        border: none;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s;
-        text-decoration: none;
-        display: inline-block;
-        font-size: 1rem;
-    }
-
-    .btn-success {
-        background: #10b981;
-        color: white;
-    }
-
-    .btn-success:hover {
-        background: #059669;
-    }
-
-    .btn-secondary {
-        background: #6b7280;
-        color: white;
-    }
-
-    .btn-secondary:hover {
-        background: #4b5563;
-    }
-
-    .alert {
-        padding: 1rem;
-        border-radius: 8px;
-        margin-bottom: 1rem;
-    }
-
-    .alert-danger {
-        background: #fee2e2;
-        color: #991b1b;
-        border: 1px solid #fecaca;
-    }
-
-    .section-title {
-        font-size: 1.25rem;
-        font-weight: 700;
-        color: #111827;
-        margin-bottom: 1.5rem;
-        padding-bottom: 0.75rem;
-        border-bottom: 2px solid #e5e7eb;
-    }
-</style>
-<?php $__env->stopPush(); ?>
-
 <?php $__env->startSection('content'); ?>
-<div style="max-width: 1200px; margin: 0 auto;">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
-        <h1 style="font-size: 1.875rem; font-weight: 700; color: #111827;">
-            ➕ Создание отправителя для: <?php echo e($user->name); ?>
+<?php if (isset($component)) { $__componentOriginalf8d4ea307ab1e58d4e472a43c8548d8e = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginalf8d4ea307ab1e58d4e472a43c8548d8e = $attributes; } ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.page-header','data' => ['title' => 'Создание отправителя','description' => 'Для пользователя: ' . $user->name]] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('page-header'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes(['title' => 'Создание отправителя','description' => \Illuminate\View\Compilers\BladeCompiler::sanitizeComponentAttribute('Для пользователя: ' . $user->name)]); ?>
+     <?php $__env->slot('actions', null, []); ?> 
+        <?php if (isset($component)) { $__componentOriginald0f1fd2689e4bb7060122a5b91fe8561 = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561 = $attributes; } ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.button','data' => ['variant' => 'secondary','href' => route('admin.users.show', $user),'icon' => 'arrow-left']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('button'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes(['variant' => 'secondary','href' => \Illuminate\View\Compilers\BladeCompiler::sanitizeComponentAttribute(route('admin.users.show', $user)),'icon' => 'arrow-left']); ?>
+            Назад к пользователю
+         <?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561)): ?>
+<?php $attributes = $__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561; ?>
+<?php unset($__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginald0f1fd2689e4bb7060122a5b91fe8561)): ?>
+<?php $component = $__componentOriginald0f1fd2689e4bb7060122a5b91fe8561; ?>
+<?php unset($__componentOriginald0f1fd2689e4bb7060122a5b91fe8561); ?>
+<?php endif; ?>
+     <?php $__env->endSlot(); ?>
+ <?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginalf8d4ea307ab1e58d4e472a43c8548d8e)): ?>
+<?php $attributes = $__attributesOriginalf8d4ea307ab1e58d4e472a43c8548d8e; ?>
+<?php unset($__attributesOriginalf8d4ea307ab1e58d4e472a43c8548d8e); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginalf8d4ea307ab1e58d4e472a43c8548d8e)): ?>
+<?php $component = $__componentOriginalf8d4ea307ab1e58d4e472a43c8548d8e; ?>
+<?php unset($__componentOriginalf8d4ea307ab1e58d4e472a43c8548d8e); ?>
+<?php endif; ?>
 
-        </h1>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(session('error')): ?>
+<div class="alert alert-error" style="margin-bottom: var(--space-6);">
+    <i data-lucide="alert-circle" class="alert-icon"></i>
+    <div class="alert-content"><?php echo e(session('error')); ?></div>
+</div>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+
+<form action="<?php echo e(route('admin.users.sender.store', $user)); ?>" method="POST">
+    <?php echo csrf_field(); ?>
+
+    <!-- Информация о пользователе -->
+    <div class="card" style="margin-bottom: var(--space-6);">
+        <div class="card-header">
+            <i data-lucide="user" style="width: 1.25rem; height: 1.25rem;"></i>
+            Информация о пользователе
+        </div>
+        <div class="card-body">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--space-4);">
+                <div>
+                    <div style="font-size: var(--text-xs); color: var(--neutral-500); margin-bottom: var(--space-1);">Имя</div>
+                    <div style="font-weight: 600;"><?php echo e($user->name); ?></div>
+                </div>
+                <div>
+                    <div style="font-size: var(--text-xs); color: var(--neutral-500); margin-bottom: var(--space-1);">Email</div>
+                    <div><?php echo e($user->email); ?></div>
+                </div>
+                <div>
+                    <div style="font-size: var(--text-xs); color: var(--neutral-500); margin-bottom: var(--space-1);">Компания</div>
+                    <div><?php echo e($user->company ?? '—'); ?></div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(session('error')): ?>
-        <div class="alert alert-danger"><?php echo e(session('error')); ?></div>
-    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-
-    <form action="<?php echo e(route('admin.users.sender.store', $user)); ?>" method="POST">
-        <?php echo csrf_field(); ?>
-        <div class="admin-card">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 3rem;">
-                <!-- Левая колонка: Настройки отправителя -->
-                <div>
-                    <div class="section-title">📧 Настройки отправителя</div>
-
-                    <div class="form-group">
-                        <label class="form-label">Email адрес <span class="required">*</span></label>
-                        <select name="reserved_email_id" class="form-select <?php $__errorArgs = ['reserved_email_id'];
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(500px, 1fr)); gap: var(--space-6); margin-bottom: var(--space-6);">
+        <!-- Настройки отправителя -->
+        <div class="card">
+            <div class="card-header">
+                <i data-lucide="mail" style="width: 1.25rem; height: 1.25rem;"></i>
+                Настройки отправителя
+            </div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label class="form-label">
+                        <span style="color: var(--danger-600);">*</span> Email адрес
+                    </label>
+                    <select name="reserved_email_id" class="select <?php $__errorArgs = ['reserved_email_id'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
 if (isset($message)) { $__messageOriginal = $message; }
@@ -136,99 +99,46 @@ $message = $__bag->first($__errorArgs[0]); ?> is-invalid <?php unset($message);
 if (isset($__messageOriginal)) { $message = $__messageOriginal; }
 endif;
 unset($__errorArgs, $__bag); ?>" required>
-                            <option value="">Выберите email...</option>
-                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $availableEmails; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $email): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
-                                <option value="<?php echo e($email['id']); ?>" <?php echo e(old('reserved_email_id') == $email['id'] ? 'selected' : ''); ?>>
-                                    <?php echo e($email['email']); ?>
+                        <option value="">Выберите email...</option>
+                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $availableEmails; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $email): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                            <option value="<?php echo e($email['id']); ?>" <?php echo e(old('reserved_email_id') == $email['id'] ? 'selected' : ''); ?>>
+                                <?php echo e($email['email']); ?>
 
-                                </option>
-                            <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-                        </select>
-                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__errorArgs = ['reserved_email_id'];
+                            </option>
+                        <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                    </select>
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__errorArgs = ['reserved_email_id'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
 if (isset($message)) { $__messageOriginal = $message; }
 $message = $__bag->first($__errorArgs[0]); ?>
-                            <div class="invalid-feedback"><?php echo e($message); ?></div>
-                        <?php unset($message);
+                        <p class="form-error"><?php echo e($message); ?></p>
+                    <?php unset($message);
 if (isset($__messageOriginal)) { $message = $__messageOriginal; }
 endif;
 unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">Шаблон письма</label>
-                        <select name="template_id" class="form-select">
-                            <option value="">По умолчанию</option>
-                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $templates; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $template): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
-                                <option value="<?php echo e($template['id']); ?>" <?php echo e(old('template_id') == $template['id'] ? 'selected' : ''); ?>>
-                                    <?php echo e($template['name']); ?>
-
-                                </option>
-                            <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">Имя отправителя <span class="required">*</span></label>
-                        <input type="text" name="sender_name" class="form-input <?php $__errorArgs = ['sender_name'];
-$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
-if ($__bag->has($__errorArgs[0])) :
-if (isset($message)) { $__messageOriginal = $message; }
-$message = $__bag->first($__errorArgs[0]); ?> is-invalid <?php unset($message);
-if (isset($__messageOriginal)) { $message = $__messageOriginal; }
-endif;
-unset($__errorArgs, $__bag); ?>"
-                               value="<?php echo e(old('sender_name', $user->name)); ?>" required>
-                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__errorArgs = ['sender_name'];
-$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
-if ($__bag->has($__errorArgs[0])) :
-if (isset($message)) { $__messageOriginal = $message; }
-$message = $__bag->first($__errorArgs[0]); ?>
-                            <div class="invalid-feedback"><?php echo e($message); ?></div>
-                        <?php unset($message);
-if (isset($__messageOriginal)) { $message = $__messageOriginal; }
-endif;
-unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">Полное имя <span class="required">*</span></label>
-                        <input type="text" name="sender_full_name" class="form-input <?php $__errorArgs = ['sender_full_name'];
-$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
-if ($__bag->has($__errorArgs[0])) :
-if (isset($message)) { $__messageOriginal = $message; }
-$message = $__bag->first($__errorArgs[0]); ?> is-invalid <?php unset($message);
-if (isset($__messageOriginal)) { $message = $__messageOriginal; }
-endif;
-unset($__errorArgs, $__bag); ?>"
-                               value="<?php echo e(old('sender_full_name', $user->full_name ?? $user->name)); ?>" required>
-                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__errorArgs = ['sender_full_name'];
-$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
-if ($__bag->has($__errorArgs[0])) :
-if (isset($message)) { $__messageOriginal = $message; }
-$message = $__bag->first($__errorArgs[0]); ?>
-                            <div class="invalid-feedback"><?php echo e($message); ?></div>
-                        <?php unset($message);
-if (isset($__messageOriginal)) { $message = $__messageOriginal; }
-endif;
-unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">Телефон</label>
-                        <input type="text" name="phone" class="form-input"
-                               value="<?php echo e(old('phone', $user->phone)); ?>">
-                    </div>
+                    <p class="form-hint">Выберите зарезервированный email адрес для отправки писем</p>
                 </div>
 
-                <!-- Правая колонка: Данные организации -->
-                <div>
-                    <div class="section-title">🏢 Данные организации</div>
+                <div class="form-group">
+                    <label class="form-label">Шаблон письма</label>
+                    <select name="template_id" class="select">
+                        <option value="">По умолчанию</option>
+                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $templates; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $template): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                            <option value="<?php echo e($template['id']); ?>" <?php echo e(old('template_id') == $template['id'] ? 'selected' : ''); ?>>
+                                <?php echo e($template['name']); ?>
 
-                    <div class="form-group">
-                        <label class="form-label">Название организации <span class="required">*</span></label>
-                        <input type="text" name="organization[name]" class="form-input <?php $__errorArgs = ['organization.name'];
+                            </option>
+                        <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                    </select>
+                    <p class="form-hint">Шаблон оформления писем для поставщиков</p>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">
+                        <span style="color: var(--danger-600);">*</span> Имя отправителя
+                    </label>
+                    <input type="text" name="sender_name" class="input <?php $__errorArgs = ['sender_name'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
 if (isset($message)) { $__messageOriginal = $message; }
@@ -236,65 +146,181 @@ $message = $__bag->first($__errorArgs[0]); ?> is-invalid <?php unset($message);
 if (isset($__messageOriginal)) { $message = $__messageOriginal; }
 endif;
 unset($__errorArgs, $__bag); ?>"
-                               value="<?php echo e(old('organization.name', $user->company ?? $user->organization)); ?>" required>
-                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__errorArgs = ['organization.name'];
+                           value="<?php echo e(old('sender_name', $user->name)); ?>" required placeholder="Иван Иванов">
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__errorArgs = ['sender_name'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
 if (isset($message)) { $__messageOriginal = $message; }
 $message = $__bag->first($__errorArgs[0]); ?>
-                            <div class="invalid-feedback"><?php echo e($message); ?></div>
-                        <?php unset($message);
+                        <p class="form-error"><?php echo e($message); ?></p>
+                    <?php unset($message);
 if (isset($__messageOriginal)) { $message = $__messageOriginal; }
 endif;
 unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-                    </div>
+                </div>
 
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                        <div class="form-group">
-                            <label class="form-label">ИНН</label>
-                            <input type="text" name="organization[inn]" class="form-input"
-                                   value="<?php echo e(old('organization.inn', $user->inn)); ?>">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">КПП</label>
-                            <input type="text" name="organization[kpp]" class="form-input"
-                                   value="<?php echo e(old('organization.kpp', $user->kpp)); ?>">
-                        </div>
-                    </div>
+                <div class="form-group">
+                    <label class="form-label">
+                        <span style="color: var(--danger-600);">*</span> Полное имя
+                    </label>
+                    <input type="text" name="sender_full_name" class="input <?php $__errorArgs = ['sender_full_name'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?> is-invalid <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>"
+                           value="<?php echo e(old('sender_full_name', $user->full_name ?? $user->name)); ?>" required placeholder="Иванов Иван Иванович">
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__errorArgs = ['sender_full_name'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?>
+                        <p class="form-error"><?php echo e($message); ?></p>
+                    <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                </div>
 
-                    <div class="form-group">
-                        <label class="form-label">Юридический адрес</label>
-                        <textarea name="organization[legal_address]" class="form-textarea" rows="2"><?php echo e(old('organization.legal_address', $user->legal_address)); ?></textarea>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">Контактное лицо</label>
-                        <input type="text" name="organization[contact_person]" class="form-input"
-                               value="<?php echo e(old('organization.contact_person', $user->full_name ?? $user->name)); ?>">
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                        <div class="form-group">
-                            <label class="form-label">Телефон организации</label>
-                            <input type="text" name="organization[phone]" class="form-input"
-                                   value="<?php echo e(old('organization.phone', $user->phone)); ?>">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Email организации</label>
-                            <input type="email" name="organization[email]" class="form-input"
-                                   value="<?php echo e(old('organization.email', $user->email)); ?>">
-                        </div>
-                    </div>
+                <div class="form-group">
+                    <label class="form-label">Телефон</label>
+                    <input type="text" name="phone" class="input"
+                           value="<?php echo e(old('phone', $user->phone)); ?>" placeholder="+7 (999) 123-45-67">
+                    <p class="form-hint">Контактный телефон для связи с поставщиками</p>
                 </div>
             </div>
         </div>
 
-        <div style="display: flex; gap: 1rem;">
-            <button type="submit" class="btn btn-success">✅ Создать отправителя</button>
-            <a href="<?php echo e(route('admin.users.sender.show', $user)); ?>" class="btn btn-secondary">Отмена</a>
+        <!-- Данные организации -->
+        <div class="card">
+            <div class="card-header">
+                <i data-lucide="building-2" style="width: 1.25rem; height: 1.25rem;"></i>
+                Данные организации
+            </div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label class="form-label">
+                        <span style="color: var(--danger-600);">*</span> Название организации
+                    </label>
+                    <input type="text" name="organization[name]" class="input <?php $__errorArgs = ['organization.name'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?> is-invalid <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>"
+                           value="<?php echo e(old('organization.name', $user->company ?? $user->organization)); ?>" required placeholder="ООО 'Компания'">
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__errorArgs = ['organization.name'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?>
+                        <p class="form-error"><?php echo e($message); ?></p>
+                    <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4);">
+                    <div class="form-group">
+                        <label class="form-label">ИНН</label>
+                        <input type="text" name="organization[inn]" class="input"
+                               value="<?php echo e(old('organization.inn', $user->inn)); ?>" placeholder="1234567890">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">КПП</label>
+                        <input type="text" name="organization[kpp]" class="input"
+                               value="<?php echo e(old('organization.kpp', $user->kpp)); ?>" placeholder="123456789">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Юридический адрес</label>
+                    <textarea name="organization[legal_address]" class="input" rows="3" placeholder="г. Москва, ул. Примерная, д. 1"><?php echo e(old('organization.legal_address', $user->legal_address)); ?></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Контактное лицо</label>
+                    <input type="text" name="organization[contact_person]" class="input"
+                           value="<?php echo e(old('organization.contact_person', $user->full_name ?? $user->name)); ?>" placeholder="Иванов Иван Иванович">
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4);">
+                    <div class="form-group">
+                        <label class="form-label">Телефон организации</label>
+                        <input type="text" name="organization[phone]" class="input"
+                               value="<?php echo e(old('organization.phone', $user->phone)); ?>" placeholder="+7 (999) 123-45-67">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Email организации</label>
+                        <input type="email" name="organization[email]" class="input"
+                               value="<?php echo e(old('organization.email', $user->email)); ?>" placeholder="company@example.com">
+                    </div>
+                </div>
+            </div>
         </div>
-    </form>
-</div>
+    </div>
+
+    <!-- Действия -->
+    <div class="card">
+        <div class="card-body">
+            <div style="display: flex; gap: var(--space-3); justify-content: flex-end;">
+                <?php if (isset($component)) { $__componentOriginald0f1fd2689e4bb7060122a5b91fe8561 = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561 = $attributes; } ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.button','data' => ['type' => 'button','variant' => 'secondary','href' => route('admin.users.show', $user),'icon' => 'x']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('button'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes(['type' => 'button','variant' => 'secondary','href' => \Illuminate\View\Compilers\BladeCompiler::sanitizeComponentAttribute(route('admin.users.show', $user)),'icon' => 'x']); ?>
+                    Отмена
+                 <?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561)): ?>
+<?php $attributes = $__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561; ?>
+<?php unset($__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginald0f1fd2689e4bb7060122a5b91fe8561)): ?>
+<?php $component = $__componentOriginald0f1fd2689e4bb7060122a5b91fe8561; ?>
+<?php unset($__componentOriginald0f1fd2689e4bb7060122a5b91fe8561); ?>
+<?php endif; ?>
+                <?php if (isset($component)) { $__componentOriginald0f1fd2689e4bb7060122a5b91fe8561 = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561 = $attributes; } ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.button','data' => ['type' => 'submit','variant' => 'success','icon' => 'check']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('button'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes(['type' => 'submit','variant' => 'success','icon' => 'check']); ?>
+                    Создать отправителя
+                 <?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561)): ?>
+<?php $attributes = $__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561; ?>
+<?php unset($__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginald0f1fd2689e4bb7060122a5b91fe8561)): ?>
+<?php $component = $__componentOriginald0f1fd2689e4bb7060122a5b91fe8561; ?>
+<?php unset($__componentOriginald0f1fd2689e4bb7060122a5b91fe8561); ?>
+<?php endif; ?>
+            </div>
+        </div>
+    </div>
+</form>
+
+<?php $__env->startPush('scripts'); ?>
+<script>
+lucide.createIcons();
+</script>
+<?php $__env->stopPush(); ?>
 <?php $__env->stopSection(); ?>
 
 <?php echo $__env->make('layouts.cabinet', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH C:\Users\Boag\PhpstormProjects\iqot-platform\resources\views/admin/users/sender/create.blade.php ENDPATH**/ ?>

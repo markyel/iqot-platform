@@ -928,6 +928,255 @@
             color: var(--text-secondary);
         }
 
+        /* Supplier Questions Section */
+        .supplier-questions {
+            overflow: hidden;
+        }
+
+        .questions-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+        }
+
+        .questions-left {
+            display: flex;
+            flex-direction: column;
+            gap: 2.5rem;
+        }
+
+        .questions-features {
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        .question-feature {
+            display: flex;
+            gap: 1.5rem;
+            align-items: flex-start;
+        }
+
+        .feature-icon {
+            width: 56px;
+            height: 56px;
+            min-width: 56px;
+            background: var(--accent-gradient-subtle);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent-primary);
+        }
+
+        .feature-icon svg {
+            width: 32px;
+            height: 32px;
+        }
+
+        .question-feature p {
+            font-size: 1.05rem;
+            color: var(--text-primary);
+            line-height: 1.7;
+            margin-top: 0.5rem;
+        }
+
+        .questions-demo {
+            position: relative;
+        }
+
+        .demo-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .demo-card:hover {
+            box-shadow: var(--glow);
+            transform: translateY(-4px);
+        }
+
+        .demo-header {
+            padding: 1.5rem;
+            background: rgba(16, 185, 129, 0.05);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .demo-title {
+            display: inline-block;
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .demo-badge {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            background: var(--accent-gradient);
+            color: var(--bg-primary);
+            font-size: 0.8rem;
+            font-weight: 700;
+            border-radius: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .demo-body {
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        .demo-supplier-question {
+            padding: 1rem 1.25rem;
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            border-left: 3px solid rgba(156, 163, 175, 0.3);
+        }
+
+        .supplier-name {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--accent-secondary);
+            margin-bottom: 0.5rem;
+            display: block;
+        }
+
+        .question-text {
+            font-size: 0.9rem;
+            color: var(--text-primary);
+            line-height: 1.5;
+        }
+
+        .demo-consolidated-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1rem;
+            background: rgba(16, 185, 129, 0.1);
+            border-radius: 10px;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .demo-consolidated-badge svg {
+            color: var(--accent-primary);
+            flex-shrink: 0;
+        }
+
+        .demo-consolidated-badge span {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--accent-primary);
+        }
+
+        .demo-question-group {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .demo-question-item {
+            padding: 1rem 1.25rem;
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            border-left: 3px solid transparent;
+        }
+
+        .demo-question-item.consolidated {
+            border-left-color: var(--accent-primary);
+        }
+
+        .demo-question-item.unique {
+            border-left-color: #f59e0b;
+        }
+
+        .suppliers-count {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .demo-answer {
+            padding: 1.25rem;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+        }
+
+        .demo-answer.auto {
+            background: rgba(16, 185, 129, 0.05);
+            border-color: rgba(16, 185, 129, 0.3);
+        }
+
+        .demo-answer.manual {
+            background: rgba(245, 158, 11, 0.05);
+            border-color: rgba(245, 158, 11, 0.3);
+        }
+
+        .answer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+            gap: 1rem;
+        }
+
+        .answer-label {
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .demo-answer.auto .answer-label {
+            color: var(--accent-primary);
+        }
+
+        .demo-answer.manual .answer-label {
+            color: #f59e0b;
+        }
+
+        .answer-status {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .answer-text {
+            font-size: 0.9rem;
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .questions-accent {
+            background: var(--accent-gradient-subtle);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            border-radius: 16px;
+            padding: 2rem;
+        }
+
+        .accent-content {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 1.25rem;
+        }
+
+        .accent-content svg {
+            color: var(--accent-primary);
+            flex-shrink: 0;
+        }
+
+        .accent-content p {
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
         /* Benefits Section */
         .benefits-grid {
             display: grid;
@@ -1080,6 +1329,124 @@
         .cross {
             color: #ef4444;
             font-size: 1.5rem;
+        }
+
+        /* Pricing Section */
+        .pricing-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .pricing-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .pricing-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--glow);
+        }
+
+        .pricing-card.highlight {
+            border-color: var(--accent-primary);
+            position: relative;
+        }
+
+        .pricing-card.highlight::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--accent-gradient);
+        }
+
+        .pricing-header {
+            padding: 2rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .pricing-header h3 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin: 0;
+        }
+
+        .pricing-badge {
+            padding: 0.4rem 0.8rem;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 8px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--accent-primary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .pricing-body {
+            padding: 2rem;
+        }
+
+        .pricing-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.25rem 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .pricing-item:last-child {
+            border-bottom: none;
+        }
+
+        .pricing-name {
+            font-size: 1rem;
+            color: var(--text-secondary);
+        }
+
+        .pricing-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .pricing-benefits {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .pricing-benefits li {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            font-size: 1rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        .pricing-benefits li::before {
+            content: '✓';
+            color: var(--accent-primary);
+            font-weight: 700;
+            font-size: 1.25rem;
+            flex-shrink: 0;
+        }
+
+        .pricing-footer {
+            text-align: center;
         }
 
         /* CTA Section */
@@ -1263,6 +1630,16 @@
 
             .process-flow::before {
                 display: none;
+            }
+
+            .questions-content {
+                grid-template-columns: 1fr;
+                gap: 2rem;
+            }
+
+            .pricing-grid {
+                grid-template-columns: 1fr;
+                gap: 2rem;
             }
         }
 
@@ -1457,6 +1834,61 @@
                 font-size: 0.75rem;
                 padding: 0.5rem 0.75rem;
             }
+
+            .questions-content {
+                grid-template-columns: 1fr;
+                gap: 2rem;
+            }
+
+            .questions-left {
+                gap: 2rem;
+            }
+
+            .question-feature {
+                flex-direction: row;
+                text-align: left;
+                align-items: flex-start;
+            }
+
+            .question-feature p {
+                font-size: 0.95rem;
+            }
+
+            .demo-body {
+                padding: 1.5rem;
+            }
+
+            .demo-header {
+                padding: 1rem;
+            }
+
+            .demo-title {
+                font-size: 0.9rem;
+            }
+
+            .questions-accent {
+                padding: 1.5rem;
+            }
+
+            .accent-content {
+                flex-direction: row;
+                align-items: flex-start;
+            }
+
+            .accent-content svg {
+                width: 40px;
+                height: 40px;
+            }
+
+            .accent-content p {
+                font-size: 0.95rem;
+            }
+
+            .answer-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.5rem;
+            }
         }
 
         @media (max-width: 480px) {
@@ -1481,6 +1913,70 @@
             .comparison-row {
                 font-size: 0.65rem;
                 padding: 0.4rem;
+            }
+
+            .question-feature {
+                flex-direction: column;
+                text-align: center;
+                align-items: center;
+            }
+
+            .question-feature p {
+                font-size: 0.85rem;
+            }
+
+            .questions-accent {
+                padding: 1.25rem;
+            }
+
+            .accent-content {
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+            }
+
+            .accent-content svg {
+                width: 36px;
+                height: 36px;
+            }
+
+            .accent-content p {
+                font-size: 0.85rem;
+            }
+
+            .demo-title {
+                font-size: 0.8rem;
+            }
+
+            .demo-badge {
+                font-size: 0.7rem;
+                padding: 0.4rem 0.8rem;
+            }
+
+            .supplier-name {
+                font-size: 0.75rem;
+            }
+
+            .demo-consolidated-badge {
+                padding: 0.6rem 0.8rem;
+            }
+
+            .demo-consolidated-badge span {
+                font-size: 0.75rem;
+            }
+
+            .pricing-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+
+            .pricing-value {
+                font-size: 1.25rem;
+            }
+
+            .pricing-name {
+                font-size: 0.85rem;
             }
         }
 
@@ -1727,6 +2223,7 @@
                 <li><a href="#problems" data-ru="Проблема" data-en="Problem">Проблема</a></li>
                 <li><a href="#how-it-works" data-ru="Как работает" data-en="How it works">Как работает</a></li>
                 <li><a href="#benefits" data-ru="Преимущества" data-en="Benefits">Преимущества</a></li>
+                <li><a href="#pricing" data-ru="Тарифы" data-en="Pricing">Тарифы</a></li>
                 <li><a href="#comparison" data-ru="Сравнение" data-en="Comparison">Сравнение</a></li>
             </ul>
             <div class="nav-right">
@@ -1734,7 +2231,12 @@
                     <button class="lang-btn active" data-lang="ru">RU</button>
                     <button class="lang-btn" data-lang="en">EN</button>
                 </div>
-                <a href="#" class="btn btn-primary" data-demo-modal data-ru="Оставить заявку" data-en="Request Demo">Оставить заявку</a>
+                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(auth()->guard()->check()): ?>
+                    <a href="<?php echo e(route('cabinet.dashboard')); ?>" class="btn btn-outline" data-ru="Личный кабинет" data-en="Dashboard">Личный кабинет</a>
+                <?php else: ?>
+                    <a href="<?php echo e(route('login')); ?>" class="btn btn-outline" data-ru="Войти" data-en="Sign In">Войти</a>
+                    <a href="<?php echo e(route('register')); ?>" class="btn btn-primary" data-ru="Регистрация" data-en="Sign Up">Регистрация</a>
+                <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
             </div>
             <button class="mobile-menu-btn">
                 <span></span>
@@ -2101,6 +2603,106 @@
         </div>
     </section>
 
+    <!-- Supplier Questions Section -->
+    <section class="supplier-questions">
+        <div class="section-container">
+            <div class="section-header">
+                <span class="section-label" data-ru="Вопросы поставщиков" data-en="Supplier Questions">Вопросы поставщиков</span>
+                <h2 class="section-title" data-ru="Минимум вопросов — максимум результата" data-en="Minimum questions — maximum results">Минимум вопросов — максимум результата</h2>
+            </div>
+
+            <div class="questions-content">
+                <div class="questions-left">
+                    <div class="questions-features">
+                    <div class="question-feature">
+                        <div class="feature-icon">
+                            <svg width="40" height="40" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <g stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+                                    <circle cx="32" cy="32" r="24"/>
+                                    <path d="M20 32l8 8 16-16"/>
+                                </g>
+                            </svg>
+                        </div>
+                        <p data-ru="Типовые вопросы от поставщиков обрабатываются автоматически." data-en="Standard supplier questions are processed automatically.">Типовые вопросы от поставщиков обрабатываются автоматически.</p>
+                    </div>
+
+                    <div class="question-feature">
+                        <div class="feature-icon">
+                            <svg width="40" height="40" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <g stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+                                    <circle cx="24" cy="24" r="16"/>
+                                    <circle cx="40" cy="40" r="16"/>
+                                    <path d="M32 24a8 8 0 0 1 8 8"/>
+                                </g>
+                            </svg>
+                        </div>
+                        <p data-ru="Одинаковые вопросы консолидируются." data-en="Identical questions are consolidated.">Одинаковые вопросы консолидируются.</p>
+                    </div>
+
+                    <div class="question-feature">
+                        <div class="feature-icon">
+                            <svg width="40" height="40" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <g stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+                                    <path d="M32 8v48M16 24h32M20 40h24"/>
+                                    <circle cx="32" cy="32" r="4"/>
+                                </g>
+                            </svg>
+                        </div>
+                        <p data-ru="Новые поставщики получают уже данные ответы без вашего участия." data-en="New suppliers receive existing answers without your involvement.">Новые поставщики получают уже данные ответы без вашего участия.</p>
+                    </div>
+                    </div>
+
+                    <div class="questions-accent">
+                        <div class="accent-content">
+                            <svg width="48" height="48" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <g stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+                                    <path d="M8 32h48M32 8v48"/>
+                                    <circle cx="32" cy="32" r="24"/>
+                                    <circle cx="32" cy="32" r="4" fill="currentColor"/>
+                                </g>
+                            </svg>
+                            <p data-ru="Даже при работе с десятками поставщиков вы отвечаете только на действительно важные вопросы." data-en="Even when working with dozens of suppliers, you only answer truly important questions.">Даже при работе с десятками поставщиков вы отвечаете только на действительно важные вопросы.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="questions-demo">
+                    <div class="demo-card">
+                        <div class="demo-header">
+                            <span class="demo-title" data-ru="Обработка вопросов поставщиков" data-en="Processing supplier questions">Обработка вопросов поставщиков</span>
+                        </div>
+                        <div class="demo-body">
+                            <div class="demo-supplier-question">
+                                <div class="supplier-name" data-ru="ТД «ЛифтКомплект»" data-en="TD LiftKomplekt">ТД «ЛифтКомплект»</div>
+                                <div class="question-text" data-ru="Подскажите, вам нужен оригинал или аналог?" data-en="Tell me, do you need original or analog?">Подскажите, вам нужен оригинал или аналог?</div>
+                            </div>
+
+                            <div class="demo-supplier-question">
+                                <div class="supplier-name" data-ru="ООО «ПромЗапчасть»" data-en="OOO PromZapchast">ООО «ПромЗапчасть»</div>
+                                <div class="question-text" data-ru="Уточните, пожалуйста, оригинал или аналог рассматриваете?" data-en="Please clarify, are you considering original or analog?">Уточните, пожалуйста, оригинал или аналог рассматриваете?</div>
+                            </div>
+
+                            <div class="demo-consolidated-badge">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M7 13L10 16L17 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                                <span data-ru="Вопросы объединены. Ожидает 1 ответ." data-en="Questions merged. Awaits 1 answer.">Вопросы объединены. Ожидает 1 ответ.</span>
+                            </div>
+
+                            <div class="demo-answer auto">
+                                <div class="answer-header">
+                                    <div class="answer-label" data-ru="Автоматический ответ" data-en="Automatic reply">Автоматический ответ</div>
+                                    <div class="answer-status" data-ru="Отправлен всем" data-en="Sent to all">Отправлен всем</div>
+                                </div>
+                                <div class="answer-text" data-ru="Рассматриваем как оригинал, так и качественные аналоги. Просим указать оба варианта с указанием производителя." data-en="We consider both original and quality analogs. Please specify both options indicating the manufacturer.">Рассматриваем как оригинал, так и качественные аналоги. Просим указать оба варианта с указанием производителя.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <!-- Benefits Section -->
     <section class="benefits" id="benefits">
         <div class="section-container">
@@ -2239,6 +2841,58 @@
                     <span class="check">✓</span>
                     <span class="cross">✗</span>
                 </div>
+                <div class="comparison-row">
+                    <span class="feature" data-ru="Консолидация вопросов поставщиков" data-en="Consolidation of supplier questions">Консолидация вопросов поставщиков</span>
+                    <span class="check">✓</span>
+                    <span class="cross">✗</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing Section -->
+    <section class="pricing" id="pricing">
+        <div class="section-container">
+            <div class="section-header">
+                <span class="section-label" data-ru="Тарифы и оплата" data-en="Pricing">Тарифы и оплата</span>
+                <h2 class="section-title" data-ru="Принцип оплаты" data-en="Payment principle">Принцип оплаты</h2>
+                <p class="section-subtitle" data-ru="Оплата взимается за обработку конкретных позиций в заявке" data-en="Payment is charged for processing specific items in the request">Оплата взимается за обработку конкретных позиций в заявке</p>
+            </div>
+
+            <div class="pricing-grid">
+                <div class="pricing-card">
+                    <div class="pricing-header">
+                        <h3 data-ru="Разовые операции" data-en="One-time operations">Разовые операции</h3>
+                    </div>
+                    <div class="pricing-body">
+                        <div class="pricing-item">
+                            <div class="pricing-name" data-ru="Мониторинг позиции в заявке" data-en="Item monitoring in request">Мониторинг позиции в заявке</div>
+                            <div class="pricing-value"><?php echo e(number_format($pricing['monitoring'], 0, ',', ' ')); ?> ₽</div>
+                        </div>
+                        <div class="pricing-item">
+                            <div class="pricing-name" data-ru="Разблокировка готового отчёта по позиции" data-en="Unlock ready report for item">Разблокировка готового отчёта по позиции</div>
+                            <div class="pricing-value"><?php echo e(number_format($pricing['report_unlock'], 0, ',', ' ')); ?> ₽</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pricing-card highlight">
+                    <div class="pricing-header">
+                        <h3 data-ru="Подписка" data-en="Subscription">Подписка</h3>
+                        <span class="pricing-badge" data-ru="не обязательна" data-en="optional">не обязательна</span>
+                    </div>
+                    <div class="pricing-body">
+                        <ul class="pricing-benefits">
+                            <li data-ru="Снижает стоимость позиции" data-en="Reduces item cost">Снижает стоимость позиции</li>
+                            <li data-ru="Даёт включённые лимиты" data-en="Includes usage limits">Даёт включённые лимиты</li>
+                            <li data-ru="Подходит для регулярных закупок" data-en="Suitable for regular procurement">Подходит для регулярных закупок</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pricing-footer">
+                <a href="/pricing" class="btn btn-outline" data-ru="Подробные тарифы" data-en="Detailed pricing">Подробные тарифы</a>
             </div>
         </div>
     </section>

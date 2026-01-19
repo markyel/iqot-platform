@@ -21,6 +21,7 @@ class TariffPlan extends Model
         'price_per_item_over_limit',
         'price_per_report_over_limit',
         'features',
+        'pdf_reports_enabled',
         'is_active',
         'sort_order',
     ];
@@ -30,6 +31,7 @@ class TariffPlan extends Model
         'price_per_item_over_limit' => 'decimal:2',
         'price_per_report_over_limit' => 'decimal:2',
         'features' => 'array',
+        'pdf_reports_enabled' => 'boolean',
         'is_active' => 'boolean',
     ];
 
@@ -171,5 +173,13 @@ class TariffPlan extends Model
 
         // Если превышен лимит - берем стоимость за сверхлимитный отчет
         return (float) $this->price_per_report_over_limit;
+    }
+
+    /**
+     * Проверить, доступна ли генерация PDF отчетов для тарифа
+     */
+    public function canGeneratePdfReports(): bool
+    {
+        return $this->pdf_reports_enabled;
     }
 }

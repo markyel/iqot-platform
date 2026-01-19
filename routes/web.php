@@ -66,6 +66,8 @@ Route::middleware(['auth', 'verified'])->prefix('cabinet')->name('cabinet.')->gr
         Route::get('/requests/balance', [\App\Http\Controllers\UserRequestController::class, 'checkBalance'])->name('requests.balance');
         Route::get('/requests/{id}', [\App\Http\Controllers\UserRequestController::class, 'show'])->name('requests.show');
         Route::get('/requests/{id}/report', [\App\Http\Controllers\UserRequestController::class, 'showReport'])->name('requests.report');
+        Route::post('/requests/{id}/generate-pdf', [\App\Http\Controllers\UserRequestController::class, 'generatePdfReport'])->name('requests.generate-pdf');
+        Route::get('/requests/{id}/download-pdf', [\App\Http\Controllers\UserRequestController::class, 'downloadPdfReport'])->name('requests.download-pdf');
         Route::get('/requests/{id}/questions', [\App\Http\Controllers\Cabinet\QuestionController::class, 'requestQuestions'])->name('requests.questions');
     });
 
@@ -171,6 +173,8 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
         Route::post('/', [\App\Http\Controllers\Admin\ManageRequestController::class, 'store'])->name('store');
         Route::get('/{id}', [\App\Http\Controllers\Admin\ManageRequestController::class, 'show'])->name('show');
         Route::get('/{id}/report', [\App\Http\Controllers\Admin\ManageRequestController::class, 'showReport'])->name('report');
+        Route::post('/{id}/generate-pdf', [\App\Http\Controllers\Admin\ManageRequestController::class, 'generatePdfReport'])->name('generate-pdf');
+        Route::get('/{id}/download-pdf', [\App\Http\Controllers\Admin\ManageRequestController::class, 'downloadPdfReport'])->name('download-pdf');
         Route::get('/{id}/questions', [\App\Http\Controllers\Admin\QuestionController::class, 'requestQuestions'])->name('questions');
         Route::get('/{id}/edit', [\App\Http\Controllers\Admin\ManageRequestController::class, 'edit'])->name('edit');
         Route::put('/{id}', [\App\Http\Controllers\Admin\ManageRequestController::class, 'update'])->name('update');

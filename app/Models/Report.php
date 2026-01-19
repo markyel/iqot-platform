@@ -16,7 +16,9 @@ class Report extends Model
         'code',
         'title',
         'type',
+        'report_type',
         'status',
+        'callback_url',
         'items_count',
         'items_with_offers',
         'suppliers_contacted',
@@ -24,6 +26,10 @@ class Report extends Model
         'total_offers',
         'summary',
         'file_path',
+        'pdf_content',
+        'pdf_expires_at',
+        'error_code',
+        'error_message',
         'generated_at',
     ];
 
@@ -37,6 +43,7 @@ class Report extends Model
             'total_offers' => 'integer',
             'summary' => 'array',
             'generated_at' => 'datetime',
+            'pdf_expires_at' => 'datetime',
         ];
     }
 

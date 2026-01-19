@@ -1,331 +1,614 @@
 <?php $__env->startSection('title', 'Создать заявку'); ?>
-<?php $__env->startSection('header', 'Создать заявку'); ?>
 
 <?php $__env->startPush('styles'); ?>
 <style>
-    .alert { padding: 1rem; border-radius: 8px; margin-bottom: 1rem; }
-    .alert-info { background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
-    .alert-danger { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
-    .alert-light { background: #f8f9fa; color: #6c757d; }
-    .card { background: white; border-radius: 0.75rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem; }
-    .card-header { padding: 1.25rem; border-bottom: 1px solid #e5e7eb; }
-    .card-body { padding: 1.5rem; }
-    .form-control { width: 100%; padding: 0.625rem 1rem; border: 1px solid #d1d5db; border-radius: 8px; }
-    .form-control:focus { outline: none; border-color: #10b981; box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1); }
-    .form-control.is-invalid { border-color: #ef4444; }
-    .btn { padding: 0.75rem 1.5rem; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; transition: all 0.2s; }
-    .btn-primary { background: #3b82f6; color: white; }
-    .btn-primary:hover { background: #2563eb; }
-    .btn-success { background: #10b981; color: white; }
-    .btn-success:hover { background: #059669; }
-    .btn-outline-primary { background: transparent; border: 1px solid #3b82f6; color: #3b82f6; }
-    .btn-outline-secondary { background: transparent; border: 1px solid #6b7280; color: #6b7280; }
-    .btn-sm { padding: 0.375rem 0.75rem; font-size: 0.875rem; }
-    .btn-outline-danger { background: transparent; border: 1px solid #ef4444; color: #ef4444; }
-    .spinner-border { width: 1rem; height: 1rem; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spinner-border 0.75s linear infinite; }
-    @keyframes spinner-border { to { transform: rotate(360deg); } }
-    .table-responsive { overflow-x: auto; }
-    .table { width: 100%; border-collapse: collapse; }
-    .table th, .table td { padding: 0.75rem; text-align: left; border: 1px solid #e5e7eb; }
-    .table-light { background: #f9fafb; }
-    .table-sm th, .table-sm td { padding: 0.5rem; }
-    .d-none { display: none; }
-    .d-flex { display: flex; }
-    .gap-2 { gap: 0.5rem; }
-    .justify-content-between { justify-content: space-between; }
-    .align-items-center { align-items: center; }
-    .text-center { text-align: center; }
-    .text-success { color: #10b981; }
-    .text-muted { color: #6b7280; }
-    .mt-3 { margin-top: 1rem; }
-    .mt-4 { margin-top: 1.5rem; }
-    .mb-0 { margin-bottom: 0; }
-    .py-5 { padding-top: 3rem; padding-bottom: 3rem; }
+    .spinner-border {
+        width: 1rem;
+        height: 1rem;
+        border: 2px solid currentColor;
+        border-right-color: transparent;
+        border-radius: 50%;
+        animation: spinner-border 0.75s linear infinite;
+        display: inline-block;
+        vertical-align: middle;
+        margin-right: var(--space-2);
+    }
+    @keyframes spinner-border {
+        to { transform: rotate(360deg); }
+    }
+    .d-none {
+        display: none !important;
+    }
 </style>
 <?php $__env->stopPush(); ?>
 
 <?php $__env->startSection('content'); ?>
-<div style="max-width: 1000px; margin: 0 auto;">
+<?php if (isset($component)) { $__componentOriginalf8d4ea307ab1e58d4e472a43c8548d8e = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginalf8d4ea307ab1e58d4e472a43c8548d8e = $attributes; } ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.page-header','data' => ['title' => 'Создать заявку','description' => 'Опишите необходимые запчасти для быстрого подбора предложений']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('page-header'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes(['title' => 'Создать заявку','description' => 'Опишите необходимые запчасти для быстрого подбора предложений']); ?>
+<?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginalf8d4ea307ab1e58d4e472a43c8548d8e)): ?>
+<?php $attributes = $__attributesOriginalf8d4ea307ab1e58d4e472a43c8548d8e; ?>
+<?php unset($__attributesOriginalf8d4ea307ab1e58d4e472a43c8548d8e); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginalf8d4ea307ab1e58d4e472a43c8548d8e)): ?>
+<?php $component = $__componentOriginalf8d4ea307ab1e58d4e472a43c8548d8e; ?>
+<?php unset($__componentOriginalf8d4ea307ab1e58d4e472a43c8548d8e); ?>
+<?php endif; ?>
 
-    <div class="alert alert-info d-flex justify-content-between align-items-center">
-        <div><strong>Ваш баланс:</strong> <span id="available-balance"><?php echo e(number_format($availableBalance, 2)); ?></span> руб.</div>
-        <div><strong>Стоимость позиции:</strong> <?php echo e(number_format($pricePerItem, 2)); ?> руб.</div>
+<div class="alert alert-info" style="display: flex; justify-content: space-between; align-items: center;">
+    <div><strong>Ваш баланс:</strong> <span id="available-balance"><?php echo e(number_format($availableBalance, 2)); ?></span> ₽</div>
+    <div>
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($limitsInfo['items_limit'] !== null): ?>
+            <strong>Лимит тарифа:</strong> <?php echo e($limitsInfo['items_used']); ?> / <?php echo e($limitsInfo['items_limit']); ?> поз.
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($limitsInfo['items_used'] >= $limitsInfo['items_limit']): ?>
+                | <strong>Сверх лимита:</strong> <?php echo e(number_format($pricePerItem, 2)); ?> ₽/поз.
+            <?php else: ?>
+                | <strong>Осталось:</strong> <?php echo e($limitsInfo['items_remaining']); ?> поз.
+            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+        <?php else: ?>
+            <strong>Тариф:</strong> Безлимитный
+        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
     </div>
+</div>
 
-    <div class="card" id="step-input">
-        <div class="card-header"><h5 class="mb-0">Шаг 1: Опишите что нужно закупить</h5></div>
-        <div class="card-body">
-            <div class="alert alert-light">
+<!-- Шаг 1: Ввод текста -->
+<div class="card" id="step-input">
+    <div class="card-header">
+        <div style="display: flex; align-items: center; gap: var(--space-2);">
+            <i data-lucide="file-text" style="width: 1.25rem; height: 1.25rem;"></i>
+            <span>Шаг 1: Опишите что нужно закупить</span>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="alert alert-info">
+            <i data-lucide="lightbulb" class="alert-icon"></i>
+            <div class="alert-content">
                 <strong>Подсказка:</strong> Введите список позиций в свободной форме. Укажите название, марку оборудования, артикул и количество.<br>
                 <em>Пример: Кнопка вызова лифта Otis XAA177AK1 - 2 шт, Датчик уровня KONE - 1 шт</em>
             </div>
-            <textarea id="request-text" class="form-control" rows="8" placeholder="Введите список позиций для закупки..."></textarea>
-            <div class="mt-3">
-                <button type="button" id="btn-parse" class="btn btn-primary">
-                    <span class="spinner-border spinner-border-sm d-none"></span>
-                    Разобрать заявку
-                </button>
-            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Список позиций</label>
+            <textarea id="request-text" class="input textarea" rows="8" placeholder="Введите список позиций для закупки..." style="resize: vertical;"></textarea>
+        </div>
+
+        <?php if (isset($component)) { $__componentOriginald0f1fd2689e4bb7060122a5b91fe8561 = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561 = $attributes; } ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.button','data' => ['type' => 'button','id' => 'btn-parse','variant' => 'primary','icon' => 'wand-2']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('button'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes(['type' => 'button','id' => 'btn-parse','variant' => 'primary','icon' => 'wand-2']); ?>
+            <span class="spinner-border d-none"></span>
+            Разобрать заявку
+         <?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561)): ?>
+<?php $attributes = $__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561; ?>
+<?php unset($__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginald0f1fd2689e4bb7060122a5b91fe8561)): ?>
+<?php $component = $__componentOriginald0f1fd2689e4bb7060122a5b91fe8561; ?>
+<?php unset($__componentOriginald0f1fd2689e4bb7060122a5b91fe8561); ?>
+<?php endif; ?>
+    </div>
+</div>
+
+<!-- Шаг 2: Проверка позиций -->
+<div class="card d-none" id="step-confirm">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-3);">
+        <div style="display: flex; align-items: center; gap: var(--space-2);">
+            <i data-lucide="list-checks" style="width: 1.25rem; height: 1.25rem;"></i>
+            <span>Шаг 2: Проверьте позиции</span>
+        </div>
+        <?php if (isset($component)) { $__componentOriginald0f1fd2689e4bb7060122a5b91fe8561 = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561 = $attributes; } ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.button','data' => ['type' => 'button','id' => 'btn-back','variant' => 'secondary','size' => 'sm','icon' => 'arrow-left']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('button'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes(['type' => 'button','id' => 'btn-back','variant' => 'secondary','size' => 'sm','icon' => 'arrow-left']); ?>
+            Назад к редактированию
+         <?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561)): ?>
+<?php $attributes = $__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561; ?>
+<?php unset($__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginald0f1fd2689e4bb7060122a5b91fe8561)): ?>
+<?php $component = $__componentOriginald0f1fd2689e4bb7060122a5b91fe8561; ?>
+<?php unset($__componentOriginald0f1fd2689e4bb7060122a5b91fe8561); ?>
+<?php endif; ?>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        <div class="table-container">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th style="width: 50px">#</th>
+                        <th>Название *</th>
+                        <th>Бренд</th>
+                        <th>Артикул</th>
+                        <th style="width: 100px">Кол-во *</th>
+                        <th style="width: 100px">Ед. изм. *</th>
+                        <th>Категория *</th>
+                        <th>Тип оборудования</th>
+                        <th>Область применения</th>
+                        <th style="width: 60px"></th>
+                    </tr>
+                </thead>
+                <tbody id="items-body"></tbody>
+            </table>
         </div>
     </div>
-
-    <div class="card d-none" id="step-confirm">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">Шаг 2: Проверьте позиции</h5>
-            <button type="button" id="btn-back" class="btn btn-sm btn-outline-secondary">← Назад к редактированию</button>
+    <div class="card-footer">
+        <div class="alert" id="cost-alert" style="margin-bottom: var(--space-4);">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div><strong>Позиций:</strong> <span id="total-items">0</span></div>
+                <div><strong>Стоимость:</strong> <span id="total-cost">0</span> ₽</div>
+            </div>
         </div>
-        <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-bordered table-sm">
-                    <thead class="table-light">
-                        <tr>
-                            <th style="width: 40px">#</th>
-                            <th>Название</th>
-                            <th style="width: 100px">Бренд</th>
-                            <th style="width: 120px">Артикул</th>
-                            <th style="width: 70px">Кол-во</th>
-                            <th style="width: 70px">Ед.</th>
-                            <th style="width: 40px"></th>
-                        </tr>
-                    </thead>
-                    <tbody id="items-body"></tbody>
-                </table>
-            </div>
-            <div class="alert mt-3" id="cost-alert">
-                <div style="display: flex; justify-content: space-between;">
-                    <div><strong>Позиций:</strong> <span id="total-items">0</span></div>
-                    <div><strong>Стоимость:</strong> <span id="total-cost">0</span> руб.</div>
-                </div>
-            </div>
-            <div class="d-flex gap-2 mt-3">
-                <button type="button" id="btn-create" class="btn btn-success">
-                    <span class="spinner-border spinner-border-sm d-none"></span>
-                    Создать заявку
-                </button>
-                <button type="button" id="btn-add-item" class="btn btn-outline-primary">+ Добавить позицию</button>
-            </div>
+
+        <div style="display: flex; gap: var(--space-3); flex-wrap: wrap;">
+            <?php if (isset($component)) { $__componentOriginald0f1fd2689e4bb7060122a5b91fe8561 = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561 = $attributes; } ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.button','data' => ['type' => 'button','id' => 'btn-create','variant' => 'accent','icon' => 'check']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('button'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes(['type' => 'button','id' => 'btn-create','variant' => 'accent','icon' => 'check']); ?>
+                <span class="spinner-border d-none"></span>
+                Создать заявку
+             <?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561)): ?>
+<?php $attributes = $__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561; ?>
+<?php unset($__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginald0f1fd2689e4bb7060122a5b91fe8561)): ?>
+<?php $component = $__componentOriginald0f1fd2689e4bb7060122a5b91fe8561; ?>
+<?php unset($__componentOriginald0f1fd2689e4bb7060122a5b91fe8561); ?>
+<?php endif; ?>
+            <?php if (isset($component)) { $__componentOriginald0f1fd2689e4bb7060122a5b91fe8561 = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561 = $attributes; } ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.button','data' => ['type' => 'button','id' => 'btn-add-item','variant' => 'secondary','icon' => 'plus']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('button'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes(['type' => 'button','id' => 'btn-add-item','variant' => 'secondary','icon' => 'plus']); ?>
+                Добавить позицию
+             <?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561)): ?>
+<?php $attributes = $__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561; ?>
+<?php unset($__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginald0f1fd2689e4bb7060122a5b91fe8561)): ?>
+<?php $component = $__componentOriginald0f1fd2689e4bb7060122a5b91fe8561; ?>
+<?php unset($__componentOriginald0f1fd2689e4bb7060122a5b91fe8561); ?>
+<?php endif; ?>
         </div>
     </div>
+</div>
 
-    <div class="card d-none" id="step-success">
-        <div class="card-body text-center py-5">
-            <div class="text-success" style="font-size: 4rem;">✓</div>
-            <h4>Заявка успешно создана!</h4>
-            <p class="text-muted">
-                Номер заявки: <strong id="request-number"></strong><br>
-                Позиций: <span id="success-items"></span>, Заморожено: <span id="success-cost"></span> руб.
-            </p>
-            <div class="mt-4">
-                <a href="<?php echo e(route('cabinet.my.requests.create')); ?>" class="btn btn-primary">Создать ещё заявку</a>
-                <a href="<?php echo e(route('cabinet.my.requests.index')); ?>" class="btn btn-outline-secondary">Мои заявки</a>
-            </div>
+<!-- Шаг 3: Успех -->
+<div class="card d-none" id="step-success">
+    <div class="card-body" style="text-align: center; padding: var(--space-8) var(--space-6);">
+        <div style="color: var(--success-600); font-size: 4rem; margin-bottom: var(--space-4);">
+            <i data-lucide="check-circle" style="width: 80px; height: 80px; margin: 0 auto;"></i>
+        </div>
+        <h2 style="font-size: var(--text-2xl); font-weight: 600; margin-bottom: var(--space-2);">Заявка успешно создана!</h2>
+        <p style="color: var(--neutral-600); margin-bottom: var(--space-6);">
+            Номер заявки: <strong id="request-number"></strong><br>
+            Позиций: <span id="success-items"></span>, Заморожено: <span id="success-cost"></span> ₽
+        </p>
+        <div style="display: flex; gap: var(--space-3); justify-content: center; flex-wrap: wrap;">
+            <?php if (isset($component)) { $__componentOriginald0f1fd2689e4bb7060122a5b91fe8561 = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561 = $attributes; } ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.button','data' => ['href' => route('cabinet.my.requests.create'),'variant' => 'primary']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('button'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes(['href' => \Illuminate\View\Compilers\BladeCompiler::sanitizeComponentAttribute(route('cabinet.my.requests.create')),'variant' => 'primary']); ?>
+                Создать ещё заявку
+             <?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561)): ?>
+<?php $attributes = $__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561; ?>
+<?php unset($__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginald0f1fd2689e4bb7060122a5b91fe8561)): ?>
+<?php $component = $__componentOriginald0f1fd2689e4bb7060122a5b91fe8561; ?>
+<?php unset($__componentOriginald0f1fd2689e4bb7060122a5b91fe8561); ?>
+<?php endif; ?>
+            <?php if (isset($component)) { $__componentOriginald0f1fd2689e4bb7060122a5b91fe8561 = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561 = $attributes; } ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.button','data' => ['href' => route('cabinet.my.requests.index'),'variant' => 'secondary']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('button'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes(['href' => \Illuminate\View\Compilers\BladeCompiler::sanitizeComponentAttribute(route('cabinet.my.requests.index')),'variant' => 'secondary']); ?>
+                Мои заявки
+             <?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561)): ?>
+<?php $attributes = $__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561; ?>
+<?php unset($__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginald0f1fd2689e4bb7060122a5b91fe8561)): ?>
+<?php $component = $__componentOriginald0f1fd2689e4bb7060122a5b91fe8561; ?>
+<?php unset($__componentOriginald0f1fd2689e4bb7060122a5b91fe8561); ?>
+<?php endif; ?>
         </div>
     </div>
-
 </div>
 <?php $__env->stopSection(); ?>
 
 <?php $__env->startPush('scripts'); ?>
 <script>
 const pricePerItem = <?php echo e($pricePerItem); ?>;
+const limitsInfo = <?php echo json_encode($limitsInfo ?? [], 15, 512) ?>;
 let parsedItems = [];
+const categories = <?php echo json_encode($categories, 15, 512) ?>;
+const productTypes = <?php echo json_encode($productTypes, 15, 512) ?>;
+const applicationDomains = <?php echo json_encode($applicationDomains, 15, 512) ?>;
 
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM загружен, инициализация обработчиков...');
+    // Инициализация иконок
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
 
-document.getElementById('btn-parse').addEventListener('click', async function() {
-    const text = document.getElementById('request-text').value.trim();
-    if (!text) { alert('Введите текст заявки'); return; }
-
-    const btn = this;
-    const spinner = btn.querySelector('.spinner-border');
-    btn.disabled = true;
-    spinner.classList.remove('d-none');
-
-    try {
-        const response = await fetch('<?php echo e(route("cabinet.my.requests.parse")); ?>', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '<?php echo e(csrf_token()); ?>' },
-            body: JSON.stringify({ text: text })
-        });
-        const result = await response.json();
-
-        if (result.success && result.items?.length > 0) {
-            parsedItems = result.items;
-            renderItems();
-            updateCostInfo(result.cost_info);
-            document.getElementById('step-input').classList.add('d-none');
-            document.getElementById('step-confirm').classList.remove('d-none');
-        } else {
-            alert(result.message || 'Не удалось распознать позиции');
+    // Парсинг заявки
+    document.getElementById('btn-parse').addEventListener('click', async function() {
+        const text = document.getElementById('request-text').value.trim();
+        if (!text) {
+            alert('Введите текст заявки');
+            return;
         }
-    } catch (e) {
-        alert('Ошибка соединения');
-    } finally {
-        btn.disabled = false;
-        spinner.classList.add('d-none');
-    }
-});
 
-document.getElementById('btn-back').addEventListener('click', function() {
-    document.getElementById('step-confirm').classList.add('d-none');
-    document.getElementById('step-input').classList.remove('d-none');
-});
+        const btn = this;
+        const spinner = btn.querySelector('.spinner-border');
+        btn.disabled = true;
+        spinner.classList.remove('d-none');
 
-function renderItems() {
-    const tbody = document.getElementById('items-body');
-    tbody.innerHTML = parsedItems.map((item, index) => `
-        <tr data-index="${index}" data-category="${escapeHtml(item.category || '')}"
-            data-product-type-id="${item.product_type_id || ''}" data-domain-id="${item.domain_id || ''}"
-            data-type-confidence="${item.type_confidence || ''}" data-domain-confidence="${item.domain_confidence || ''}"
-            data-needs-review="${item.needs_review || false}">
-            <td>${index + 1}</td>
-            <td><input type="text" class="form-control form-control-sm" name="name" value="${escapeHtml(item.name)}" required></td>
-            <td><input type="text" class="form-control form-control-sm" name="brand" value="${escapeHtml(item.brand || '')}"></td>
-            <td><input type="text" class="form-control form-control-sm" name="article" value="${escapeHtml(item.article || '')}"></td>
-            <td><input type="number" class="form-control form-control-sm" name="quantity" value="${item.quantity || 1}" min="1"></td>
-            <td><input type="text" class="form-control form-control-sm" name="unit" value="${escapeHtml(item.unit || 'шт.')}"></td>
-            <td><button type="button" class="btn btn-sm btn-outline-danger btn-remove">×</button></td>
-        </tr>
-    `).join('');
-    updateTotals();
-}
-
-function updateTotals() {
-    const count = document.querySelectorAll('#items-body tr').length;
-    const cost = count * pricePerItem;
-    document.getElementById('total-items').textContent = count;
-    document.getElementById('total-cost').textContent = cost.toFixed(2);
-    const availableBalance = parseFloat(document.getElementById('available-balance').textContent.replace(/\s/g, ''));
-    const alertEl = document.getElementById('cost-alert');
-    if (cost > availableBalance) {
-        alertEl.classList.add('alert-danger');
-        document.getElementById('btn-create').disabled = true;
-    } else {
-        alertEl.classList.remove('alert-danger');
-        alertEl.classList.add('alert-info');
-        document.getElementById('btn-create').disabled = false;
-    }
-}
-
-function updateCostInfo(costInfo) {
-    if (costInfo) document.getElementById('available-balance').textContent = costInfo.available_balance.toFixed(2);
-}
-
-document.getElementById('items-body').addEventListener('click', function(e) {
-    if (e.target.classList.contains('btn-remove')) {
-        e.target.closest('tr').remove();
-        document.querySelectorAll('#items-body tr').forEach((row, i) => { row.querySelector('td:first-child').textContent = i + 1; row.dataset.index = i; });
-        updateTotals();
-    }
-});
-
-document.getElementById('btn-add-item').addEventListener('click', function() {
-    const tbody = document.getElementById('items-body');
-    const index = tbody.querySelectorAll('tr').length;
-    const row = document.createElement('tr');
-    row.dataset.index = index;
-    row.dataset.category = 'Другое';
-    row.innerHTML = `
-        <td>${index + 1}</td>
-        <td><input type="text" class="form-control form-control-sm" name="name" required></td>
-        <td><input type="text" class="form-control form-control-sm" name="brand"></td>
-        <td><input type="text" class="form-control form-control-sm" name="article"></td>
-        <td><input type="number" class="form-control form-control-sm" name="quantity" value="1" min="1"></td>
-        <td><input type="text" class="form-control form-control-sm" name="unit" value="шт."></td>
-        <td><button type="button" class="btn btn-sm btn-outline-danger btn-remove">×</button></td>
-    `;
-    tbody.appendChild(row);
-    updateTotals();
-});
-
-document.getElementById('btn-create').addEventListener('click', async function() {
-    console.log('Кнопка создания заявки нажата');
-
-    const rows = document.querySelectorAll('#items-body tr');
-    console.log('Найдено строк:', rows.length);
-
-    if (rows.length === 0) {
-        alert('Добавьте хотя бы одну позицию');
-        return;
-    }
-
-    const items = [];
-    let valid = true;
-    rows.forEach(row => {
-        const name = row.querySelector('input[name="name"]').value.trim();
-        if (!name) {
-            valid = false;
-            row.querySelector('input[name="name"]').classList.add('is-invalid');
-        } else {
-            items.push({
-                name: name,
-                brand: row.querySelector('input[name="brand"]').value.trim() || null,
-                article: row.querySelector('input[name="article"]').value.trim() || null,
-                quantity: parseInt(row.querySelector('input[name="quantity"]').value) || 1,
-                unit: row.querySelector('input[name="unit"]').value.trim() || 'шт.',
-                category: row.dataset.category || 'Другое',
-                product_type_id: row.dataset.productTypeId ? parseInt(row.dataset.productTypeId) : null,
-                domain_id: row.dataset.domainId ? parseInt(row.dataset.domainId) : null,
-                type_confidence: row.dataset.typeConfidence ? parseFloat(row.dataset.typeConfidence) : null,
-                domain_confidence: row.dataset.domainConfidence ? parseFloat(row.dataset.domainConfidence) : null,
-                needs_review: row.dataset.needsReview === 'true'
+        try {
+            const response = await fetch('<?php echo e(route("cabinet.my.requests.parse")); ?>', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '<?php echo e(csrf_token()); ?>'
+                },
+                body: JSON.stringify({ text: text })
             });
+            const result = await response.json();
+
+            if (result.success && result.items?.length > 0) {
+                parsedItems = result.items;
+                renderItems();
+                updateCostInfo(result.cost_info);
+                document.getElementById('step-input').classList.add('d-none');
+                document.getElementById('step-confirm').classList.remove('d-none');
+                lucide.createIcons();
+            } else {
+                alert(result.message || 'Не удалось распознать позиции');
+            }
+        } catch (e) {
+            console.error('Ошибка парсинга:', e);
+            alert('Ошибка соединения');
+        } finally {
+            btn.disabled = false;
+            spinner.classList.add('d-none');
         }
     });
 
-    console.log('Собрано позиций:', items.length, items);
+    // Назад к редактированию
+    document.getElementById('btn-back').addEventListener('click', function() {
+        document.getElementById('step-confirm').classList.add('d-none');
+        document.getElementById('step-input').classList.remove('d-none');
+    });
 
-    if (!valid) {
-        alert('Заполните названия всех позиций');
-        return;
+    // Рендер позиций
+    function renderItems() {
+        const tbody = document.getElementById('items-body');
+        tbody.innerHTML = parsedItems.map((item, index) => {
+            const categoryOptions = Object.entries(categories).map(([id, name]) =>
+                `<option value="${escapeHtml(name)}" ${item.category === name ? 'selected' : ''}>${escapeHtml(name)}</option>`
+            ).join('');
+
+            const productTypeOptions = Object.entries(productTypes).map(([id, name]) =>
+                `<option value="${id}" ${item.product_type_id == id ? 'selected' : ''}>${escapeHtml(name)}</option>`
+            ).join('');
+
+            const domainOptions = Object.entries(applicationDomains).map(([id, name]) =>
+                `<option value="${id}" ${item.domain_id == id ? 'selected' : ''}>${escapeHtml(name)}</option>`
+            ).join('');
+
+            return `
+                <tr data-index="${index}">
+                    <td data-label="#">${index + 1}</td>
+                    <td data-label="Название">
+                        <input type="text" class="input" name="name" value="${escapeHtml(item.name)}" required style="min-width: 200px;">
+                    </td>
+                    <td data-label="Бренд">
+                        <input type="text" class="input" name="brand" value="${escapeHtml(item.brand || '')}">
+                    </td>
+                    <td data-label="Артикул">
+                        <input type="text" class="input" name="article" value="${escapeHtml(item.article || '')}">
+                    </td>
+                    <td data-label="Кол-во">
+                        <input type="number" class="input" name="quantity" value="${item.quantity || 1}" min="1">
+                    </td>
+                    <td data-label="Ед. изм.">
+                        <input type="text" class="input" name="unit" value="${escapeHtml(item.unit || 'шт.')}">
+                    </td>
+                    <td data-label="Категория">
+                        <select class="input select" name="category" required>
+                            <option value="">Выберите</option>
+                            ${categoryOptions}
+                        </select>
+                    </td>
+                    <td data-label="Тип оборудования">
+                        <select class="input select" name="product_type_id">
+                            <option value="">Не указан</option>
+                            ${productTypeOptions}
+                        </select>
+                    </td>
+                    <td data-label="Область применения">
+                        <select class="input select" name="domain_id">
+                            <option value="">Не указана</option>
+                            ${domainOptions}
+                        </select>
+                    </td>
+                    <td data-label="">
+                        <button type="button" class="btn-remove" style="color: var(--danger-600); background: none; border: none; cursor: pointer; font-size: 1.5rem; padding: var(--space-2); border-radius: var(--radius-sm); transition: background-color 0.2s;" onmouseover="this.style.background='var(--danger-50)'" onmouseout="this.style.background='none'">×</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+        updateTotals();
     }
 
-    const btn = this;
-    const spinner = btn.querySelector('.spinner-border');
-    btn.disabled = true;
-    spinner.classList.remove('d-none');
+    // Обновить итоги с учетом лимитов тарифа
+    function updateTotals() {
+        const count = document.querySelectorAll('#items-body tr').length;
 
-    console.log('Отправка запроса...');
+        // Рассчитываем стоимость с учетом лимитов
+        let cost = 0;
+        if (limitsInfo.items_limit !== null && limitsInfo.items_limit !== undefined) {
+            // Есть лимит
+            const itemsUsed = limitsInfo.items_used || 0;
+            const itemsLimit = limitsInfo.items_limit;
+            const totalItems = itemsUsed + count;
 
-    try {
-        const response = await fetch('<?php echo e(route("cabinet.my.requests.store")); ?>', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '<?php echo e(csrf_token()); ?>' },
-            body: JSON.stringify({ items: items })
+            if (totalItems > itemsLimit) {
+                // Часть позиций сверх лимита
+                const itemsOverLimit = totalItems - itemsLimit;
+                cost = itemsOverLimit * pricePerItem;
+            }
+            // Если в пределах лимита - cost остается 0
+        } else {
+            // Безлимитный тариф - бесплатно
+            cost = 0;
+        }
+
+        document.getElementById('total-items').textContent = count;
+        document.getElementById('total-cost').textContent = cost.toFixed(2);
+
+        const availableBalance = parseFloat(document.getElementById('available-balance').textContent.replace(/[\s,]/g, ''));
+        const alertEl = document.getElementById('cost-alert');
+        const btnCreate = document.getElementById('btn-create');
+
+        if (cost > availableBalance) {
+            alertEl.classList.add('alert-error');
+            alertEl.classList.remove('alert-info');
+            btnCreate.disabled = true;
+        } else {
+            alertEl.classList.remove('alert-error');
+            alertEl.classList.add('alert-info');
+            btnCreate.disabled = false;
+        }
+    }
+
+    // Обновить информацию о балансе
+    function updateCostInfo(costInfo) {
+        if (costInfo) {
+            document.getElementById('available-balance').textContent = costInfo.available_balance.toFixed(2);
+        }
+    }
+
+    // Удаление позиции
+    document.getElementById('items-body').addEventListener('click', function(e) {
+        if (e.target.classList.contains('btn-remove')) {
+            e.target.closest('tr').remove();
+            document.querySelectorAll('#items-body tr').forEach((row, i) => {
+                row.querySelector('td:first-child').textContent = i + 1;
+                row.dataset.index = i;
+            });
+            updateTotals();
+        }
+    });
+
+    // Добавить позицию
+    document.getElementById('btn-add-item').addEventListener('click', function() {
+        const tbody = document.getElementById('items-body');
+        const index = tbody.querySelectorAll('tr').length;
+
+        const categoryOptions = Object.entries(categories).map(([id, name]) =>
+            `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`
+        ).join('');
+
+        const productTypeOptions = Object.entries(productTypes).map(([id, name]) =>
+            `<option value="${id}">${escapeHtml(name)}</option>`
+        ).join('');
+
+        const domainOptions = Object.entries(applicationDomains).map(([id, name]) =>
+            `<option value="${id}">${escapeHtml(name)}</option>`
+        ).join('');
+
+        const row = document.createElement('tr');
+        row.dataset.index = index;
+        row.innerHTML = `
+            <td data-label="#">${index + 1}</td>
+            <td data-label="Название">
+                <input type="text" class="input" name="name" required style="min-width: 200px;">
+            </td>
+            <td data-label="Бренд">
+                <input type="text" class="input" name="brand">
+            </td>
+            <td data-label="Артикул">
+                <input type="text" class="input" name="article">
+            </td>
+            <td data-label="Кол-во">
+                <input type="number" class="input" name="quantity" value="1" min="1">
+            </td>
+            <td data-label="Ед. изм.">
+                <input type="text" class="input" name="unit" value="шт.">
+            </td>
+            <td data-label="Категория">
+                <select class="input select" name="category" required>
+                    <option value="">Выберите</option>
+                    ${categoryOptions}
+                </select>
+            </td>
+            <td data-label="Тип оборудования">
+                <select class="input select" name="product_type_id">
+                    <option value="">Не указан</option>
+                    ${productTypeOptions}
+                </select>
+            </td>
+            <td data-label="Область применения">
+                <select class="input select" name="domain_id">
+                    <option value="">Не указана</option>
+                    ${domainOptions}
+                </select>
+            </td>
+            <td data-label="">
+                <button type="button" class="btn-remove" style="color: var(--danger-600); background: none; border: none; cursor: pointer; font-size: 1.5rem; padding: var(--space-2); border-radius: var(--radius-sm); transition: background-color 0.2s;" onmouseover="this.style.background='var(--danger-50)'" onmouseout="this.style.background='none'">×</button>
+            </td>
+        `;
+        tbody.appendChild(row);
+        updateTotals();
+    });
+
+    // Создать заявку
+    document.getElementById('btn-create').addEventListener('click', async function() {
+        const rows = document.querySelectorAll('#items-body tr');
+
+        if (rows.length === 0) {
+            alert('Добавьте хотя бы одну позицию');
+            return;
+        }
+
+        const items = [];
+        let valid = true;
+
+        rows.forEach(row => {
+            const name = row.querySelector('input[name="name"]').value.trim();
+            const category = row.querySelector('select[name="category"]').value;
+
+            if (!name) {
+                valid = false;
+                row.querySelector('input[name="name"]').classList.add('input-error');
+            }
+            if (!category) {
+                valid = false;
+                row.querySelector('select[name="category"]').classList.add('input-error');
+            }
+
+            if (name && category) {
+                const productTypeId = row.querySelector('select[name="product_type_id"]').value;
+                const domainId = row.querySelector('select[name="domain_id"]').value;
+
+                items.push({
+                    name: name,
+                    brand: row.querySelector('input[name="brand"]').value.trim() || null,
+                    article: row.querySelector('input[name="article"]').value.trim() || null,
+                    quantity: parseInt(row.querySelector('input[name="quantity"]').value) || 1,
+                    unit: row.querySelector('input[name="unit"]').value.trim() || 'шт.',
+                    category: category,
+                    product_type_id: productTypeId ? parseInt(productTypeId) : null,
+                    domain_id: domainId ? parseInt(domainId) : null
+                });
+            }
         });
 
-        console.log('Статус ответа:', response.status);
-
-        const result = await response.json();
-        console.log('Результат:', result);
-
-        if (result.success) {
-            document.getElementById('request-number').textContent = result.request_number;
-            document.getElementById('success-items').textContent = result.items_count;
-            document.getElementById('success-cost').textContent = result.total_cost.toFixed(2);
-            document.getElementById('step-confirm').classList.add('d-none');
-            document.getElementById('step-success').classList.remove('d-none');
-        } else {
-            alert(result.message || 'Ошибка при создании заявки');
+        if (!valid) {
+            alert('Заполните названия и категории всех позиций');
+            return;
         }
-    } catch (e) {
-        console.error('Ошибка:', e);
-        alert('Ошибка соединения: ' + e.message);
-    } finally {
-        btn.disabled = false;
-        spinner.classList.add('d-none');
+
+        const btn = this;
+        const spinner = btn.querySelector('.spinner-border');
+        btn.disabled = true;
+        spinner.classList.remove('d-none');
+
+        try {
+            const response = await fetch('<?php echo e(route("cabinet.my.requests.store")); ?>', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '<?php echo e(csrf_token()); ?>'
+                },
+                body: JSON.stringify({ items: items })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                document.getElementById('request-number').textContent = result.request_number;
+                document.getElementById('success-items').textContent = result.items_count;
+                document.getElementById('success-cost').textContent = result.total_cost.toFixed(2);
+                document.getElementById('step-confirm').classList.add('d-none');
+                document.getElementById('step-success').classList.remove('d-none');
+                lucide.createIcons();
+            } else {
+                alert(result.message || 'Ошибка при создании заявки');
+            }
+        } catch (e) {
+            console.error('Ошибка создания заявки:', e);
+            alert('Ошибка соединения');
+        } finally {
+            btn.disabled = false;
+            spinner.classList.add('d-none');
+        }
+    });
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 });
-
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-}); // Закрытие DOMContentLoaded
 </script>
 <?php $__env->stopPush(); ?>
 
