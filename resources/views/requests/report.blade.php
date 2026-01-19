@@ -216,6 +216,9 @@
                 $pdfReport = \App\Models\Report::where('request_id', $request->id)
                     ->whereNotNull('pdf_content')
                     ->first();
+                // Проверяем, обновлялась ли заявка после генерации PDF
+                $reportOutdated = $pdfReport && $externalRequest->updated_at && $pdfReport->created_at
+                    && $externalRequest->updated_at->isAfter($pdfReport->created_at);
             @endphp
             @if($canGeneratePdf)
             <div style="display: flex; gap: 0.75rem; align-items: center;">
@@ -232,6 +235,14 @@
                         <a href="{{ route('cabinet.my.requests.download-pdf', $request->id) }}" style="background: #10b981; color: white; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; font-weight: 600;">
                             Скачать PDF
                         </a>
+                        @if($reportOutdated)
+                            <form action="{{ route('cabinet.my.requests.generate-pdf', $request->id) }}" method="POST" style="display: inline;">
+                                @csrf
+                                <button type="submit" style="background: #f59e0b; color: white; padding: 0.5rem 1rem; border-radius: 6px; border: none; font-weight: 600; cursor: pointer;">
+                                    Обновить PDF отчет
+                                </button>
+                            </form>
+                        @endif
                     @endif
                 @elseif($pdfReport && $pdfReport->status === 'generating')
                     <span style="color: #f59e0b; font-size: 0.875rem;">Генерация PDF...</span>
