@@ -455,8 +455,9 @@ class UserRequestController extends Controller
             return back()->with('error', 'Срок действия PDF истек. Запустите генерацию повторно.');
         }
 
-        // Отдаем PDF
-        return response($report->pdf_content)
+        // Отдаем PDF (декодируем из base64)
+        $pdfContent = base64_decode($report->pdf_content);
+        return response($pdfContent)
             ->header('Content-Type', 'application/pdf')
             ->header('Content-Disposition', 'attachment; filename="' . basename($report->file_path) . '"');
     }

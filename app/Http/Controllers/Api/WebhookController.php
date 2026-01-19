@@ -221,7 +221,7 @@ class WebhookController extends Controller
                         'user_id' => $validated['user_id'],
                         'status' => 'ready',
                         'file_path' => $path,
-                        'pdf_content' => $pdfContent,
+                        'pdf_content' => $validated['file']['content_base64'], // Сохраняем base64
                         'pdf_expires_at' => $expiresAt,
                         'items_count' => $validated['metadata']['items_total'] ?? null,
                         'items_with_offers' => $validated['metadata']['items_with_offers'] ?? null,
@@ -268,11 +268,12 @@ class WebhookController extends Controller
             Log::error('Error processing PDF report webhook', [
                 'report_id' => $validated['report_id'] ?? null,
                 'error' => $e->getMessage(),
+                'line' => $e->getLine(),
             ]);
 
             return response()->json([
                 'received' => false,
-                'error' => $e->getMessage(),
+                'error' => 'Internal server error',
             ], 500);
         }
     }
