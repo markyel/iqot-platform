@@ -209,6 +209,43 @@
                 ?>
                 <span class="status-badge <?php echo e($statusClass); ?>"><?php echo e($statusLabel); ?></span>
             </div>
+            <?php
+                $user = Auth::user();
+                $tariff = $user->getActiveTariff();
+                $canGeneratePdf = $tariff && $tariff->tariffPlan->canGeneratePdfReports();
+                $pdfReport = \App\Models\Report::where('request_id', $request->id)
+                    ->where('user_id', $user->id)
+                    ->whereNotNull('pdf_content')
+                    ->first();
+            ?>
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canGeneratePdf): ?>
+            <div style="display: flex; gap: 0.75rem; align-items: center;">
+                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($pdfReport && $pdfReport->status === 'ready'): ?>
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($pdfReport->pdf_expires_at && $pdfReport->pdf_expires_at->isPast()): ?>
+                        <span style="color: #dc2626; font-size: 0.875rem;">PDF истек</span>
+                        <form action="<?php echo e(route('cabinet.my.requests.generate-pdf', $request->id)); ?>" method="POST" style="display: inline;">
+                            <?php echo csrf_field(); ?>
+                            <button type="submit" style="background: #10b981; color: white; padding: 0.5rem 1rem; border-radius: 6px; border: none; font-weight: 600; cursor: pointer;">
+                                Сгенерировать PDF
+                            </button>
+                        </form>
+                    <?php else: ?>
+                        <a href="<?php echo e(route('cabinet.my.requests.download-pdf', $request->id)); ?>" style="background: #10b981; color: white; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; font-weight: 600;">
+                            Скачать PDF
+                        </a>
+                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                <?php elseif($pdfReport && $pdfReport->status === 'generating'): ?>
+                    <span style="color: #f59e0b; font-size: 0.875rem;">Генерация PDF...</span>
+                <?php else: ?>
+                    <form action="<?php echo e(route('cabinet.my.requests.generate-pdf', $request->id)); ?>" method="POST" style="display: inline;">
+                        <?php echo csrf_field(); ?>
+                        <button type="submit" style="background: #10b981; color: white; padding: 0.5rem 1rem; border-radius: 6px; border: none; font-weight: 600; cursor: pointer;">
+                            Сгенерировать PDF
+                        </button>
+                    </form>
+                <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+            </div>
+            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
         </div>
     </div>
 

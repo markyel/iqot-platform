@@ -413,14 +413,10 @@ class UserRequestController extends Controller
             return back()->with('error', $result['message'] ?? 'Ошибка при запуске генерации отчета.');
         }
 
-        // Очищаем старые PDF отчеты для этой заявки
+        // Удаляем старые PDF отчеты для этой заявки
         Report::where('request_id', $request->id)
             ->whereNotNull('pdf_content')
-            ->update([
-                'pdf_content' => null,
-                'file_path' => null,
-                'status' => 'outdated',
-            ]);
+            ->delete();
 
         // Создаем запись о генерации отчета
         $reportCode = 'PDF-' . date('Ymd') . '-' . str_pad($result['report_id'], 6, '0', STR_PAD_LEFT);
