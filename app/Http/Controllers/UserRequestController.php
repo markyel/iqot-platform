@@ -417,7 +417,6 @@ class UserRequestController extends Controller
         $reportCode = 'PDF-' . date('Ymd') . '-' . str_pad($result['report_id'], 6, '0', STR_PAD_LEFT);
 
         Report::create([
-            'id' => $result['report_id'],
             'request_id' => $request->id,
             'user_id' => $user->id,
             'code' => $reportCode,

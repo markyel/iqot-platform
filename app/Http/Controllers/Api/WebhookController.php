@@ -214,12 +214,14 @@ class WebhookController extends Controller
                 // Вычисляем срок истечения (7 дней)
                 $expiresAt = now()->addDays(7);
 
-                // Обновляем или создаём запись
+                // Формируем код отчета как в контроллере
+                $reportCode = 'PDF-' . date('Ymd') . '-' . str_pad($validated['report_id'], 6, '0', STR_PAD_LEFT);
+
+                // Обновляем или создаём запись по code
                 $report = Report::updateOrCreate(
-                    ['id' => $validated['report_id']],
+                    ['code' => $reportCode],
                     [
                         'user_id' => $validated['user_id'],
-                        'code' => 'PDF-' . strtoupper(uniqid()),
                         'title' => 'PDF отчет',
                         'status' => 'ready',
                         'file_path' => $path,
