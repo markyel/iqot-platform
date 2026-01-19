@@ -214,7 +214,6 @@
                 $tariff = $user->getActiveTariff();
                 $canGeneratePdf = $tariff && $tariff->tariffPlan->canGeneratePdfReports();
                 $pdfReport = \App\Models\Report::where('request_id', $request->id)
-                    ->where('user_id', $user->id)
                     ->whereNotNull('pdf_content')
                     ->first();
             @endphp

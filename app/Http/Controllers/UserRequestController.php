@@ -439,9 +439,8 @@ class UserRequestController extends Controller
         $user = Auth::user();
         $request = $user->requests()->findOrFail($id);
 
-        // Находим готовый отчет
+        // Находим готовый отчет по request_id
         $report = Report::where('request_id', $request->id)
-            ->where('user_id', $user->id)
             ->where('status', 'ready')
             ->whereNotNull('pdf_content')
             ->first();
