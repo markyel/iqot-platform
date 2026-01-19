@@ -217,6 +217,12 @@ class WebhookController extends Controller
                 // Формируем код отчета как в контроллере
                 $reportCode = 'PDF-' . date('Ymd') . '-' . str_pad($validated['report_id'], 6, '0', STR_PAD_LEFT);
 
+                Log::info('PDF webhook received', [
+                    'report_id' => $validated['report_id'],
+                    'user_id' => $validated['user_id'],
+                    'generated_code' => $reportCode,
+                ]);
+
                 // Обновляем или создаём запись по code
                 $report = Report::updateOrCreate(
                     ['code' => $reportCode],
