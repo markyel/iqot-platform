@@ -472,13 +472,14 @@ class ManageRequestController extends Controller
 
         Report::create([
             'id' => $reportResult['report_id'],
+            'request_id' => $id,
             'user_id' => auth()->id(),
             'code' => $reportCode,
             'title' => "PDF отчет по заявке {$requestData['request_number']}",
             'type' => 'single',
             'report_type' => 'request',
             'status' => 'generating',
-            'callback_url' => route('api.webhooks.report-ready-pdf'),
+            'callback_url' => route('webhooks.report.ready-pdf'),
         ]);
 
         return back()->with('success', 'Генерация PDF отчета запущена.');

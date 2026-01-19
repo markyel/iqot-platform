@@ -425,7 +425,7 @@ class UserRequestController extends Controller
             'type' => 'single',
             'report_type' => 'request',
             'status' => 'generating',
-            'callback_url' => route('api.webhooks.report-ready-pdf'),
+            'callback_url' => route('webhooks.report.ready-pdf'),
         ]);
 
         return back()->with('success', 'Генерация PDF отчета запущена. Вы получите уведомление когда отчет будет готов.');
