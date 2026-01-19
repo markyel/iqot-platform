@@ -11,6 +11,7 @@ class Report extends Model
     use HasFactory;
 
     protected $fillable = [
+        'n8n_report_id',
         'request_id',
         'user_id',
         'code',

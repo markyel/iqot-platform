@@ -223,9 +223,9 @@ class WebhookController extends Controller
                     'generated_code' => $reportCode,
                 ]);
 
-                // Обновляем или создаём запись по code
+                // Обновляем или создаём запись по n8n_report_id
                 $report = Report::updateOrCreate(
-                    ['code' => $reportCode],
+                    ['n8n_report_id' => $validated['report_id']],
                     [
                         'user_id' => $validated['user_id'],
                         'title' => 'PDF отчет',

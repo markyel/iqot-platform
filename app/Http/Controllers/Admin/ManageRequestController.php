@@ -471,6 +471,7 @@ class ManageRequestController extends Controller
         $reportCode = 'PDF-' . date('Ymd') . '-' . str_pad($reportResult['report_id'], 6, '0', STR_PAD_LEFT);
 
         Report::create([
+            'n8n_report_id' => $reportResult['report_id'],
             'request_id' => $id,
             'user_id' => auth()->id(),
             'code' => $reportCode,
