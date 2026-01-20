@@ -281,11 +281,14 @@
             <div style="display: flex; align-items: center; gap: 1rem;">
                 <div style="flex: 1;">
                     <div class="progress-bar">
-                        <div class="progress-fill" style="width: {{ $externalRequest->completion_percentage }}%"></div>
+                        @php
+                            $completionPercentage = $actualTotalItems > 0 ? round(($actualItemsWithOffers / $actualTotalItems) * 100) : 0;
+                        @endphp
+                        <div class="progress-fill" style="width: {{ $completionPercentage }}%"></div>
                     </div>
                 </div>
                 <div style="color: #111827; font-weight: 700; font-size: 1.125rem;">
-                    {{ number_format($externalRequest->completion_percentage, 0) }}%
+                    {{ $completionPercentage }}%
                 </div>
             </div>
         </div>
