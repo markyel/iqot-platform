@@ -487,16 +487,35 @@
 document.addEventListener('DOMContentLoaded', function() {
     console.log('PDF auto-reload script loaded');
 
-    // Ищем элемент с текстом "Генерация PDF..."
+    // Проверяем, есть ли на странице элемент со статусом "Генерация PDF..."
     const checkGeneratingStatus = () => {
-        const bodyText = document.body.textContent || document.body.innerText;
-        const hasGenerating = bodyText.includes('Генерация PDF');
-        const hasDownload = bodyText.includes('Скачать PDF');
-        console.log('Статус на странице: генерация=' + hasGenerating + ', скачать=' + hasDownload);
-        return hasGenerating;
+        // Ищем именно span с цветом #f59e0b (оранжевый), который используется для статуса генерации
+        const generatingSpans = document.querySelectorAll('span[style*="color: #f59e0b"], span[style*="color:#f59e0b"]');
+        for (let span of generatingSpans) {
+            if (span.textContent.trim().includes('Генерация PDF')) {
+                return true;
+            }
+        }
+        return false;
     };
 
-    if (checkGeneratingStatus()) {
+    // Проверяем, есть ли кнопка скачать PDF
+    const checkDownloadButton = () => {
+        const links = document.querySelectorAll('a');
+        for (let link of links) {
+            if (link.textContent.trim().includes('Скачать PDF')) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    const isGenerating = checkGeneratingStatus();
+    const hasDownload = checkDownloadButton();
+
+    console.log('Статус на странице: генерация=' + isGenerating + ', скачать=' + hasDownload);
+
+    if (isGenerating && !hasDownload) {
         console.log('Обнаружена генерация PDF, запускаем автообновление...');
 
         let checkCount = 0;
@@ -512,14 +531,13 @@ document.addEventListener('DOMContentLoaded', function() {
             })
             .then(response => response.text())
             .then(html => {
-                // Проверяем есть ли статус "Генерация PDF..." в новом HTML
-                const stillGenerating = html.includes('Генерация PDF');
-                const hasDownloadButton = html.includes('Скачать PDF');
+                // Проверяем наличие ссылки "Скачать PDF" в HTML
+                const hasDownloadButton = html.includes('Скачать PDF') && html.includes('download-pdf');
 
-                console.log('Ответ от сервера: генерация=' + stillGenerating + ', кнопка скачать=' + hasDownloadButton);
+                console.log('Ответ от сервера: кнопка скачать=' + hasDownloadButton);
 
-                // Если статус "Генерация PDF..." исчез ИЛИ появилась кнопка скачать, перезагружаем страницу
-                if (!stillGenerating || hasDownloadButton) {
+                // Если появилась кнопка скачать, перезагружаем страницу
+                if (hasDownloadButton) {
                     console.log('PDF готов, перезагружаем страницу...');
                     clearInterval(pdfCheckInterval);
                     window.location.reload();
@@ -536,7 +554,7 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }, 3000); // Проверяем каждые 3 секунды
     } else {
-        console.log('Генерация PDF не обнаружена, автообновление не требуется');
+        console.log('Генерация PDF не обнаружена или PDF уже готов, автообновление не требуется');
     }
 });
 </script>
