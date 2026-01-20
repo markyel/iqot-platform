@@ -12,6 +12,12 @@
             </a>
 
             @php
+                // Пересчитываем актуальное количество позиций с предложениями
+                $actualItemsWithOffers = $externalRequest->items->filter(function($item) {
+                    return $item->offers->count() > 0;
+                })->count();
+                $actualTotalItems = $externalRequest->items->count();
+
                 $pdfReport = \App\Models\Report::where('request_id', $externalRequest->id)
                     ->where('report_type', 'request')
                     ->orderBy('created_at', 'desc')
@@ -147,11 +153,14 @@
                 <div style="display: flex; align-items: center; gap: var(--space-4);">
                     <div style="flex: 1;">
                         <div style="width: 100%; height: 8px; background: var(--neutral-200); border-radius: var(--radius-sm); overflow: hidden;">
-                            <div style="height: 100%; background: linear-gradient(90deg, var(--primary-500), var(--primary-600)); width: {{ $externalRequest->completion_percentage }}%; transition: width 0.3s;"></div>
+                            @php
+                                $completionPercentage = $actualTotalItems > 0 ? round(($actualItemsWithOffers / $actualTotalItems) * 100) : 0;
+                            @endphp
+                            <div style="height: 100%; background: linear-gradient(90deg, var(--primary-500), var(--primary-600)); width: {{ $completionPercentage }}%; transition: width 0.3s;"></div>
                         </div>
                     </div>
                     <div style="color: var(--neutral-900); font-weight: 700; font-size: 1.125rem;">
-                        {{ number_format($externalRequest->completion_percentage, 0) }}%
+                        {{ $completionPercentage }}%
                     </div>
                 </div>
             </div>
@@ -166,13 +175,6 @@
     </div>
 
     <!-- Статистика -->
-    @php
-        // Пересчитываем актуальное количество позиций с предложениями
-        $actualItemsWithOffers = $externalRequest->items->filter(function($item) {
-            return $item->offers->count() > 0;
-        })->count();
-        $actualTotalItems = $externalRequest->items->count();
-    @endphp
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-4); margin-bottom: var(--space-6);">
         <x-stat-card
             label="Всего позиций"

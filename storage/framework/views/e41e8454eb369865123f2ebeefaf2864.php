@@ -13,7 +13,8 @@
 
             <?php
                 $pdfReport = \App\Models\Report::where('request_id', $externalRequest->id)
-                    ->whereNotNull('pdf_content')
+                    ->where('report_type', 'request')
+                    ->orderBy('created_at', 'desc')
                     ->first();
             ?>
             <div style="display: flex; gap: 0.75rem; align-items: center;">
@@ -24,7 +25,7 @@
                             <?php echo csrf_field(); ?>
                             <button type="submit" style="background: var(--primary-600); color: white; border: none; padding: 0.5rem 1rem; border-radius: var(--radius-md); font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 0.5rem;">
                                 <i data-lucide="file-text" style="width: 1rem; height: 1rem;"></i>
-                                Сгенерировать PDF
+                                Экспортировать в PDF
                             </button>
                         </form>
                     <?php else: ?>
@@ -32,6 +33,13 @@
                             <i data-lucide="download" style="width: 1rem; height: 1rem;"></i>
                             Скачать PDF
                         </a>
+                        <form action="<?php echo e(route('admin.manage.requests.generate-pdf', $externalRequest->id)); ?>" method="POST" style="display: inline;">
+                            <?php echo csrf_field(); ?>
+                            <button type="submit" style="background: var(--warning-600); color: white; border: none; padding: 0.5rem 1rem; border-radius: var(--radius-md); font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 0.5rem;">
+                                <i data-lucide="refresh-cw" style="width: 1rem; height: 1rem;"></i>
+                                Обновить PDF отчет
+                            </button>
+                        </form>
                     <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                 <?php elseif($pdfReport && $pdfReport->status === 'generating'): ?>
                     <span style="color: #f59e0b; font-size: 0.875rem; display: inline-flex; align-items: center; gap: 0.5rem;">
@@ -43,7 +51,7 @@
                         <?php echo csrf_field(); ?>
                         <button type="submit" style="background: var(--primary-600); color: white; border: none; padding: 0.5rem 1rem; border-radius: var(--radius-md); font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 0.5rem;">
                             <i data-lucide="file-text" style="width: 1rem; height: 1rem;"></i>
-                            Сгенерировать PDF
+                            Экспортировать в PDF
                         </button>
                     </form>
                 <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
@@ -160,11 +168,14 @@
                 <div style="display: flex; align-items: center; gap: var(--space-4);">
                     <div style="flex: 1;">
                         <div style="width: 100%; height: 8px; background: var(--neutral-200); border-radius: var(--radius-sm); overflow: hidden;">
-                            <div style="height: 100%; background: linear-gradient(90deg, var(--primary-500), var(--primary-600)); width: <?php echo e($externalRequest->completion_percentage); ?>%; transition: width 0.3s;"></div>
+                            <?php
+                                $completionPercentage = $actualTotalItems > 0 ? round(($actualItemsWithOffers / $actualTotalItems) * 100) : 0;
+                            ?>
+                            <div style="height: 100%; background: linear-gradient(90deg, var(--primary-500), var(--primary-600)); width: <?php echo e($completionPercentage); ?>%; transition: width 0.3s;"></div>
                         </div>
                     </div>
                     <div style="color: var(--neutral-900); font-weight: 700; font-size: 1.125rem;">
-                        <?php echo e(number_format($externalRequest->completion_percentage, 0)); ?>%
+                        <?php echo e($completionPercentage); ?>%
                     </div>
                 </div>
             </div>
@@ -179,17 +190,24 @@
     </div>
 
     <!-- Статистика -->
+    <?php
+        // Пересчитываем актуальное количество позиций с предложениями
+        $actualItemsWithOffers = $externalRequest->items->filter(function($item) {
+            return $item->offers->count() > 0;
+        })->count();
+        $actualTotalItems = $externalRequest->items->count();
+    ?>
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-4); margin-bottom: var(--space-6);">
         <?php if (isset($component)) { $__componentOriginal527fae77f4db36afc8c8b7e9f5f81682 = $component; } ?>
 <?php if (isset($attributes)) { $__attributesOriginal527fae77f4db36afc8c8b7e9f5f81682 = $attributes; } ?>
-<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.stat-card','data' => ['label' => 'Всего позиций','value' => $externalRequest->total_items]] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.stat-card','data' => ['label' => 'Всего позиций','value' => $actualTotalItems]] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
 <?php $component->withName('stat-card'); ?>
 <?php if ($component->shouldRender()): ?>
 <?php $__env->startComponent($component->resolveView(), $component->data()); ?>
 <?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
 <?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
 <?php endif; ?>
-<?php $component->withAttributes(['label' => 'Всего позиций','value' => \Illuminate\View\Compilers\BladeCompiler::sanitizeComponentAttribute($externalRequest->total_items)]); ?>
+<?php $component->withAttributes(['label' => 'Всего позиций','value' => \Illuminate\View\Compilers\BladeCompiler::sanitizeComponentAttribute($actualTotalItems)]); ?>
 <?php echo $__env->renderComponent(); ?>
 <?php endif; ?>
 <?php if (isset($__attributesOriginal527fae77f4db36afc8c8b7e9f5f81682)): ?>
@@ -202,14 +220,14 @@
 <?php endif; ?>
         <?php if (isset($component)) { $__componentOriginal527fae77f4db36afc8c8b7e9f5f81682 = $component; } ?>
 <?php if (isset($attributes)) { $__attributesOriginal527fae77f4db36afc8c8b7e9f5f81682 = $attributes; } ?>
-<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.stat-card','data' => ['label' => 'С предложениями','value' => $externalRequest->items_with_offers,'variant' => 'success']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.stat-card','data' => ['label' => 'С предложениями','value' => $actualItemsWithOffers,'variant' => 'success']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
 <?php $component->withName('stat-card'); ?>
 <?php if ($component->shouldRender()): ?>
 <?php $__env->startComponent($component->resolveView(), $component->data()); ?>
 <?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
 <?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
 <?php endif; ?>
-<?php $component->withAttributes(['label' => 'С предложениями','value' => \Illuminate\View\Compilers\BladeCompiler::sanitizeComponentAttribute($externalRequest->items_with_offers),'variant' => 'success']); ?>
+<?php $component->withAttributes(['label' => 'С предложениями','value' => \Illuminate\View\Compilers\BladeCompiler::sanitizeComponentAttribute($actualItemsWithOffers),'variant' => 'success']); ?>
 <?php echo $__env->renderComponent(); ?>
 <?php endif; ?>
 <?php if (isset($__attributesOriginal527fae77f4db36afc8c8b7e9f5f81682)): ?>
@@ -222,14 +240,14 @@
 <?php endif; ?>
         <?php if (isset($component)) { $__componentOriginal527fae77f4db36afc8c8b7e9f5f81682 = $component; } ?>
 <?php if (isset($attributes)) { $__attributesOriginal527fae77f4db36afc8c8b7e9f5f81682 = $attributes; } ?>
-<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.stat-card','data' => ['label' => 'Процент закрытия','value' => ($externalRequest->total_items > 0 ? number_format(($externalRequest->items_with_offers / $externalRequest->total_items) * 100, 0) : 0) . '%','variant' => 'success']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.stat-card','data' => ['label' => 'Процент закрытия','value' => ($actualTotalItems > 0 ? number_format(($actualItemsWithOffers / $actualTotalItems) * 100, 0) : 0) . '%','variant' => 'success']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
 <?php $component->withName('stat-card'); ?>
 <?php if ($component->shouldRender()): ?>
 <?php $__env->startComponent($component->resolveView(), $component->data()); ?>
 <?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
 <?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
 <?php endif; ?>
-<?php $component->withAttributes(['label' => 'Процент закрытия','value' => \Illuminate\View\Compilers\BladeCompiler::sanitizeComponentAttribute(($externalRequest->total_items > 0 ? number_format(($externalRequest->items_with_offers / $externalRequest->total_items) * 100, 0) : 0) . '%'),'variant' => 'success']); ?>
+<?php $component->withAttributes(['label' => 'Процент закрытия','value' => \Illuminate\View\Compilers\BladeCompiler::sanitizeComponentAttribute(($actualTotalItems > 0 ? number_format(($actualItemsWithOffers / $actualTotalItems) * 100, 0) : 0) . '%'),'variant' => 'success']); ?>
 <?php echo $__env->renderComponent(); ?>
 <?php endif; ?>
 <?php if (isset($__attributesOriginal527fae77f4db36afc8c8b7e9f5f81682)): ?>
@@ -491,6 +509,81 @@
 if (typeof lucide !== 'undefined') {
     lucide.createIcons();
 }
+
+// Проверяем статус генерации PDF и обновляем страницу когда готово
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('PDF auto-reload script loaded');
+
+    // Проверяем, есть ли на странице элемент со статусом "Генерация PDF..."
+    const checkGeneratingStatus = () => {
+        // Ищем именно span с цветом #f59e0b (оранжевый), который используется для статуса генерации
+        const generatingSpans = document.querySelectorAll('span[style*="color: #f59e0b"], span[style*="color:#f59e0b"]');
+        for (let span of generatingSpans) {
+            if (span.textContent.trim().includes('Генерация PDF')) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // Проверяем, есть ли кнопка скачать PDF
+    const checkDownloadButton = () => {
+        const links = document.querySelectorAll('a');
+        for (let link of links) {
+            if (link.textContent.trim().includes('Скачать PDF')) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    const isGenerating = checkGeneratingStatus();
+    const hasDownload = checkDownloadButton();
+
+    console.log('Статус на странице: генерация=' + isGenerating + ', скачать=' + hasDownload);
+
+    if (isGenerating && !hasDownload) {
+        console.log('Обнаружена генерация PDF, запускаем автообновление...');
+
+        let checkCount = 0;
+        let pdfCheckInterval = setInterval(function() {
+            checkCount++;
+            console.log('Проверяем статус PDF... (попытка ' + checkCount + ')');
+
+            fetch(window.location.href, {
+                method: 'GET',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.text())
+            .then(html => {
+                // Проверяем наличие ссылки "Скачать PDF" в HTML
+                const hasDownloadButton = html.includes('Скачать PDF') && html.includes('download-pdf');
+
+                console.log('Ответ от сервера: кнопка скачать=' + hasDownloadButton);
+
+                // Если появилась кнопка скачать, перезагружаем страницу
+                if (hasDownloadButton) {
+                    console.log('PDF готов, перезагружаем страницу...');
+                    clearInterval(pdfCheckInterval);
+                    window.location.reload();
+                }
+
+                // Ограничиваем количество попыток (макс 60 попыток = 3 минуты)
+                if (checkCount >= 60) {
+                    console.warn('Превышено максимальное время ожидания генерации PDF');
+                    clearInterval(pdfCheckInterval);
+                }
+            })
+            .catch(err => {
+                console.error('Ошибка проверки статуса PDF:', err);
+            });
+        }, 3000); // Проверяем каждые 3 секунды
+    } else {
+        console.log('Генерация PDF не обнаружена или PDF уже готов, автообновление не требуется');
+    }
+});
 </script>
 <?php $__env->stopPush(); ?>
 
