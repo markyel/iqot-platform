@@ -370,9 +370,21 @@ if (typeof lucide !== 'undefined') {
 
 // Проверяем статус генерации PDF и обновляем страницу когда готово
 (function() {
-    const generatingStatus = document.querySelector('[style*="Генерация PDF"]');
+    // Ищем элемент с текстом "Генерация PDF..."
+    const checkGeneratingStatus = () => {
+        const allSpans = document.querySelectorAll('span');
+        for (let span of allSpans) {
+            if (span.textContent.includes('Генерация PDF')) {
+                return span;
+            }
+        }
+        return null;
+    };
+
+    const generatingStatus = checkGeneratingStatus();
 
     if (generatingStatus) {
+        console.log('Обнаружена генерация PDF, запускаем автообновление...');
         let pdfCheckInterval = setInterval(function() {
             fetch(window.location.href, {
                 method: 'GET',
@@ -385,10 +397,20 @@ if (typeof lucide !== 'undefined') {
                 // Парсим ответ и проверяем статус PDF
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
-                const stillGenerating = doc.querySelector('[style*="Генерация PDF"]');
+
+                // Проверяем есть ли статус "Генерация PDF..." в новом HTML
+                const allSpans = doc.querySelectorAll('span');
+                let stillGenerating = false;
+                for (let span of allSpans) {
+                    if (span.textContent.includes('Генерация PDF')) {
+                        stillGenerating = true;
+                        break;
+                    }
+                }
 
                 // Если статус "Генерация PDF..." исчез, перезагружаем страницу
                 if (!stillGenerating) {
+                    console.log('PDF готов, перезагружаем страницу...');
                     clearInterval(pdfCheckInterval);
                     window.location.reload();
                 }
