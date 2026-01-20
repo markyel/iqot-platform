@@ -17,9 +17,9 @@
                 <p style="color: var(--neutral-600);">
                     Из заявки
                     @if($item->request)
-                        <span style="color: var(--primary-600); font-weight: 600;">
+                        <a href="{{ route('admin.manage.requests.show', $item->request->id) }}" style="color: var(--primary-600); font-weight: 600; text-decoration: none;">
                             {{ $item->request->request_number }}
-                        </span>
+                        </a>
                     @endif
                 </p>
             </div>
