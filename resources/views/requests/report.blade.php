@@ -218,8 +218,21 @@
                     ->orderBy('created_at', 'desc')
                     ->first();
                 // Проверяем, обновлялась ли заявка после генерации PDF
-                $reportOutdated = $pdfReport && $pdfReport->status === 'ready' && $externalRequest->updated_at && $pdfReport->created_at
-                    && $externalRequest->updated_at->isAfter($pdfReport->created_at);
+                // Сравниваем updated_at заявки с created_at отчета (когда была запущена генерация)
+                $reportOutdated = false;
+                if ($pdfReport && $pdfReport->status === 'ready' && $externalRequest->updated_at && $pdfReport->created_at) {
+                    $reportOutdated = $externalRequest->updated_at->isAfter($pdfReport->created_at);
+
+                    // Отладка (можно удалить позже)
+                    if (config('app.debug')) {
+                        \Log::info('PDF Report Outdated Check (User)', [
+                            'request_id' => $externalRequest->id,
+                            'request_updated_at' => $externalRequest->updated_at->toDateTimeString(),
+                            'pdf_created_at' => $pdfReport->created_at->toDateTimeString(),
+                            'is_outdated' => $reportOutdated,
+                        ]);
+                    }
+                }
             @endphp
             @if($canGeneratePdf)
             <div style="display: flex; gap: 0.75rem; align-items: center;">
