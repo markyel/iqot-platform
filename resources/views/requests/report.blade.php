@@ -490,14 +490,19 @@ document.addEventListener('DOMContentLoaded', function() {
     // Ищем элемент с текстом "Генерация PDF..."
     const checkGeneratingStatus = () => {
         const bodyText = document.body.textContent || document.body.innerText;
-        return bodyText.includes('Генерация PDF');
+        const hasGenerating = bodyText.includes('Генерация PDF');
+        const hasDownload = bodyText.includes('Скачать PDF');
+        console.log('Статус на странице: генерация=' + hasGenerating + ', скачать=' + hasDownload);
+        return hasGenerating;
     };
 
     if (checkGeneratingStatus()) {
         console.log('Обнаружена генерация PDF, запускаем автообновление...');
 
+        let checkCount = 0;
         let pdfCheckInterval = setInterval(function() {
-            console.log('Проверяем статус PDF...');
+            checkCount++;
+            console.log('Проверяем статус PDF... (попытка ' + checkCount + ')');
 
             fetch(window.location.href, {
                 method: 'GET',
@@ -509,14 +514,21 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(html => {
                 // Проверяем есть ли статус "Генерация PDF..." в новом HTML
                 const stillGenerating = html.includes('Генерация PDF');
+                const hasDownloadButton = html.includes('Скачать PDF');
 
-                console.log('Статус генерации:', stillGenerating ? 'в процессе' : 'завершена');
+                console.log('Ответ от сервера: генерация=' + stillGenerating + ', кнопка скачать=' + hasDownloadButton);
 
-                // Если статус "Генерация PDF..." исчез, перезагружаем страницу
-                if (!stillGenerating) {
+                // Если статус "Генерация PDF..." исчез ИЛИ появилась кнопка скачать, перезагружаем страницу
+                if (!stillGenerating || hasDownloadButton) {
                     console.log('PDF готов, перезагружаем страницу...');
                     clearInterval(pdfCheckInterval);
                     window.location.reload();
+                }
+
+                // Ограничиваем количество попыток (макс 60 попыток = 3 минуты)
+                if (checkCount >= 60) {
+                    console.warn('Превышено максимальное время ожидания генерации PDF');
+                    clearInterval(pdfCheckInterval);
                 }
             })
             .catch(err => {
