@@ -399,10 +399,17 @@ class UserRequestController extends Controller
             return back()->with('error', 'Генерация PDF отчетов не доступна в вашем тарифном плане.');
         }
 
+        // Определяем название организации для PDF
+        $customerName = 'Аноним';
+        if ($user->clientOrganization) {
+            $customerName = $user->clientOrganization->name;
+        }
+
         // Вызываем API генерации отчета
         $result = $this->reportService->generateReport(
             [$request->main_db_request_id],
             $user->id,
+            $customerName,
             [
                 'include_supplier_profiles' => true,
                 'include_price_comparison' => true,

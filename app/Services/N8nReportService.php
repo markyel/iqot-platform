@@ -23,21 +23,29 @@ class N8nReportService
      *
      * @param array $requestIds ID заявок
      * @param int $userId ID пользователя
+     * @param string|null $customerName Название организации заказчика
      * @param array $options Опции генерации
      * @return array {success, report_id, status, message}
      */
     public function generateReport(
         array $requestIds,
         int $userId,
+        ?string $customerName = null,
         array $options = []
     ): array {
-        return $this->call([
+        $data = [
             'action' => 'generate_report',
             'user_id' => $userId,
             'request_ids' => $requestIds,
             'callback_url' => rtrim($this->callbackBaseUrl, '/') . '/api/webhooks/report-ready-pdf',
             'report_options' => $options,
-        ]);
+        ];
+
+        if ($customerName !== null) {
+            $data['customer_name'] = $customerName;
+        }
+
+        return $this->call($data);
     }
 
     /**

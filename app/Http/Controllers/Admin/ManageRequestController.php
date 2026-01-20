@@ -453,10 +453,33 @@ class ManageRequestController extends Controller
 
         $requestData = $result['request'];
 
+        // Определяем название организации для PDF
+        $customerName = 'Аноним';
+
+        // Если заявка от клиента и есть название компании
+        if (!empty($requestData['is_customer_request']) && !empty($requestData['customer_company'])) {
+            $customerName = $requestData['customer_company'];
+        }
+        // Если заявка от клиента и есть organization_id, получаем название из БД
+        elseif (!empty($requestData['is_customer_request']) && !empty($requestData['client_organization_id'])) {
+            $organization = ClientOrganization::find($requestData['client_organization_id']);
+            if ($organization) {
+                $customerName = $organization->name;
+            }
+        }
+        // Если заявка создана пользователем через личный кабинет
+        elseif (!empty($requestData['user_id'])) {
+            $user = \App\Models\User::find($requestData['user_id']);
+            if ($user && $user->clientOrganization) {
+                $customerName = $user->clientOrganization->name;
+            }
+        }
+
         // Вызываем API генерации отчета
         $reportResult = $this->reportService->generateReport(
             [$id],
             auth()->id(),
+            $customerName,
             [
                 'include_supplier_profiles' => true,
                 'include_price_comparison' => true,

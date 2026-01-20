@@ -27,7 +27,7 @@
                             @csrf
                             <button type="submit" style="background: var(--primary-600); color: white; border: none; padding: 0.5rem 1rem; border-radius: var(--radius-md); font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 0.5rem;">
                                 <i data-lucide="file-text" style="width: 1rem; height: 1rem;"></i>
-                                Сгенерировать PDF
+                                Экспортировать в PDF
                             </button>
                         </form>
                     @else
@@ -55,7 +55,7 @@
                         @csrf
                         <button type="submit" style="background: var(--primary-600); color: white; border: none; padding: 0.5rem 1rem; border-radius: var(--radius-md); font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 0.5rem;">
                             <i data-lucide="file-text" style="width: 1rem; height: 1rem;"></i>
-                            Сгенерировать PDF
+                            Экспортировать в PDF
                         </button>
                     </form>
                 @endif
@@ -367,6 +367,34 @@
 if (typeof lucide !== 'undefined') {
     lucide.createIcons();
 }
+
+// Проверяем статус генерации PDF и обновляем страницу когда готово
+@if($pdfReport && $pdfReport->status === 'generating')
+let pdfCheckInterval = setInterval(function() {
+    fetch(window.location.href, {
+        method: 'GET',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.text())
+    .then(html => {
+        // Парсим ответ и проверяем статус PDF
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const generatingStatus = doc.querySelector('[style*="Генерация PDF"]');
+
+        // Если статус "Генерация PDF..." исчез, перезагружаем страницу
+        if (!generatingStatus) {
+            clearInterval(pdfCheckInterval);
+            window.location.reload();
+        }
+    })
+    .catch(err => {
+        console.error('Ошибка проверки статуса PDF:', err);
+    });
+}, 3000); // Проверяем каждые 3 секунды
+@endif
 </script>
 @endpush
 

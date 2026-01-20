@@ -228,7 +228,7 @@
                         <form action="{{ route('cabinet.my.requests.generate-pdf', $request->id) }}" method="POST" style="display: inline;">
                             @csrf
                             <button type="submit" style="background: #10b981; color: white; padding: 0.5rem 1rem; border-radius: 6px; border: none; font-weight: 600; cursor: pointer;">
-                                Сгенерировать PDF
+                                Экспортировать в PDF
                             </button>
                         </form>
                     @else
@@ -250,7 +250,7 @@
                     <form action="{{ route('cabinet.my.requests.generate-pdf', $request->id) }}" method="POST" style="display: inline;">
                         @csrf
                         <button type="submit" style="background: #10b981; color: white; padding: 0.5rem 1rem; border-radius: 6px; border: none; font-weight: 600; cursor: pointer;">
-                            Сгенерировать PDF
+                            Экспортировать в PDF
                         </button>
                     </form>
                 @endif
@@ -479,4 +479,42 @@
         @endforelse
     </div>
 </div>
+
+@push('scripts')
+<script>
+// Проверяем статус генерации PDF и обновляем страницу когда готово
+@php
+    $pdfReport = \App\Models\Report::where('request_id', $request->id)
+        ->whereNotNull('pdf_content')
+        ->first();
+@endphp
+@if($pdfReport && $pdfReport->status === 'generating')
+let pdfCheckInterval = setInterval(function() {
+    fetch(window.location.href, {
+        method: 'GET',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.text())
+    .then(html => {
+        // Парсим ответ и проверяем статус PDF
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const generatingStatus = doc.querySelector('[style*="Генерация PDF"]');
+
+        // Если статус "Генерация PDF..." исчез, перезагружаем страницу
+        if (!generatingStatus) {
+            clearInterval(pdfCheckInterval);
+            window.location.reload();
+        }
+    })
+    .catch(err => {
+        console.error('Ошибка проверки статуса PDF:', err);
+    });
+}, 3000); // Проверяем каждые 3 секунды
+@endif
+</script>
+@endpush
+
 @endsection
