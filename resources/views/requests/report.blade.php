@@ -214,10 +214,11 @@
                 $tariff = $user->getActiveTariff();
                 $canGeneratePdf = $tariff && $tariff->tariffPlan->canGeneratePdfReports();
                 $pdfReport = \App\Models\Report::where('request_id', $request->id)
-                    ->whereNotNull('pdf_content')
+                    ->where('report_type', 'request')
+                    ->orderBy('created_at', 'desc')
                     ->first();
                 // Проверяем, обновлялась ли заявка после генерации PDF
-                $reportOutdated = $pdfReport && $externalRequest->updated_at && $pdfReport->created_at
+                $reportOutdated = $pdfReport && $pdfReport->status === 'ready' && $externalRequest->updated_at && $pdfReport->created_at
                     && $externalRequest->updated_at->isAfter($pdfReport->created_at);
             @endphp
             @if($canGeneratePdf)
