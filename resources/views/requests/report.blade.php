@@ -483,23 +483,21 @@
 @push('scripts')
 <script>
 // Проверяем статус генерации PDF и обновляем страницу когда готово
-(function() {
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('PDF auto-reload script loaded');
+
     // Ищем элемент с текстом "Генерация PDF..."
     const checkGeneratingStatus = () => {
-        const allSpans = document.querySelectorAll('span');
-        for (let span of allSpans) {
-            if (span.textContent.includes('Генерация PDF')) {
-                return span;
-            }
-        }
-        return null;
+        const bodyText = document.body.textContent || document.body.innerText;
+        return bodyText.includes('Генерация PDF');
     };
 
-    const generatingStatus = checkGeneratingStatus();
-
-    if (generatingStatus) {
+    if (checkGeneratingStatus()) {
         console.log('Обнаружена генерация PDF, запускаем автообновление...');
+
         let pdfCheckInterval = setInterval(function() {
+            console.log('Проверяем статус PDF...');
+
             fetch(window.location.href, {
                 method: 'GET',
                 headers: {
@@ -508,19 +506,10 @@
             })
             .then(response => response.text())
             .then(html => {
-                // Парсим ответ и проверяем статус PDF
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(html, 'text/html');
-
                 // Проверяем есть ли статус "Генерация PDF..." в новом HTML
-                const allSpans = doc.querySelectorAll('span');
-                let stillGenerating = false;
-                for (let span of allSpans) {
-                    if (span.textContent.includes('Генерация PDF')) {
-                        stillGenerating = true;
-                        break;
-                    }
-                }
+                const stillGenerating = html.includes('Генерация PDF');
+
+                console.log('Статус генерации:', stillGenerating ? 'в процессе' : 'завершена');
 
                 // Если статус "Генерация PDF..." исчез, перезагружаем страницу
                 if (!stillGenerating) {
@@ -533,8 +522,10 @@
                 console.error('Ошибка проверки статуса PDF:', err);
             });
         }, 3000); // Проверяем каждые 3 секунды
+    } else {
+        console.log('Генерация PDF не обнаружена, автообновление не требуется');
     }
-})();
+});
 </script>
 @endpush
 
