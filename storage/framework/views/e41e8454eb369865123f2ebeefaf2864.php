@@ -12,6 +12,12 @@
             </a>
 
             <?php
+                // Пересчитываем актуальное количество позиций с предложениями
+                $actualItemsWithOffers = $externalRequest->items->filter(function($item) {
+                    return $item->offers->count() > 0;
+                })->count();
+                $actualTotalItems = $externalRequest->items->count();
+
                 $pdfReport = \App\Models\Report::where('request_id', $externalRequest->id)
                     ->where('report_type', 'request')
                     ->orderBy('created_at', 'desc')
@@ -190,13 +196,6 @@
     </div>
 
     <!-- Статистика -->
-    <?php
-        // Пересчитываем актуальное количество позиций с предложениями
-        $actualItemsWithOffers = $externalRequest->items->filter(function($item) {
-            return $item->offers->count() > 0;
-        })->count();
-        $actualTotalItems = $externalRequest->items->count();
-    ?>
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-4); margin-bottom: var(--space-6);">
         <?php if (isset($component)) { $__componentOriginal527fae77f4db36afc8c8b7e9f5f81682 = $component; } ?>
 <?php if (isset($attributes)) { $__attributesOriginal527fae77f4db36afc8c8b7e9f5f81682 = $attributes; } ?>
