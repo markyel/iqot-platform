@@ -166,19 +166,26 @@
     </div>
 
     <!-- Статистика -->
+    @php
+        // Пересчитываем актуальное количество позиций с предложениями
+        $actualItemsWithOffers = $externalRequest->items->filter(function($item) {
+            return $item->offers->count() > 0;
+        })->count();
+        $actualTotalItems = $externalRequest->items->count();
+    @endphp
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-4); margin-bottom: var(--space-6);">
         <x-stat-card
             label="Всего позиций"
-            :value="$externalRequest->total_items"
+            :value="$actualTotalItems"
         />
         <x-stat-card
             label="С предложениями"
-            :value="$externalRequest->items_with_offers"
+            :value="$actualItemsWithOffers"
             variant="success"
         />
         <x-stat-card
             label="Процент закрытия"
-            :value="($externalRequest->total_items > 0 ? number_format(($externalRequest->items_with_offers / $externalRequest->total_items) * 100, 0) : 0) . '%'"
+            :value="($actualTotalItems > 0 ? number_format(($actualItemsWithOffers / $actualTotalItems) * 100, 0) : 0) . '%'"
             variant="success"
         />
     </div>
