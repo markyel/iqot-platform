@@ -210,6 +210,12 @@
                 <span class="status-badge {{ $statusClass }}">{{ $statusLabel }}</span>
             </div>
             @php
+                // Пересчитываем актуальное количество позиций с предложениями
+                $actualItemsWithOffers = $externalRequest->items->filter(function($item) {
+                    return $item->offers->count() > 0;
+                })->count();
+                $actualTotalItems = $externalRequest->items->count();
+
                 $user = Auth::user();
                 $tariff = $user->getActiveTariff();
                 $canGeneratePdf = $tariff && $tariff->tariffPlan->canGeneratePdfReports();
@@ -302,13 +308,6 @@
     </div>
 
     <!-- Статистика -->
-    @php
-        // Пересчитываем актуальное количество позиций с предложениями
-        $actualItemsWithOffers = $externalRequest->items->filter(function($item) {
-            return $item->offers->count() > 0;
-        })->count();
-        $actualTotalItems = $externalRequest->items->count();
-    @endphp
     <div class="stats-grid">
         <div class="stat-card">
             <div class="stat-label">Всего позиций</div>
