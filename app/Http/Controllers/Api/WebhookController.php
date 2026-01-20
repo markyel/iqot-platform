@@ -249,8 +249,13 @@ class WebhookController extends Controller
 
                 Log::info('PDF report ready', [
                     'report_id' => $validated['report_id'],
+                    'n8n_report_id' => $report->n8n_report_id,
+                    'database_id' => $report->id,
+                    'request_id' => $report->request_id,
                     'user_id' => $validated['user_id'],
                     'filename' => $filename,
+                    'status' => $report->status,
+                    'was_recently_created' => $report->wasRecentlyCreated,
                 ]);
 
             } elseif ($validated['status'] === 'failed') {
