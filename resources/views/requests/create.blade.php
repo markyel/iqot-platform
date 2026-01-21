@@ -285,11 +285,13 @@ document.addEventListener('DOMContentLoaded', function() {
             // Есть лимит
             const itemsUsed = limitsInfo.items_used || 0;
             const itemsLimit = limitsInfo.items_limit;
-            const totalItems = itemsUsed + count;
 
-            if (totalItems > itemsLimit) {
-                // Часть позиций сверх лимита
-                const itemsOverLimit = totalItems - itemsLimit;
+            // Сколько позиций осталось в лимите
+            const remainingLimit = Math.max(0, itemsLimit - itemsUsed);
+
+            // Из текущей заявки сколько позиций сверх лимита
+            if (count > remainingLimit) {
+                const itemsOverLimit = count - remainingLimit;
                 cost = itemsOverLimit * pricePerItem;
             }
             // Если в пределах лимита - cost остается 0
