@@ -61,6 +61,16 @@ class ExternalRequestItem extends Model
         return $this->hasMany(ExternalOffer::class, 'request_item_id');
     }
 
+    public function productType(): BelongsTo
+    {
+        return $this->belongsTo(ProductType::class, 'product_type_id');
+    }
+
+    public function applicationDomain(): BelongsTo
+    {
+        return $this->belongsTo(ApplicationDomain::class, 'domain_id');
+    }
+
     public static function getStatusLabels(): array
     {
         return [
