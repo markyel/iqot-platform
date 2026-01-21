@@ -109,12 +109,27 @@
 #### `ItemPurchase` - Покупка доступа к позиции
 **Файл:** `app/Models/ItemPurchase.php`
 
-**Назначение:** Учет покупки доступа к отдельной позиции
+**Назначение:** Учет покупки доступа к отдельной позиции из публичного каталога
 
 **Ключевые поля:**
 - `user_id` - ID пользователя
 - `item_id` - ID позиции (external_request_item_id)
 - `amount` - стоимость покупки
+
+---
+
+#### `SubscriptionCharge` - Списание абонентской платы
+**Файл:** `app/Models/SubscriptionCharge.php`
+
+**Назначение:** Учет списаний абонентской платы за тарифные планы
+
+**Ключевые поля:**
+- `user_id` - ID пользователя
+- `user_tariff_id` - ID подписки
+- `tariff_plan_id` - ID тарифного плана
+- `amount` - сумма списания
+- `description` - описание платежа
+- `charged_at` - дата списания
 
 ---
 
@@ -344,6 +359,48 @@
 
 ---
 
+### Поток 6: Списание абонентской платы
+
+**Триггер:** Ежедневная команда крона или ручное переключение тарифа
+**Команда:** `php artisan tariffs:renew`
+
+#### 6.1 Автоматическое продление (крон)
+
+**Шаги:**
+1. Находятся все тарифы с истекшим сроком (`expires_at <= now()`)
+2. Для каждого тарифа:
+   - Проверяется баланс пользователя
+   - Если недостаточно средств → перевод на тариф "Старт"
+   - Если достаточно → списание `monthly_price` с баланса
+   - Создается запись в `subscription_charges`
+   - Сбрасываются лимиты (`items_used`, `reports_used` → 0)
+   - Продлевается срок действия на 1 месяц
+
+**Файлы:**
+- `app/Services/TariffService.php:30-78` (метод `renewExpiredTariffs`)
+- `app/Console/Commands/RenewUserTariffsCommand.php`
+
+---
+
+#### 6.2 Ручное переключение тарифа
+
+**Путь:** `/cabinet/tariff`
+**Контроллер:** `TariffController::switch()`
+
+**Шаги:**
+1. Пользователь выбирает новый тариф
+2. Деактивируется текущий тариф (если есть)
+3. Проверяется баланс для оплаты первого месяца
+4. Списывается `monthly_price` с баланса
+5. Создается запись в `subscription_charges`
+6. Назначается новый тариф
+
+**Файлы:**
+- `app/Models/User.php:171-204` (метод `switchTariff`)
+- `app/Http/Controllers/TariffController.php:44-78`
+
+---
+
 ## Страницы для пользователя
 
 ### Тарифы
@@ -391,6 +448,7 @@
 | `balance_charges` | Списания по позициям |
 | `report_accesses` | Доступ к чужим отчетам |
 | `item_purchases` | Покупка доступа к позициям |
+| `subscription_charges` | Списания абонентской платы |
 | `requests` | Заявки пользователей |
 | `request_items` | Позиции заявок |
 
@@ -457,6 +515,7 @@
 - `app/Models/BalanceCharge.php`
 - `app/Models/ReportAccess.php`
 - `app/Models/ItemPurchase.php`
+- `app/Models/SubscriptionCharge.php`
 - `app/Models/ExternalRequestItem.php`
 - `app/Models/ExternalRequest.php`
 
@@ -510,6 +569,29 @@
 **Файлы:**
 - `app/Console/Commands/ReleaseExpiredBalanceHoldsCommand.php`
 - `routes/console.php:14`
+
+---
+
+### 4. "Потрачено всего" не учитывало все расходы ✅
+**Было:** В админке показывалось 0₽ вместо реальных расходов
+**Проблема:** Считалась сумма только из `item_purchases`, но реальные списания идут через `balance_charges` и `report_accesses`
+**Исправлено:**
+- Создана таблица `subscription_charges` для учета абонентской платы
+- Добавлена запись в `subscription_charges` при списании абонплаты (в `TariffService::renewExpiredTariffs()` и `User::switchTariff()`)
+- Обновлен расчет "Потрачено всего" в `UserController` - теперь суммируются 4 источника:
+  - `balance_charges` - списания за позиции в заявках
+  - `report_accesses` (price > 0) - открытие чужих отчетов
+  - `item_purchases` - покупки из каталога
+  - `subscription_charges` - абонентская плата
+- Добавлены транзакции абонплаты в историю операций пользователя (`TariffController::transactions()`)
+
+**Файлы:**
+- `database/migrations/2026_01_21_162806_create_subscription_charges_table.php`
+- `app/Models/SubscriptionCharge.php`
+- `app/Services/TariffService.php:58-70`
+- `app/Models/User.php:189-201`
+- `app/Http/Controllers/Admin/UserController.php:39-45, 56-62`
+- `app/Http/Controllers/TariffController.php:174-187`
 
 ---
 
