@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Request;
 use App\Models\DemoRequest;
 use App\Models\User;
+use App\Models\PublicCatalogItem;
 use App\Http\Requests\StoreDemoRequestRequest;
 use Illuminate\Http\Request as HttpRequest;
 use Illuminate\Support\Facades\Http;
@@ -32,7 +33,14 @@ class LandingController extends Controller
             'report_unlock' => $startTariff ? $startTariff->price_per_report_over_limit : 99,
         ];
 
-        return view('landing.index', compact('pricing'));
+        // Получаем последние 5 позиций из каталога для тизера
+        $catalogItems = PublicCatalogItem::published()
+            ->withOffers()
+            ->orderBy('published_at', 'desc')
+            ->limit(5)
+            ->get();
+
+        return view('landing.index', compact('pricing', 'catalogItems'));
     }
 
     /**

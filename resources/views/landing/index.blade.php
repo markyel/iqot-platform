@@ -2220,11 +2220,10 @@
                 <div class="logo-text"><img src="/images/IQOT.svg" alt="IQOT"></div>
             </a>
             <ul class="nav-links">
-                <li><a href="#problems" data-ru="Проблема" data-en="Problem">Проблема</a></li>
                 <li><a href="#how-it-works" data-ru="Как работает" data-en="How it works">Как работает</a></li>
                 <li><a href="#benefits" data-ru="Преимущества" data-en="Benefits">Преимущества</a></li>
                 <li><a href="#pricing" data-ru="Тарифы" data-en="Pricing">Тарифы</a></li>
-                <li><a href="#comparison" data-ru="Сравнение" data-en="Comparison">Сравнение</a></li>
+                <li><a href="{{ route('catalog.index') }}" data-ru="Каталог" data-en="Catalog">Каталог</a></li>
             </ul>
             <div class="nav-right">
                 <div class="lang-switch">
@@ -2991,6 +2990,55 @@
             </div>
         </div>
     </div>
+
+    <!-- Catalog Section -->
+    @if($catalogItems->isNotEmpty())
+    <section class="section" style="background: var(--bg-secondary); padding: 6rem 0;">
+        <div class="section-container">
+            <div class="section-header">
+                <span class="section-label" data-ru="Каталог" data-en="Catalog">Каталог</span>
+                <h2 class="section-title" data-ru="Готовые отчеты от поставщиков" data-en="Ready Reports from Suppliers">Готовые отчеты от поставщиков</h2>
+                <p class="section-subtitle" data-ru="Позиции с проверенными предложениями и ценами" data-en="Items with verified offers and prices">Позиции с проверенными предложениями и ценами</p>
+            </div>
+
+            <div style="display: grid; gap: 1rem; margin-bottom: 3rem;">
+                @foreach($catalogItems as $item)
+                <a href="{{ route('catalog.show', $item->id) }}" style="text-decoration: none;">
+                    <div class="card" style="display: grid; grid-template-columns: 1fr auto; gap: 2rem; align-items: center; padding: 1.5rem; transition: all 0.3s ease;">
+                        <div>
+                            <h3 style="font-size: 1.125rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.5rem;">{{ $item->name }}</h3>
+                            <div style="display: flex; gap: 1.5rem; flex-wrap: wrap; color: var(--text-secondary); font-size: 0.875rem;">
+                                @if($item->brand)
+                                <span>{{ $item->brand }}</span>
+                                @endif
+                                @if($item->article)
+                                <span style="font-family: 'JetBrains Mono', monospace;">{{ $item->article }}</span>
+                                @endif
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 1.5rem;">
+                            @if($item->min_price && $item->max_price)
+                            <div style="text-align: right;">
+                                <div style="color: var(--text-muted); font-size: 0.75rem; margin-bottom: 0.25rem;" data-ru="от" data-en="from">от</div>
+                                <div style="color: var(--text-primary); font-weight: 700; font-size: 1.25rem;">{{ number_format($item->min_price, 0, ',', ' ') }} ₽</div>
+                            </div>
+                            @endif
+                            <div style="background: var(--accent-gradient-subtle); border: 2px solid rgba(16, 185, 129, 0.3); border-radius: 10px; padding: 0.75rem 1rem; text-align: center; min-width: 80px;">
+                                <div style="color: var(--accent-primary); font-weight: 700; font-size: 1.25rem;">{{ $item->offers_count }}</div>
+                                <div style="color: var(--text-secondary); font-size: 0.75rem; white-space: nowrap;" data-ru="предлож." data-en="offers">предлож.</div>
+                            </div>
+                        </div>
+                    </div>
+                </a>
+                @endforeach
+            </div>
+
+            <div style="text-align: center;">
+                <a href="{{ route('catalog.index') }}" class="btn btn-primary btn-large" data-ru="Смотреть весь каталог" data-en="View Full Catalog">Смотреть весь каталог →</a>
+            </div>
+        </div>
+    </section>
+    @endif
 
     <!-- Footer -->
     <footer class="footer">

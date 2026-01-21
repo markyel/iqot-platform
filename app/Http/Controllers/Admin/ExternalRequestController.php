@@ -39,12 +39,17 @@ class ExternalRequestController extends Controller
             },
             'items.offers' => function ($query) {
                 $query->whereIn('status', ['received', 'processed'])
-                      ->whereNotNull('price_per_unit')
-                      ->orderByRaw('CASE WHEN currency = "RUB" THEN price_per_unit ELSE price_per_unit * 100 END')
-                      ->orderBy('price_per_unit', 'asc');
+                      ->whereNotNull('price_per_unit');
             },
             'items.offers.supplier'
         ]);
+
+        // Сортируем предложения для каждой позиции по цене в рублях
+        foreach ($externalRequest->items as $item) {
+            $item->setRelation('offers', $item->offers->sortBy(function ($offer) {
+                return $offer->price_per_unit_in_rub;
+            })->values());
+        }
 
         return view('admin.external-requests.show', compact('externalRequest'));
     }
@@ -85,12 +90,15 @@ class ExternalRequestController extends Controller
             'request',
             'offers' => function ($query) {
                 $query->whereIn('status', ['received', 'processed'])
-                      ->whereNotNull('price_per_unit')
-                      ->orderByRaw('CASE WHEN currency = "RUB" THEN price_per_unit ELSE price_per_unit * 100 END')
-                      ->orderBy('price_per_unit', 'asc');
+                      ->whereNotNull('price_per_unit');
             },
             'offers.supplier'
         ]);
+
+        // Сортируем предложения по цене за единицу в рублях (через accessor)
+        $item->setRelation('offers', $item->offers->sortBy(function ($offer) {
+            return $offer->price_per_unit_in_rub;
+        })->values());
 
         return view('admin.external-requests.item-show', compact('item'));
     }

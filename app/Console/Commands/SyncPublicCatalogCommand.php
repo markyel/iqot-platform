@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\ExternalRequestItem;
+use App\Models\ExternalOffer;
 use App\Models\PublicCatalogItem;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -25,7 +26,7 @@ class SyncPublicCatalogCommand extends Command
                 PublicCatalogItem::truncate();
             }
 
-            // Получаем ВСЕ позиции с предложениями из external БД (как в кабинете)
+            // Получаем позиции с 3+ предложениями из external БД
             $externalItems = ExternalRequestItem::with(['request', 'productType', 'applicationDomain'])
                 ->whereHas('offers', function($q) {
                     $q->whereIn('status', ['received', 'processed']);
@@ -46,13 +47,19 @@ class SyncPublicCatalogCommand extends Command
                         continue;
                     }
 
-                    // Рассчитываем мин/макс цены и реальное количество предложений
-                    $prices = $this->calculatePrices($externalItem);
-
                     // Считаем реальное количество предложений (received/processed)
                     $realOffersCount = $externalItem->offers()
                         ->whereIn('status', ['received', 'processed'])
                         ->count();
+
+                    // Пропускаем позиции с менее чем 3 предложениями
+                    if ($realOffersCount < 3) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    // Рассчитываем мин/макс цены
+                    $prices = $this->calculatePrices($externalItem);
 
                     $data = [
                         'external_item_id' => $externalItem->id,
@@ -96,15 +103,17 @@ class SyncPublicCatalogCommand extends Command
                 }
             }
 
-            // Снимаем с публикации позиции, у которых offers_count < 3
-            $unpublished = PublicCatalogItem::whereNotIn('external_item_id', $externalItems->pluck('id'))
-                ->update(['is_published' => false]);
+            // Снимаем с публикации позиции с < 3 предложениями
+            $unpublished = PublicCatalogItem::where(function($query) {
+                $query->where('offers_count', '<', 3)
+                      ->orWhere('offers_count', null);
+            })->update(['is_published' => false]);
 
             $this->info("✓ Синхронизация завершена:");
             $this->info("  Создано: {$created}");
             $this->info("  Обновлено: {$updated}");
-            $this->info("  Снято с публикации: {$unpublished}");
-            $this->info("  Пропущено (нет заявки): {$skipped}");
+            $this->info("  Снято с публикации (< 3 предложений): {$unpublished}");
+            $this->info("  Пропущено (нет заявки или < 3 предложений): {$skipped}");
 
             return Command::SUCCESS;
 
@@ -119,27 +128,35 @@ class SyncPublicCatalogCommand extends Command
     }
 
     /**
-     * Рассчитать минимальную и максимальную цену из предложений
+     * Рассчитать минимальную и максимальную цену из предложений (за единицу)
      */
     private function calculatePrices(ExternalRequestItem $item): array
     {
-        $offers = DB::connection('reports')
-            ->table('request_item_responses')
-            ->where('request_item_id', $item->id)
-            ->whereNotNull('total_price')
-            ->where('total_price', '>', 0)
-            ->select('total_price')
+        // Загружаем предложения и вычисляем цены за единицу в рублях через accessor
+        $offers = ExternalOffer::where('request_item_id', $item->id)
+            ->whereIn('status', ['received', 'processed'])
+            ->whereNotNull('price_per_unit')
+            ->where('price_per_unit', '>', 0)
             ->get();
 
         if ($offers->isEmpty()) {
             return ['min' => null, 'max' => null];
         }
 
-        $prices = $offers->pluck('total_price')->filter();
+        // Получаем цены за единицу в рублях через accessor price_per_unit_in_rub
+        $pricesInRub = $offers->map(function ($offer) {
+            return $offer->price_per_unit_in_rub;
+        })->filter(function ($price) {
+            return $price !== null && $price > 0;
+        });
+
+        if ($pricesInRub->isEmpty()) {
+            return ['min' => null, 'max' => null];
+        }
 
         return [
-            'min' => $prices->min(),
-            'max' => $prices->max(),
+            'min' => $pricesInRub->min(),
+            'max' => $pricesInRub->max(),
         ];
     }
 }
