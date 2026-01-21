@@ -345,37 +345,8 @@ class UserRequestController extends Controller
                 ->with('error', 'Отчет не найден. Возможно, заявка еще обрабатывается.');
         }
 
-        // Проверяем, открывал ли пользователь этот отчет ранее
-        $existingAccess = ReportAccess::where('user_id', $user->id)
-            ->where('request_id', $request->id)
-            ->first();
-
-        if (!$existingAccess) {
-            // Первый доступ к отчету - проверяем тариф и списываем средства
-            $tariff = $user->getActiveTariff();
-
-            if ($tariff) {
-                $reportPrice = $tariff->tariffPlan->getReportCost($user);
-
-                // Проверяем достаточно ли средств
-                if ($user->available_balance < $reportPrice) {
-                    return redirect()->route('cabinet.my.requests.show', $id)
-                        ->with('error', "Недостаточно средств для открытия отчета. Необходимо: {$reportPrice} ₽, доступно: {$user->available_balance} ₽");
-                }
-
-                // Списываем средства
-                $user->decrement('balance', $reportPrice);
-
-                // Создаем запись о доступе
-                ReportAccess::create([
-                    'user_id' => $user->id,
-                    'request_id' => $request->id,
-                    'report_number' => $request->request_number,
-                    'price' => $reportPrice,
-                    'accessed_at' => now(),
-                ]);
-            }
-        }
+        // Пользователь НЕ должен платить за доступ к своей собственной заявке
+        // Списание происходит только за чужие отчеты (которые открываются через /cabinet/items/{id})
 
         return view('requests.report', compact('externalRequest', 'request'));
     }

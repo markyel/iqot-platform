@@ -30,24 +30,24 @@ class ExternalRequestItemObserver
             return;
         }
 
-        // Находим соответствующую заявку в основной БД по external_request_id
+        // Находим соответствующую заявку в БД reports
         $externalRequest = $item->request;
-        if (!$externalRequest || !$externalRequest->internal_request_id) {
-            Log::warning("ExternalRequestItemObserver: Не найдена связь с внутренней заявкой для external_request_id={$externalRequest->id}");
+        if (!$externalRequest || !$externalRequest->request_number) {
+            Log::warning("ExternalRequestItemObserver: Не найден request_number для external_request_id={$externalRequest->id}");
             return;
         }
 
-        // Находим заявку в основной БД
-        $request = Request::find($externalRequest->internal_request_id);
+        // Находим заявку в основной БД по request_number
+        $request = Request::where('request_number', $externalRequest->request_number)->first();
         if (!$request) {
-            Log::warning("ExternalRequestItemObserver: Не найдена заявка в основной БД с id={$externalRequest->internal_request_id}");
+            Log::warning("ExternalRequestItemObserver: Не найдена заявка в основной БД с request_number={$externalRequest->request_number}");
             return;
         }
 
         // Находим заморозку средств
         $balanceHold = $request->balanceHold;
         if (!$balanceHold || $balanceHold->status !== 'held') {
-            Log::info("ExternalRequestItemObserver: Нет активной заморозки для request_id={$request->id}");
+            Log::info("ExternalRequestItemObserver: Нет активной заморозки для request_id={$request->id}, request_number={$request->request_number}");
             return;
         }
 

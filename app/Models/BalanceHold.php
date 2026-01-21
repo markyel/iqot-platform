@@ -40,10 +40,21 @@ class BalanceHold extends Model
     }
 
     /**
-     * Снять заморозку
+     * Снять заморозку (вернуть ВСЮ оставшуюся сумму на баланс)
      */
     public function release(): void
     {
+        if ($this->status !== 'held') {
+            return;
+        }
+
+        // Возвращаем только оставшуюся незамороженную сумму
+        $remainingAmount = $this->getRemainingAmount();
+        
+        if ($remainingAmount > 0) {
+            $this->user->increment('balance', $remainingAmount);
+        }
+
         $this->update([
             'status' => 'released',
             'released_at' => now(),

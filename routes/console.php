@@ -10,3 +10,9 @@ Artisan::command('inspire', function () {
 
 // Расписание задач
 Schedule::command('queue:work --stop-when-empty')->everyMinute()->withoutOverlapping();
+
+// Разморозка средств за невыполненные заявки (меньше 3 ответов за неделю)
+Schedule::command('balance:release-expired')->daily();
+
+// Продление тарифов пользователей
+Schedule::command('tariffs:renew')->daily();
