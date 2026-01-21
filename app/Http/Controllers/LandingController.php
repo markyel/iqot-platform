@@ -33,10 +33,10 @@ class LandingController extends Controller
             'report_unlock' => $startTariff ? $startTariff->price_per_report_over_limit : 99,
         ];
 
-        // Получаем последние 5 позиций из каталога для тизера
+        // Получаем последние 5 позиций из каталога для тизера (по дате создания позиции)
         $catalogItems = PublicCatalogItem::published()
             ->withOffers()
-            ->orderBy('published_at', 'desc')
+            ->orderBy('item_created_at', 'desc')
             ->limit(5)
             ->get();
 

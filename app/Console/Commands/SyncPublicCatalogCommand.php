@@ -81,6 +81,7 @@ class SyncPublicCatalogCommand extends Command
                         'currency' => 'RUB',
                         'is_published' => true,
                         'published_at' => now(),
+                        'item_created_at' => $externalItem->created_at, // Дата создания позиции
                     ];
 
                     $catalogItem = PublicCatalogItem::updateOrCreate(

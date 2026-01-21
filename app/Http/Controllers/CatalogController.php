@@ -33,11 +33,11 @@ class CatalogController extends Controller
             $query->search($request->search);
         }
 
-        // Сортировка (по умолчанию по дате публикации - самые свежие первыми)
-        $sortBy = $request->get('sort', 'published_at');
+        // Сортировка (по умолчанию по дате создания позиции - самые свежие первыми)
+        $sortBy = $request->get('sort', 'item_created_at');
         $sortDir = $request->get('dir', 'desc');
 
-        if (in_array($sortBy, ['name', 'offers_count', 'min_price', 'published_at', 'created_at'])) {
+        if (in_array($sortBy, ['name', 'offers_count', 'min_price', 'item_created_at', 'published_at'])) {
             $query->orderBy($sortBy, $sortDir);
         }
 
