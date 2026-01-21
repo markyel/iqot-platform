@@ -16,7 +16,7 @@ class CatalogController extends Controller
      */
     public function index(Request $request)
     {
-        $query = PublicCatalogItem::published()->withEnoughOffers();
+        $query = PublicCatalogItem::published()->withOffers();
 
         // Фильтр по типу оборудования
         if ($request->has('product_type') && $request->product_type) {
@@ -66,34 +66,16 @@ class CatalogController extends Controller
      */
     public function show($id)
     {
-        $item = PublicCatalogItem::published()->withEnoughOffers()->findOrFail($id);
+        // Быстрая загрузка только из локальной БД (без external запросов)
+        $item = PublicCatalogItem::published()->withOffers()->findOrFail($id);
 
-        // Если пользователь авторизован - показываем полную информацию
         $isAuthorized = Auth::check();
 
-        $externalItem = null;
-        $offers = collect();
-
-        if ($isAuthorized) {
-            // Получаем полную информацию из external БД
-            $externalItem = ExternalRequestItem::with(['request', 'offers.supplier'])
-                ->find($item->external_item_id);
-
-            if ($externalItem) {
-                $offers = $externalItem->offers()
-                    ->with('supplier')
-                    ->whereNotNull('total_price')
-                    ->where('total_price', '>', 0)
-                    ->orderBy('total_price', 'asc')
-                    ->get();
-            }
-        }
-
+        // Для авторизованных показываем превью без цен (как в кабинете /items/401)
+        // Полный доступ - через покупку в кабинете
         return view('catalog.show', [
             'item' => $item,
             'isAuthorized' => $isAuthorized,
-            'externalItem' => $externalItem,
-            'offers' => $offers,
         ]);
     }
 }

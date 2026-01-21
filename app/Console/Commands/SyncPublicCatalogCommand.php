@@ -25,12 +25,14 @@ class SyncPublicCatalogCommand extends Command
                 PublicCatalogItem::truncate();
             }
 
-            // Получаем позиции с 3+ предложениями из external БД
+            // Получаем ВСЕ позиции с предложениями из external БД (как в кабинете)
             $externalItems = ExternalRequestItem::with(['request', 'productType', 'applicationDomain'])
-                ->where('offers_count', '>=', 3)
+                ->whereHas('offers', function($q) {
+                    $q->whereIn('status', ['received', 'processed']);
+                })
                 ->get();
 
-            $this->info("Найдено позиций с 3+ предложениями: {$externalItems->count()}");
+            $this->info("Найдено позиций с предложениями: {$externalItems->count()}");
 
             $created = 0;
             $updated = 0;

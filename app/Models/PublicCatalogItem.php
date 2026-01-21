@@ -73,11 +73,11 @@ class PublicCatalogItem extends Model
     }
 
     /**
-     * Scope: с достаточным количеством предложений
+     * Scope: с предложениями
      */
-    public function scopeWithEnoughOffers($query, int $minOffers = 3)
+    public function scopeWithOffers($query)
     {
-        return $query->where('offers_count', '>=', $minOffers);
+        return $query->where('offers_count', '>', 0);
     }
 
     /**
@@ -114,7 +114,7 @@ class PublicCatalogItem extends Model
     public static function getCategoriesWithCounts()
     {
         return self::published()
-            ->withEnoughOffers()
+            ->withOffers()
             ->select('product_type_id', 'product_type_name')
             ->selectRaw('COUNT(*) as items_count')
             ->whereNotNull('product_type_id')
