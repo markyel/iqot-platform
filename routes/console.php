@@ -16,3 +16,6 @@ Schedule::command('balance:release-expired')->daily();
 
 // Продление тарифов пользователей
 Schedule::command('tariffs:renew')->daily();
+
+// Синхронизация публичного каталога
+Schedule::command('catalog:sync')->hourly();

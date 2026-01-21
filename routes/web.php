@@ -22,6 +22,10 @@ Route::get('/privacy', [LandingController::class, 'privacy'])->name('privacy');
 Route::get('/terms', [LandingController::class, 'terms'])->name('terms');
 Route::get('/pricing', [LandingController::class, 'pricing'])->name('pricing');
 
+// Публичный каталог
+Route::get('/catalog', [\App\Http\Controllers\CatalogController::class, 'index'])->name('catalog.index');
+Route::get('/catalog/{id}', [\App\Http\Controllers\CatalogController::class, 'show'])->name('catalog.show');
+
 // Личный кабинет (требует авторизации)
 Route::middleware(['auth', 'verified'])->prefix('cabinet')->name('cabinet.')->group(function () {
 
