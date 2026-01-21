@@ -139,11 +139,14 @@ class UserRequestController extends Controller
             $itemsUsed = $limitsInfo['items_used'] ?? 0;
             $itemsLimit = $limitsInfo['items_limit'];
 
-            // Рассчитываем стоимость только за позиции сверх лимита
+            // Рассчитываем стоимость только за позиции из ТЕКУЩЕЙ заявки, которые выходят за лимит
             if ($itemsLimit !== null) {
-                $totalItems = $itemsUsed + $itemsCount;
-                if ($totalItems > $itemsLimit) {
-                    $itemsOverLimit = $totalItems - $itemsLimit;
+                // Сколько позиций осталось в лимите
+                $remainingLimit = max(0, $itemsLimit - $itemsUsed);
+
+                // Из текущей заявки сколько позиций сверх лимита
+                if ($itemsCount > $remainingLimit) {
+                    $itemsOverLimit = $itemsCount - $remainingLimit;
                     $totalCost = $itemsOverLimit * $tariff->tariffPlan->price_per_item_over_limit;
                 }
             }

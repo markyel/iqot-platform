@@ -18,10 +18,10 @@
                 <p style="color: var(--neutral-600);">
                     Из заявки
                     <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($item->request): ?>
-                        <span style="color: var(--primary-600); font-weight: 600;">
+                        <a href="<?php echo e(route('admin.manage.requests.show', $item->request->id)); ?>" style="color: var(--primary-600); font-weight: 600; text-decoration: none;">
                             <?php echo e($item->request->request_number); ?>
 
-                        </span>
+                        </a>
                     <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                 </p>
             </div>

@@ -210,12 +210,18 @@
                 <span class="status-badge <?php echo e($statusClass); ?>"><?php echo e($statusLabel); ?></span>
             </div>
             <?php
+                // Пересчитываем актуальное количество позиций с предложениями
+                $actualItemsWithOffers = $externalRequest->items->filter(function($item) {
+                    return $item->offers->count() > 0;
+                })->count();
+                $actualTotalItems = $externalRequest->items->count();
+
                 $user = Auth::user();
                 $tariff = $user->getActiveTariff();
                 $canGeneratePdf = $tariff && $tariff->tariffPlan->canGeneratePdfReports();
                 $pdfReport = \App\Models\Report::where('request_id', $request->id)
-                    ->where('user_id', $user->id)
-                    ->whereNotNull('pdf_content')
+                    ->where('report_type', 'request')
+                    ->orderBy('created_at', 'desc')
                     ->first();
             ?>
             <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canGeneratePdf): ?>
@@ -226,13 +232,19 @@
                         <form action="<?php echo e(route('cabinet.my.requests.generate-pdf', $request->id)); ?>" method="POST" style="display: inline;">
                             <?php echo csrf_field(); ?>
                             <button type="submit" style="background: #10b981; color: white; padding: 0.5rem 1rem; border-radius: 6px; border: none; font-weight: 600; cursor: pointer;">
-                                Сгенерировать PDF
+                                Экспортировать в PDF
                             </button>
                         </form>
                     <?php else: ?>
                         <a href="<?php echo e(route('cabinet.my.requests.download-pdf', $request->id)); ?>" style="background: #10b981; color: white; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; font-weight: 600;">
                             Скачать PDF
                         </a>
+                        <form action="<?php echo e(route('cabinet.my.requests.generate-pdf', $request->id)); ?>" method="POST" style="display: inline;">
+                            <?php echo csrf_field(); ?>
+                            <button type="submit" style="background: #f59e0b; color: white; padding: 0.5rem 1rem; border-radius: 6px; border: none; font-weight: 600; cursor: pointer;">
+                                Обновить PDF отчет
+                            </button>
+                        </form>
                     <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                 <?php elseif($pdfReport && $pdfReport->status === 'generating'): ?>
                     <span style="color: #f59e0b; font-size: 0.875rem;">Генерация PDF...</span>
@@ -240,7 +252,7 @@
                     <form action="<?php echo e(route('cabinet.my.requests.generate-pdf', $request->id)); ?>" method="POST" style="display: inline;">
                         <?php echo csrf_field(); ?>
                         <button type="submit" style="background: #10b981; color: white; padding: 0.5rem 1rem; border-radius: 6px; border: none; font-weight: 600; cursor: pointer;">
-                            Сгенерировать PDF
+                            Экспортировать в PDF
                         </button>
                     </form>
                 <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
@@ -275,11 +287,14 @@
             <div style="display: flex; align-items: center; gap: 1rem;">
                 <div style="flex: 1;">
                     <div class="progress-bar">
-                        <div class="progress-fill" style="width: <?php echo e($externalRequest->completion_percentage); ?>%"></div>
+                        <?php
+                            $completionPercentage = $actualTotalItems > 0 ? round(($actualItemsWithOffers / $actualTotalItems) * 100) : 0;
+                        ?>
+                        <div class="progress-fill" style="width: <?php echo e($completionPercentage); ?>%"></div>
                     </div>
                 </div>
                 <div style="color: #111827; font-weight: 700; font-size: 1.125rem;">
-                    <?php echo e(number_format($externalRequest->completion_percentage, 0)); ?>%
+                    <?php echo e($completionPercentage); ?>%
                 </div>
             </div>
         </div>
@@ -296,16 +311,16 @@
     <div class="stats-grid">
         <div class="stat-card">
             <div class="stat-label">Всего позиций</div>
-            <div class="stat-value"><?php echo e($externalRequest->total_items); ?></div>
+            <div class="stat-value"><?php echo e($actualTotalItems); ?></div>
         </div>
         <div class="stat-card">
             <div class="stat-label">С предложениями</div>
-            <div class="stat-value stat-value-accent"><?php echo e($externalRequest->items_with_offers); ?></div>
+            <div class="stat-value stat-value-accent"><?php echo e($actualItemsWithOffers); ?></div>
         </div>
         <div class="stat-card">
             <div class="stat-label">Процент закрытия</div>
             <div class="stat-value stat-value-accent">
-                <?php echo e($externalRequest->total_items > 0 ? number_format(($externalRequest->items_with_offers / $externalRequest->total_items) * 100, 0) : 0); ?>%
+                <?php echo e($actualTotalItems > 0 ? number_format(($actualItemsWithOffers / $actualTotalItems) * 100, 0) : 0); ?>%
             </div>
         </div>
     </div>
@@ -474,6 +489,86 @@
         <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
     </div>
 </div>
+
+<?php $__env->startPush('scripts'); ?>
+<script>
+// Проверяем статус генерации PDF и обновляем страницу когда готово
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('PDF auto-reload script loaded');
+
+    // Проверяем, есть ли на странице элемент со статусом "Генерация PDF..."
+    const checkGeneratingStatus = () => {
+        // Ищем именно span с цветом #f59e0b (оранжевый), который используется для статуса генерации
+        const generatingSpans = document.querySelectorAll('span[style*="color: #f59e0b"], span[style*="color:#f59e0b"]');
+        for (let span of generatingSpans) {
+            if (span.textContent.trim().includes('Генерация PDF')) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // Проверяем, есть ли кнопка скачать PDF
+    const checkDownloadButton = () => {
+        const links = document.querySelectorAll('a');
+        for (let link of links) {
+            if (link.textContent.trim().includes('Скачать PDF')) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    const isGenerating = checkGeneratingStatus();
+    const hasDownload = checkDownloadButton();
+
+    console.log('Статус на странице: генерация=' + isGenerating + ', скачать=' + hasDownload);
+
+    if (isGenerating && !hasDownload) {
+        console.log('Обнаружена генерация PDF, запускаем автообновление...');
+
+        let checkCount = 0;
+        let pdfCheckInterval = setInterval(function() {
+            checkCount++;
+            console.log('Проверяем статус PDF... (попытка ' + checkCount + ')');
+
+            fetch(window.location.href, {
+                method: 'GET',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.text())
+            .then(html => {
+                // Проверяем наличие ссылки "Скачать PDF" в HTML
+                const hasDownloadButton = html.includes('Скачать PDF') && html.includes('download-pdf');
+
+                console.log('Ответ от сервера: кнопка скачать=' + hasDownloadButton);
+
+                // Если появилась кнопка скачать, перезагружаем страницу
+                if (hasDownloadButton) {
+                    console.log('PDF готов, перезагружаем страницу...');
+                    clearInterval(pdfCheckInterval);
+                    window.location.reload();
+                }
+
+                // Ограничиваем количество попыток (макс 60 попыток = 3 минуты)
+                if (checkCount >= 60) {
+                    console.warn('Превышено максимальное время ожидания генерации PDF');
+                    clearInterval(pdfCheckInterval);
+                }
+            })
+            .catch(err => {
+                console.error('Ошибка проверки статуса PDF:', err);
+            });
+        }, 3000); // Проверяем каждые 3 секунды
+    } else {
+        console.log('Генерация PDF не обнаружена или PDF уже готов, автообновление не требуется');
+    }
+});
+</script>
+<?php $__env->stopPush(); ?>
+
 <?php $__env->stopSection(); ?>
 
 <?php echo $__env->make('layouts.cabinet', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH C:\Users\Boag\PhpstormProjects\iqot-platform\resources\views/requests/report.blade.php ENDPATH**/ ?>

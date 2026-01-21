@@ -361,6 +361,9 @@
                                     <?php echo e($tariff->reports_limit); ?> отчетов
                                 <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                 в месяц.
+                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($tariff->pdf_reports_enabled): ?>
+                                    Экспорт в PDF.
+                                <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                 <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($tariff->price_per_item_over_limit > 0): ?>
                                     Сверх лимита — по <?php echo e(number_format($tariff->price_per_item_over_limit, 0)); ?> ₽/позиция.
                                 <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
@@ -407,6 +410,14 @@
                                 <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                             </span>
                         </div>
+                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($tariff->pdf_reports_enabled): ?>
+                        <div style="display: flex; align-items: start; gap: var(--space-2); margin-bottom: var(--space-2);">
+                            <i data-lucide="check" style="width: 16px; height: 16px; color: var(--color-success); margin-top: 2px;"></i>
+                            <span style="font-size: var(--text-sm);">
+                                Экспорт отчета в PDF
+                            </span>
+                        </div>
+                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                         <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($tariff->price_per_item_over_limit > 0): ?>
                         <div style="display: flex; align-items: start; gap: var(--space-2);">
                             <i data-lucide="info" style="width: 16px; height: 16px; color: var(--color-text-muted); margin-top: 2px;"></i>
