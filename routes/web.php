@@ -20,6 +20,7 @@ Route::get('/set-password/{token}', [LandingController::class, 'showSetPassword'
 Route::post('/set-password', [LandingController::class, 'storePassword'])->name('set-password.store');
 Route::get('/privacy', [LandingController::class, 'privacy'])->name('privacy');
 Route::get('/terms', [LandingController::class, 'terms'])->name('terms');
+Route::get('/contract', [LandingController::class, 'contract'])->name('contract');
 Route::get('/pricing', [LandingController::class, 'pricing'])->name('pricing');
 
 // Публичный каталог

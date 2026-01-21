@@ -3057,6 +3057,7 @@
                 <a href="mailto:info@iqot.ai" data-ru="Связаться" data-en="Contact">Связаться</a>
                 <a href="/terms" data-ru="Условия использования" data-en="Terms of Service">Условия использования</a>
                 <a href="/privacy" data-ru="Политика конфиденциальности" data-en="Privacy Policy">Политика конфиденциальности</a>
+                <a href="/contract" data-ru="Договор-оферта" data-en="Contract">Договор-оферта</a>
             </div>
         </div>
     </footer>

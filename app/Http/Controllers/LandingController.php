@@ -142,6 +142,14 @@ class LandingController extends Controller
     }
 
     /**
+     * Договор-оферта
+     */
+    public function contract(): View
+    {
+        return view('landing.contract');
+    }
+
+    /**
      * Тарифы и оплата
      */
     public function pricing(): View
