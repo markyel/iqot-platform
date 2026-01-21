@@ -46,8 +46,13 @@ class SyncPublicCatalogCommand extends Command
                         continue;
                     }
 
-                    // Рассчитываем мин/макс цены
+                    // Рассчитываем мин/макс цены и реальное количество предложений
                     $prices = $this->calculatePrices($externalItem);
+
+                    // Считаем реальное количество предложений (received/processed)
+                    $realOffersCount = $externalItem->offers()
+                        ->whereIn('status', ['received', 'processed'])
+                        ->count();
 
                     $data = [
                         'external_item_id' => $externalItem->id,
@@ -63,7 +68,7 @@ class SyncPublicCatalogCommand extends Command
                         'domain_name' => $externalItem->applicationDomain?->name,
                         'external_request_id' => $externalItem->request_id,
                         'request_number' => $externalItem->request->request_number ?? null,
-                        'offers_count' => $externalItem->offers_count,
+                        'offers_count' => $realOffersCount, // Используем реальный подсчет
                         'min_price' => $prices['min'],
                         'max_price' => $prices['max'],
                         'currency' => 'RUB',
