@@ -13,16 +13,38 @@ return new class extends Migration
     {
         Schema::table('reports', function (Blueprint $table) {
             // Добавляем поля для работы с n8n Report Management API
-            $table->string('report_type')->default('request')->after('type'); // request | combined
-            $table->string('callback_url', 500)->nullable()->after('status');
-            $table->string('error_code', 50)->nullable()->after('summary');
-            $table->text('error_message')->nullable()->after('error_code');
-            $table->longText('pdf_content')->nullable()->after('file_path');
-            $table->timestamp('pdf_expires_at')->nullable()->after('pdf_content');
+            if (!Schema::hasColumn('reports', 'report_type')) {
+                $table->string('report_type')->default('request')->after('type'); // request | combined
+            }
+            if (!Schema::hasColumn('reports', 'callback_url')) {
+                $table->string('callback_url', 500)->nullable()->after('status');
+            }
+            if (!Schema::hasColumn('reports', 'error_code')) {
+                $table->string('error_code', 50)->nullable()->after('summary');
+            }
+            if (!Schema::hasColumn('reports', 'error_message')) {
+                $table->text('error_message')->nullable()->after('error_code');
+            }
+            if (!Schema::hasColumn('reports', 'pdf_content')) {
+                $table->longText('pdf_content')->nullable()->after('file_path');
+            }
+            if (!Schema::hasColumn('reports', 'pdf_expires_at')) {
+                $table->timestamp('pdf_expires_at')->nullable()->after('pdf_content');
+            }
 
-            // Добавляем индекс для статуса
-            $table->index('status');
+            // Добавляем индекс для статуса, если его нет
+            if (!$this->indexExists('reports', 'reports_status_index')) {
+                $table->index('status');
+            }
         });
+    }
+
+    private function indexExists($table, $index)
+    {
+        $connection = Schema::getConnection();
+        $indexes = $connection->getDoctrineSchemaManager()
+            ->listTableIndexes($table);
+        return array_key_exists($index, $indexes);
     }
 
     /**
