@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\SubscriptionCharge;
 use App\Models\TariffPlan;
 use App\Models\User;
 use App\Models\UserTariff;
@@ -56,6 +57,16 @@ class TariffService
 
                     // Списываем средства
                     $user->decrement('balance', $tariffPlan->monthly_price);
+
+                    // Записываем транзакцию
+                    SubscriptionCharge::create([
+                        'user_id' => $user->id,
+                        'user_tariff_id' => $userTariff->id,
+                        'tariff_plan_id' => $tariffPlan->id,
+                        'amount' => $tariffPlan->monthly_price,
+                        'description' => "Абонентская плата за тариф «{$tariffPlan->name}»",
+                        'charged_at' => now(),
+                    ]);
                 }
 
                 // Обнуляем использованные лимиты

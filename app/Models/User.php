@@ -186,7 +186,21 @@ class User extends Authenticatable implements FilamentUser
             $this->decrement('balance', $newTariffPlan->monthly_price);
         }
 
-        return $this->assignTariff($newTariffPlan);
+        $newTariff = $this->assignTariff($newTariffPlan);
+
+        // Записываем транзакцию о списании абонплаты, если тариф платный
+        if ($newTariffPlan->monthly_price > 0) {
+            SubscriptionCharge::create([
+                'user_id' => $this->id,
+                'user_tariff_id' => $newTariff->id,
+                'tariff_plan_id' => $newTariffPlan->id,
+                'amount' => $newTariffPlan->monthly_price,
+                'description' => "Абонентская плата за тариф «{$newTariffPlan->name}»",
+                'charged_at' => now(),
+            ]);
+        }
+
+        return $newTariff;
     }
 
     /**

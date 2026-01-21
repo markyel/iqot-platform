@@ -8,6 +8,7 @@ use App\Models\BalanceCharge;
 use App\Models\Request as RequestModel;
 use App\Models\ReportAccess;
 use App\Models\ItemPurchase;
+use App\Models\SubscriptionCharge;
 use App\Services\TariffService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -166,6 +167,21 @@ class TariffController extends Controller
                 'type' => 'item_purchase',
                 'description' => 'Покупка доступа к позиции #' . $purchase->item_id,
                 'amount' => $purchase->amount,
+                'balance_after' => null,
+            ]);
+        }
+
+        // Абонентская плата
+        $subscriptionCharges = SubscriptionCharge::where('user_id', $user->id)
+            ->orderBy('charged_at', 'desc')
+            ->get();
+
+        foreach ($subscriptionCharges as $charge) {
+            $transactions->push([
+                'created_at' => $charge->charged_at,
+                'type' => 'subscription',
+                'description' => $charge->description,
+                'amount' => $charge->amount,
                 'balance_after' => null,
             ]);
         }

@@ -3,7 +3,10 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\BalanceCharge;
 use App\Models\ItemPurchase;
+use App\Models\ReportAccess;
+use App\Models\SubscriptionCharge;
 use App\Models\User;
 use Illuminate\Http\Request;
 
@@ -32,7 +35,14 @@ class UserController extends Controller
         // Load purchase counts
         foreach ($users as $user) {
             $user->purchases_count = ItemPurchase::where('user_id', $user->id)->count();
-            $user->purchases_sum = ItemPurchase::where('user_id', $user->id)->sum('amount');
+
+            // Суммируем все расходы: balance_charges + report_accesses + item_purchases + subscription_charges
+            $balanceChargesSum = BalanceCharge::where('user_id', $user->id)->sum('amount');
+            $reportAccessesSum = ReportAccess::where('user_id', $user->id)->where('price', '>', 0)->sum('price');
+            $itemPurchasesSum = ItemPurchase::where('user_id', $user->id)->sum('amount');
+            $subscriptionChargesSum = SubscriptionCharge::where('user_id', $user->id)->sum('amount');
+
+            $user->purchases_sum = $balanceChargesSum + $reportAccessesSum + $itemPurchasesSum + $subscriptionChargesSum;
         }
 
         return view('admin.users.index', compact('users'));
@@ -42,7 +52,14 @@ class UserController extends Controller
     {
         $user->load(['requests', 'balanceHolds']);
         $user->purchases_count = ItemPurchase::where('user_id', $user->id)->count();
-        $user->purchases_sum = ItemPurchase::where('user_id', $user->id)->sum('amount');
+
+        // Суммируем все расходы: balance_charges + report_accesses + item_purchases + subscription_charges
+        $balanceChargesSum = BalanceCharge::where('user_id', $user->id)->sum('amount');
+        $reportAccessesSum = ReportAccess::where('user_id', $user->id)->where('price', '>', 0)->sum('price');
+        $itemPurchasesSum = ItemPurchase::where('user_id', $user->id)->sum('amount');
+        $subscriptionChargesSum = SubscriptionCharge::where('user_id', $user->id)->sum('amount');
+
+        $user->purchases_sum = $balanceChargesSum + $reportAccessesSum + $itemPurchasesSum + $subscriptionChargesSum;
 
         // Тариф и лимиты
         $tariff = $user->getActiveTariff();
