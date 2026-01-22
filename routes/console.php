@@ -11,6 +11,9 @@ Artisan::command('inspire', function () {
 // Расписание задач
 Schedule::command('queue:work --stop-when-empty')->everyMinute()->withoutOverlapping();
 
+// Проверка и списание средств за выполненные позиции (каждый час)
+Schedule::command('balance:check-completed-items')->hourly();
+
 // Разморозка средств за невыполненные заявки (меньше 3 ответов за неделю)
 Schedule::command('balance:release-expired')->daily();
 

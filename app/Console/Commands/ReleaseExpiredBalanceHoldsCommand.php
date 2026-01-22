@@ -79,8 +79,15 @@ class ReleaseExpiredBalanceHoldsCommand extends Command
                         continue;
                     }
 
-                    // Подсчитываем позиции с 3+ ответами
-                    $itemsWithEnoughOffers = $items->filter(fn($item) => $item->offers_count >= 3)->count();
+                    // Подсчитываем позиции с 3+ ВАЛИДНЫМИ ответами (цена > 0)
+                    $itemsWithEnoughOffers = $items->filter(function($item) {
+                        $validOffersCount = $item->offers()
+                            ->whereIn('status', ['received', 'processed'])
+                            ->whereNotNull('price_per_unit')
+                            ->where('price_per_unit', '>', 0)
+                            ->count();
+                        return $validOffersCount >= 3;
+                    })->count();
                     $itemsWithoutEnoughOffers = $totalItems - $itemsWithEnoughOffers;
 
                     if ($itemsWithoutEnoughOffers === 0) {

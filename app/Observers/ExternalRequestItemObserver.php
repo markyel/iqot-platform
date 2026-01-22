@@ -25,8 +25,15 @@ class ExternalRequestItemObserver
      */
     private function checkAndChargeForItem(ExternalRequestItem $item): void
     {
-        // Позиция считается выполненной если получено 3 или более предложений
-        if ($item->offers_count < 3) {
+        // Позиция считается выполненной если получено 3 или более ВАЛИДНЫХ предложений (с ценой > 0)
+        $validOffersCount = $item->offers()
+            ->whereIn('status', ['received', 'processed'])
+            ->whereNotNull('price_per_unit')
+            ->where('price_per_unit', '>', 0)
+            ->count();
+
+        if ($validOffersCount < 3) {
+            Log::info("ExternalRequestItemObserver: Позиция {$item->id} имеет {$validOffersCount} валидных предложений (нужно 3+), пропускаем списание");
             return;
         }
 
