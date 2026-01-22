@@ -404,6 +404,126 @@
         nav[role="navigation"] span[aria-disabled="true"] {
             font-weight: 600;
         }
+
+        /* Mobile responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 5rem 1rem 2rem;
+            }
+
+            .header h1 {
+                font-size: 1.75rem;
+            }
+
+            .header p {
+                font-size: 1rem;
+            }
+
+            .nav {
+                padding: 1rem;
+            }
+
+            .logo {
+                font-size: 1.25rem;
+            }
+
+            .nav-right {
+                gap: 0.5rem;
+            }
+
+            .btn {
+                padding: 0.625rem 1rem;
+                font-size: 0.875rem;
+            }
+
+            .card {
+                padding: 1.25rem;
+            }
+
+            .search-row {
+                grid-template-columns: 1fr;
+            }
+
+            .filters-row {
+                grid-template-columns: 1fr;
+            }
+
+            /* Скрываем таблицу на мобильных */
+            .items-table {
+                display: none;
+            }
+
+            /* Показываем карточки */
+            .mobile-items {
+                display: block;
+            }
+
+            .mobile-item-card {
+                background: var(--bg-secondary);
+                border: 1px solid var(--border-color);
+                border-radius: 12px;
+                padding: 1.25rem;
+                margin-bottom: 1rem;
+                transition: all 0.3s ease;
+            }
+
+            .mobile-item-card:hover {
+                border-color: var(--accent-primary);
+                box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
+            }
+
+            .mobile-item-card a {
+                text-decoration: none;
+                display: block;
+            }
+
+            .mobile-item-title {
+                font-size: 1.125rem;
+                font-weight: 700;
+                color: var(--accent-primary);
+                margin-bottom: 1rem;
+                line-height: 1.4;
+            }
+
+            .mobile-item-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: start;
+                margin-bottom: 0.75rem;
+                font-size: 0.875rem;
+            }
+
+            .mobile-item-label {
+                color: var(--text-muted);
+                font-size: 0.8125rem;
+            }
+
+            .mobile-item-value {
+                color: var(--text-primary);
+                font-weight: 600;
+                text-align: right;
+                max-width: 60%;
+                word-break: break-word;
+            }
+
+            .mobile-offers-badge {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0.5rem 1rem;
+                background: var(--accent-gradient);
+                color: var(--bg-primary);
+                border-radius: 8px;
+                font-weight: 700;
+                font-size: 1rem;
+            }
+        }
+
+        @media (min-width: 769px) {
+            .mobile-items {
+                display: none;
+            }
+        }
     </style>
 </head>
 <body>
@@ -471,6 +591,7 @@
         </div>
         @else
         <div class="card">
+            <!-- Desktop Table -->
             <table class="items-table">
                 <thead>
                     <tr>
@@ -499,6 +620,50 @@
                     @endforeach
                 </tbody>
             </table>
+
+            <!-- Mobile Cards -->
+            <div class="mobile-items">
+                @foreach($items as $item)
+                <div class="mobile-item-card">
+                    <a href="{{ route('catalog.show', $item->id) }}">
+                        <div class="mobile-item-title">{{ $item->name }}</div>
+
+                        @if($item->brand)
+                        <div class="mobile-item-row">
+                            <span class="mobile-item-label">Марка:</span>
+                            <span class="mobile-item-value">{{ $item->brand }}</span>
+                        </div>
+                        @endif
+
+                        @if($item->article)
+                        <div class="mobile-item-row">
+                            <span class="mobile-item-label">Артикул:</span>
+                            <span class="mobile-item-value code-font">{{ $item->article }}</span>
+                        </div>
+                        @endif
+
+                        @if($item->category)
+                        <div class="mobile-item-row">
+                            <span class="mobile-item-label">Категория:</span>
+                            <span class="mobile-item-value">{{ $item->category }}</span>
+                        </div>
+                        @endif
+
+                        @if($item->domain_name)
+                        <div class="mobile-item-row">
+                            <span class="mobile-item-label">Область применения:</span>
+                            <span class="mobile-item-value">{{ $item->domain_name }}</span>
+                        </div>
+                        @endif
+
+                        <div class="mobile-item-row" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                            <span class="mobile-item-label">Предложений:</span>
+                            <span class="mobile-offers-badge">{{ $item->offers_count }}</span>
+                        </div>
+                    </a>
+                </div>
+                @endforeach
+            </div>
         </div>
 
         <div class="pagination">
