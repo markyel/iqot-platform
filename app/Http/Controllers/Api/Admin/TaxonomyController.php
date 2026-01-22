@@ -16,11 +16,24 @@ class TaxonomyController extends Controller
      */
     public function pending(): JsonResponse
     {
+        // Оптимизация: считаем items_count одним запросом
+        $domainItemsCounts = \DB::connection('reports')
+            ->table('request_items')
+            ->select('domain_id', \DB::raw('COUNT(*) as count'))
+            ->groupBy('domain_id')
+            ->pluck('count', 'domain_id');
+
+        $typeItemsCounts = \DB::connection('reports')
+            ->table('request_items')
+            ->select('product_type_id', \DB::raw('COUNT(*) as count'))
+            ->groupBy('product_type_id')
+            ->pluck('count', 'product_type_id');
+
         $pendingDomains = ApplicationDomain::pending()
             ->aiGenerated()
             ->with(['parent'])
             ->get()
-            ->map(function ($domain) {
+            ->map(function ($domain) use ($domainItemsCounts) {
                 return [
                     'id' => $domain->id,
                     'name' => $domain->name,
@@ -29,9 +42,9 @@ class TaxonomyController extends Controller
                     'keywords' => $domain->keywords,
                     'parent_id' => $domain->parent_id,
                     'parent_name' => $domain->parent?->name,
-                    'source' => $domain->source,
+                    'created_by' => $domain->created_by,
                     'created_at' => $domain->created_at,
-                    'items_count' => ExternalRequestItem::where('domain_id', $domain->id)->count(),
+                    'items_count' => $domainItemsCounts[$domain->id] ?? 0,
                 ];
             });
 
@@ -39,7 +52,7 @@ class TaxonomyController extends Controller
             ->aiGenerated()
             ->with(['parent'])
             ->get()
-            ->map(function ($type) {
+            ->map(function ($type) use ($typeItemsCounts) {
                 return [
                     'id' => $type->id,
                     'name' => $type->name,
@@ -49,9 +62,9 @@ class TaxonomyController extends Controller
                     'parent_id' => $type->parent_id,
                     'parent_name' => $type->parent?->name,
                     'is_leaf' => $type->is_leaf,
-                    'source' => $type->source,
+                    'created_by' => $type->created_by,
                     'created_at' => $type->created_at,
-                    'items_count' => ExternalRequestItem::where('product_type_id', $type->id)->count(),
+                    'items_count' => $typeItemsCounts[$type->id] ?? 0,
                 ];
             });
 
@@ -81,8 +94,8 @@ class TaxonomyController extends Controller
             $query->where('status', $request->status);
         }
 
-        if ($request->filled('source') && $request->source !== 'all') {
-            $query->where('source', $request->source);
+        if ($request->filled('created_by') && $request->created_by !== 'all') {
+            $query->where('created_by', $request->created_by);
         }
 
         if ($request->filled('search')) {
@@ -97,7 +110,14 @@ class TaxonomyController extends Controller
         $sortOrder = $request->get('order', 'asc');
         $query->orderBy($sortField, $sortOrder);
 
-        $domains = $query->get()->map(function ($domain) {
+        // Оптимизация: считаем items_count одним запросом
+        $itemsCounts = \DB::connection('reports')
+            ->table('request_items')
+            ->select('domain_id', \DB::raw('COUNT(*) as count'))
+            ->groupBy('domain_id')
+            ->pluck('count', 'domain_id');
+
+        $domains = $query->get()->map(function ($domain) use ($itemsCounts) {
             return [
                 'id' => $domain->id,
                 'slug' => $domain->slug,
@@ -113,7 +133,7 @@ class TaxonomyController extends Controller
                 'created_at' => $domain->created_at,
                 'updated_at' => $domain->updated_at,
                 'stats' => [
-                    'items_count' => ExternalRequestItem::where('domain_id', $domain->id)->count(),
+                    'items_count' => $itemsCounts[$domain->id] ?? 0,
                 ],
             ];
         });
@@ -214,8 +234,8 @@ class TaxonomyController extends Controller
             $query->where('status', $request->status);
         }
 
-        if ($request->filled('source') && $request->source !== 'all') {
-            $query->where('source', $request->source);
+        if ($request->filled('created_by') && $request->created_by !== 'all') {
+            $query->where('created_by', $request->created_by);
         }
 
         if ($request->filled('is_leaf')) {
@@ -238,7 +258,14 @@ class TaxonomyController extends Controller
         $sortOrder = $request->get('order', 'asc');
         $query->orderBy($sortField, $sortOrder);
 
-        $types = $query->with('parent')->get()->map(function ($type) {
+        // Оптимизация: считаем items_count одним запросом
+        $itemsCounts = \DB::connection('reports')
+            ->table('request_items')
+            ->select('product_type_id', \DB::raw('COUNT(*) as count'))
+            ->groupBy('product_type_id')
+            ->pluck('count', 'product_type_id');
+
+        $types = $query->with('parent')->get()->map(function ($type) use ($itemsCounts) {
             return [
                 'id' => $type->id,
                 'slug' => $type->slug,
@@ -256,7 +283,7 @@ class TaxonomyController extends Controller
                 'created_at' => $type->created_at,
                 'updated_at' => $type->updated_at,
                 'stats' => [
-                    'items_count' => ExternalRequestItem::where('product_type_id', $type->id)->count(),
+                    'items_count' => $itemsCounts[$type->id] ?? 0,
                 ],
             ];
         });
@@ -413,19 +440,27 @@ class TaxonomyController extends Controller
             ->orWhereNotNull('domain_id')
             ->count();
 
+        $pendingDomains = ApplicationDomain::pending()->count();
+        $pendingTypes = ProductType::pending()->count();
+        $totalDomains = ApplicationDomain::count();
+        $totalTypes = ProductType::count();
+
         return response()->json([
             'success' => true,
             'data' => [
+                'pending_count' => $pendingDomains + $pendingTypes,
+                'total_domains' => $totalDomains,
+                'total_types' => $totalTypes,
                 'domains' => [
-                    'total' => ApplicationDomain::count(),
+                    'total' => $totalDomains,
                     'active' => ApplicationDomain::where('status', 'active')->count(),
-                    'pending' => ApplicationDomain::pending()->count(),
+                    'pending' => $pendingDomains,
                     'ai_generated' => ApplicationDomain::aiGenerated()->count(),
                 ],
                 'product_types' => [
-                    'total' => ProductType::count(),
+                    'total' => $totalTypes,
                     'active' => ProductType::where('status', 'active')->count(),
-                    'pending' => ProductType::pending()->count(),
+                    'pending' => $pendingTypes,
                     'leaf_count' => ProductType::where('is_leaf', true)->count(),
                     'group_count' => ProductType::where('is_leaf', false)->count(),
                     'ai_generated' => ProductType::aiGenerated()->count(),

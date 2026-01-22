@@ -18,17 +18,31 @@ class ApplicationDomain extends Model
         'sort_order',
         'is_active',
         'status',
-        'source',
-        'is_verified',
+        'created_by',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
-        'is_verified' => 'boolean',
         'sort_order' => 'integer',
         'parent_id' => 'integer',
         'keywords' => 'array',
     ];
+
+    /**
+     * Родительский домен
+     */
+    public function parent()
+    {
+        return $this->belongsTo(ApplicationDomain::class, 'parent_id');
+    }
+
+    /**
+     * Дочерние домены
+     */
+    public function children()
+    {
+        return $this->hasMany(ApplicationDomain::class, 'parent_id');
+    }
 
     /**
      * Получить активные области для выбора
@@ -56,15 +70,15 @@ class ApplicationDomain extends Model
      */
     public function scopeAiGenerated($query)
     {
-        return $query->where('source', 'ai_generated');
+        return $query->where('created_by', 'ai_suggested');
     }
 
     /**
-     * Scope: неподтвержденные
+     * Scope: только созданные вручную
      */
-    public function scopeUnverified($query)
+    public function scopeManual($query)
     {
-        return $query->where('is_verified', false);
+        return $query->where('created_by', 'manual');
     }
 
     /**
@@ -75,21 +89,19 @@ class ApplicationDomain extends Model
         $data = array_merge($updates, [
             'status' => 'active',
             'is_active' => true,
-            'is_verified' => true,
         ]);
 
         return $this->update($data);
     }
 
     /**
-     * Отклонить домен (мягкое удаление)
+     * Отклонить домен (деактивировать)
      */
     public function reject(): bool
     {
         return $this->update([
             'status' => 'active',
             'is_active' => false,
-            'is_verified' => false,
         ]);
     }
 }

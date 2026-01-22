@@ -404,6 +404,11 @@
                             <span class="sidebar-item-text">Тарифные планы</span>
                             <span class="sidebar-item-tooltip">Тарифные планы</span>
                         </a>
+                        <a href="{{ route('admin.taxonomy.index') }}" class="sidebar-item {{ request()->routeIs('admin.taxonomy*') ? 'active' : '' }}">
+                            <i data-lucide="tags" class="sidebar-item-icon"></i>
+                            <span class="sidebar-item-text">Модерация категорий</span>
+                            <span class="sidebar-item-tooltip">Модерация категорий</span>
+                        </a>
                         <a href="{{ route('admin.settings.index') }}" class="sidebar-item {{ request()->routeIs('admin.settings*') ? 'active' : '' }}">
                             <i data-lucide="settings-2" class="sidebar-item-icon"></i>
                             <span class="sidebar-item-text">Настройки системы</span>

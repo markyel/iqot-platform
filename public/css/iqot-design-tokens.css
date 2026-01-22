@@ -449,6 +449,12 @@ body {
   transition: all var(--duration-normal) var(--ease-in-out);
 }
 
+textarea.input {
+  height: auto;
+  min-height: 80px;
+  resize: vertical;
+}
+
 .input::placeholder {
   color: var(--neutral-400);
 }

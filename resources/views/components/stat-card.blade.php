@@ -15,7 +15,7 @@
     };
 @endphp
 
-<div class="stat-card">
+<div {{ $attributes->merge(['class' => 'stat-card']) }}>
     @if($icon)
     <div class="stat-icon {{ $iconClass }}">
         <i data-lucide="{{ $icon }}" class="icon-lg"></i>

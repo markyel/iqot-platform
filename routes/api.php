@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\WebhookController;
 use App\Http\Controllers\Api\RequestController;
 use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\Admin\TaxonomyController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -36,21 +37,21 @@ Route::prefix('webhooks')->name('webhooks.')->group(function () {
 
 // Защищённые API роуты (требуют Sanctum токен)
 Route::middleware('auth:sanctum')->group(function () {
-    
+
     // Заявки
     Route::apiResource('requests', RequestController::class);
     Route::post('requests/{request}/resend', [RequestController::class, 'resend'])->name('requests.resend');
     Route::post('requests/{request}/cancel', [RequestController::class, 'cancel'])->name('requests.cancel');
-    
+
     // Поставщики
     Route::apiResource('suppliers', SupplierController::class);
     Route::get('suppliers/search', [SupplierController::class, 'search'])->name('suppliers.search');
-    
+
     // Отчёты
     Route::apiResource('reports', ReportController::class)->only(['index', 'show']);
     Route::get('reports/{report}/pdf', [ReportController::class, 'downloadPdf'])->name('reports.pdf');
     Route::get('reports/{report}/excel', [ReportController::class, 'downloadExcel'])->name('reports.excel');
-    
+
     // Статистика для дашборда
     Route::get('stats/overview', [RequestController::class, 'statsOverview'])->name('stats.overview');
     Route::get('stats/requests', [RequestController::class, 'statsRequests'])->name('stats.requests');

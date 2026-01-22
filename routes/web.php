@@ -3,6 +3,7 @@
 use App\Http\Controllers\LandingController;
 use App\Http\Controllers\CabinetController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\Api\Admin\TaxonomyController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
 
@@ -212,6 +213,34 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
         Route::get('/{id}/edit', [\App\Http\Controllers\Admin\TariffPlanController::class, 'edit'])->name('edit');
         Route::put('/{id}', [\App\Http\Controllers\Admin\TariffPlanController::class, 'update'])->name('update');
         Route::delete('/{id}', [\App\Http\Controllers\Admin\TariffPlanController::class, 'destroy'])->name('destroy');
+    });
+
+    // Модерация таксономии (классификация товаров)
+    Route::prefix('taxonomy')->name('taxonomy.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\TaxonomyModerationController::class, 'index'])->name('index');
+        Route::get('/domains', [\App\Http\Controllers\Admin\TaxonomyModerationController::class, 'domains'])->name('domains');
+        Route::get('/product-types', [\App\Http\Controllers\Admin\TaxonomyModerationController::class, 'productTypes'])->name('product-types');
+    });
+
+    // API для модерации таксономии
+    Route::prefix('api/taxonomy')->name('api.taxonomy.')->group(function () {
+        // Модерация
+        Route::get('/pending', [TaxonomyController::class, 'pending'])->name('pending');
+        Route::get('/stats', [TaxonomyController::class, 'stats'])->name('stats');
+
+        // Домены (Application Domains)
+        Route::get('/domains', [TaxonomyController::class, 'domains'])->name('domains.index');
+        Route::get('/domains/{id}', [TaxonomyController::class, 'showDomain'])->name('domains.show');
+        Route::put('/domains/{id}', [TaxonomyController::class, 'updateDomain'])->name('domains.update');
+        Route::post('/domains/{id}/approve', [TaxonomyController::class, 'approveDomain'])->name('domains.approve');
+        Route::post('/domains/{id}/reject', [TaxonomyController::class, 'rejectDomain'])->name('domains.reject');
+
+        // Типы товаров (Product Types)
+        Route::get('/product-types', [TaxonomyController::class, 'productTypes'])->name('product-types.index');
+        Route::get('/product-types/{id}', [TaxonomyController::class, 'showProductType'])->name('product-types.show');
+        Route::put('/product-types/{id}', [TaxonomyController::class, 'updateProductType'])->name('product-types.update');
+        Route::post('/product-types/{id}/approve', [TaxonomyController::class, 'approveProductType'])->name('product-types.approve');
+        Route::post('/product-types/{id}/reject', [TaxonomyController::class, 'rejectProductType'])->name('product-types.reject');
     });
 });
 
