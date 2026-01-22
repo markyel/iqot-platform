@@ -156,8 +156,8 @@ const pricePerItem = {{ $pricePerItem }};
 const limitsInfo = @json($limitsInfo ?? []);
 let parsedItems = [];
 const categories = @json($categories);
-const productTypes = @json($productTypes);
-const applicationDomains = @json($applicationDomains);
+let productTypes = @json($productTypes);
+let applicationDomains = @json($applicationDomains);
 
 document.addEventListener('DOMContentLoaded', function() {
     // Инициализация иконок
@@ -191,6 +191,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (result.success && result.items?.length > 0) {
                 parsedItems = result.items;
+
+                // Если AI создал новые категории - обновляем списки
+                if (result.has_new_classifications) {
+                    if (result.updated_product_types) {
+                        productTypes = result.updated_product_types;
+                    }
+                    if (result.updated_application_domains) {
+                        applicationDomains = result.updated_application_domains;
+                    }
+                    console.log('Обновлены списки классификаций после создания новых категорий');
+                }
+
                 renderItems();
                 updateCostInfo(result.cost_info);
                 document.getElementById('step-input').classList.add('d-none');

@@ -295,8 +295,8 @@
 <script>
 // Данные для select'ов
 const categories = @json($categories);
-const productTypes = @json($productTypes);
-const applicationDomains = @json($applicationDomains);
+let productTypes = @json($productTypes);
+let applicationDomains = @json($applicationDomains);
 
 let itemIndex = {{ old('items') ? count(old('items')) : 1 }};
 
@@ -448,6 +448,17 @@ document.getElementById('btn-parse')?.addEventListener('click', async function()
         const result = await response.json();
 
         if (result.success && result.items && result.items.length > 0) {
+            // Если AI создал новые категории - обновляем списки
+            if (result.has_new_classifications) {
+                if (result.updated_product_types) {
+                    productTypes = result.updated_product_types;
+                }
+                if (result.updated_application_domains) {
+                    applicationDomains = result.updated_application_domains;
+                }
+                console.log('Обновлены списки классификаций после создания новых категорий');
+            }
+
             // Очистить текущие строки
             document.getElementById('items-tbody').innerHTML = '';
             itemIndex = 0;

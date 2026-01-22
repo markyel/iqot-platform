@@ -431,6 +431,12 @@ class ManageRequestController extends Controller
 
         $result = $this->parseService->parseRequest($validated['text']);
 
+        // Если были созданы новые категории - вернуть обновленные списки
+        if (($result['success'] ?? false) && ($result['has_new_classifications'] ?? false)) {
+            $result['updated_product_types'] = ProductType::getActiveForSelect();
+            $result['updated_application_domains'] = ApplicationDomain::getActiveForSelect();
+        }
+
         return response()->json($result);
     }
 

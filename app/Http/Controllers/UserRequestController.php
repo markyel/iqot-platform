@@ -96,6 +96,12 @@ class UserRequestController extends Controller
                 'available_balance' => $availableBalance,
                 'can_afford' => $availableBalance >= $totalCost
             ];
+
+            // Если были созданы новые категории - вернуть обновленные списки
+            if ($result['has_new_classifications'] ?? false) {
+                $result['updated_product_types'] = ProductType::getActiveForSelect();
+                $result['updated_application_domains'] = ApplicationDomain::getActiveForSelect();
+            }
         }
 
         return response()->json($result);
