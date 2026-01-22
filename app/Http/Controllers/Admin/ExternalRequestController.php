@@ -39,7 +39,8 @@ class ExternalRequestController extends Controller
             },
             'items.offers' => function ($query) {
                 $query->whereIn('status', ['received', 'processed'])
-                      ->whereNotNull('price_per_unit');
+                      ->whereNotNull('price_per_unit')
+                      ->where('price_per_unit', '>', 0);
             },
             'items.offers.supplier'
         ]);
@@ -90,7 +91,8 @@ class ExternalRequestController extends Controller
             'request',
             'offers' => function ($query) {
                 $query->whereIn('status', ['received', 'processed'])
-                      ->whereNotNull('price_per_unit');
+                      ->whereNotNull('price_per_unit')
+                      ->where('price_per_unit', '>', 0);
             },
             'offers.supplier'
         ]);
