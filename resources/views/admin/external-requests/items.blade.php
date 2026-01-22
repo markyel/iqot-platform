@@ -95,7 +95,11 @@
                 </td>
                 <td data-label="Предложения">
                     @php
-                        $receivedOffersCount = $item->offers()->whereIn('status', ['received', 'processed'])->count();
+                        $receivedOffersCount = $item->offers()
+                            ->whereIn('status', ['received', 'processed'])
+                            ->whereNotNull('price_per_unit')
+                            ->where('price_per_unit', '>', 0)
+                            ->count();
                     @endphp
                     @if($receivedOffersCount > 0)
                         <x-badge variant="success">{{ $receivedOffersCount }} шт</x-badge>
