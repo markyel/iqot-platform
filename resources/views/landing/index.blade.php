@@ -2206,6 +2206,20 @@
             }
         }
     </style>
+
+    <!-- Yandex.Metrika counter -->
+    <script type="text/javascript">
+        (function(m,e,t,r,i,k,a){
+            m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+            m[i].l=1*new Date();
+            for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
+            k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+        })(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=106418920', 'ym');
+
+        ym(106418920, 'init', {ssr:true, webvisor:true, trackHash:true, clickmap:true, ecommerce:"dataLayer", referrer: document.referrer, url: location.href, accurateTrackBounce:true, trackLinks:true});
+    </script>
+    <noscript><div><img src="https://mc.yandex.ru/watch/106418920" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+    <!-- /Yandex.Metrika counter -->
 </head>
 <body>
     <div class="bg-grid"></div>
@@ -3074,7 +3088,7 @@
                 </div>
             </div>
             <div class="footer-links">
-                <a href="mailto:info@iqot.ai" data-ru="Связаться" data-en="Contact">Связаться</a>
+                <a href="mailto:info@iqot.ru" data-ru="Связаться" data-en="Contact">Связаться</a>
                 <a href="/terms" data-ru="Условия использования" data-en="Terms of Service">Условия использования</a>
                 <a href="/privacy" data-ru="Политика конфиденциальности" data-en="Privacy Policy">Политика конфиденциальности</a>
                 <a href="/contract" data-ru="Договор-оферта" data-en="Contract">Договор-оферта</a>
