@@ -409,7 +409,23 @@
                             <span class="sidebar-item-text">Модерация категорий</span>
                             <span class="sidebar-item-tooltip">Модерация категорий</span>
                         </a>
-                        <a href="{{ route('admin.settings.index') }}" class="sidebar-item {{ request()->routeIs('admin.settings*') ? 'active' : '' }}">
+
+                        {{-- Секция Биллинг --}}
+                        <div class="sidebar-section-title">
+                            <span>Биллинг</span>
+                        </div>
+                        <a href="{{ route('admin.billing.invoices.index') }}" class="sidebar-item {{ request()->routeIs('admin.billing.invoices*') ? 'active' : '' }}">
+                            <i data-lucide="file-text" class="sidebar-item-icon"></i>
+                            <span class="sidebar-item-text">Счета</span>
+                            <span class="sidebar-item-tooltip">Счета</span>
+                        </a>
+                        <a href="{{ route('admin.billing.settings.index') }}" class="sidebar-item {{ request()->routeIs('admin.billing.settings*') ? 'active' : '' }}">
+                            <i data-lucide="settings" class="sidebar-item-icon"></i>
+                            <span class="sidebar-item-text">Настройки биллинга</span>
+                            <span class="sidebar-item-tooltip">Настройки биллинга</span>
+                        </a>
+
+                        <a href="{{ route('admin.settings.index') }}" class="sidebar-item {{ request()->routeIs('admin.settings.index') ? 'active' : '' }}">
                             <i data-lucide="settings-2" class="sidebar-item-icon"></i>
                             <span class="sidebar-item-text">Настройки системы</span>
                             <span class="sidebar-item-tooltip">Настройки системы</span>

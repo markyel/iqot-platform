@@ -9,6 +9,7 @@ use App\Models\Request as RequestModel;
 use App\Models\ReportAccess;
 use App\Models\ItemPurchase;
 use App\Models\SubscriptionCharge;
+use App\Models\Invoice;
 use App\Services\TariffService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -182,6 +183,23 @@ class TariffController extends Controller
                 'type' => 'subscription',
                 'description' => $charge->description,
                 'amount' => $charge->amount,
+                'balance_after' => null,
+            ]);
+        }
+
+        // Пополнения баланса (оплаченные счета)
+        $paidInvoices = Invoice::where('user_id', $user->id)
+            ->where('status', 'paid')
+            ->whereNotNull('paid_at')
+            ->orderBy('paid_at', 'desc')
+            ->get();
+
+        foreach ($paidInvoices as $invoice) {
+            $transactions->push([
+                'created_at' => $invoice->paid_at,
+                'type' => 'top_up',
+                'description' => 'Пополнение баланса по счету №' . $invoice->number,
+                'amount' => -$invoice->subtotal, // Отрицательная сумма для пополнения (увеличение баланса), без НДС
                 'balance_after' => null,
             ]);
         }

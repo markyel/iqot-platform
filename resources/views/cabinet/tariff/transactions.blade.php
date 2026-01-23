@@ -80,7 +80,12 @@
                             {{ $transaction['created_at']->format('d.m.Y H:i') }}
                         </td>
                         <td data-label="Операция">
-                            @if($transaction['type'] === 'deposit')
+                            @if($transaction['type'] === 'top_up')
+                                <x-badge type="completed" size="sm">
+                                    <i data-lucide="plus-circle" style="width: 0.875rem; height: 0.875rem;"></i>
+                                    Пополнение
+                                </x-badge>
+                            @elseif($transaction['type'] === 'deposit')
                                 <x-badge type="completed" size="sm">
                                     <i data-lucide="plus-circle" style="width: 0.875rem; height: 0.875rem;"></i>
                                     Пополнение
@@ -110,14 +115,19 @@
                                     <i data-lucide="shopping-cart" style="width: 0.875rem; height: 0.875rem;"></i>
                                     Покупка позиции
                                 </x-badge>
+                            @elseif($transaction['type'] === 'subscription')
+                                <x-badge type="cancelled" size="sm">
+                                    <i data-lucide="calendar" style="width: 0.875rem; height: 0.875rem;"></i>
+                                    Абонентская плата
+                                </x-badge>
                             @endif
                         </td>
                         <td data-label="Описание">
                             {{ $transaction['description'] }}
                         </td>
                         <td data-label="Сумма" style="text-align: right; font-weight: 600; font-family: var(--font-mono);">
-                            @if($transaction['type'] === 'deposit' || $transaction['type'] === 'release')
-                                <span style="color: var(--success-600);">+{{ number_format($transaction['amount'], 2) }} ₽</span>
+                            @if($transaction['type'] === 'top_up' || $transaction['type'] === 'deposit' || $transaction['type'] === 'release')
+                                <span style="color: var(--success-600);">+{{ number_format(abs($transaction['amount']), 2) }} ₽</span>
                             @else
                                 <span style="color: var(--danger-600);">-{{ number_format($transaction['amount'], 2) }} ₽</span>
                             @endif

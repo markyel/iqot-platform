@@ -6,6 +6,9 @@
 <!-- Page Header -->
 <x-page-header title="Мой тариф" description="Управление тарифным планом и лимитами">
     <x-slot name="actions">
+        <x-button variant="secondary" :href="route('cabinet.invoices.index')" icon="file-text">
+            Документы
+        </x-button>
         <x-button variant="secondary" :href="route('cabinet.tariff.transactions')" icon="list">
             Детализация расходов
         </x-button>
@@ -65,8 +68,178 @@
                 </div>
             </div>
         </div>
+
+        <div style="margin-top: var(--space-6); padding-top: var(--space-6); border-top: 1px solid var(--neutral-200);">
+            <x-button variant="primary" icon="plus" onclick="openTopUpModal()">
+                Пополнить баланс
+            </x-button>
+        </div>
     </div>
 </div>
+
+<!-- Модальное окно пополнения баланса -->
+<div id="topUpModal" class="modal-overlay" style="display: none;">
+    <div class="modal-dialog">
+        <div class="modal-container">
+            <div class="modal-header">
+                <div style="display: flex; align-items: center; gap: var(--space-3);">
+                    <div style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: var(--primary-100); display: flex; align-items: center; justify-content: center;">
+                        <i data-lucide="wallet" style="width: 1.25rem; height: 1.25rem; color: var(--primary-600);"></i>
+                    </div>
+                    <div>
+                        <h3 style="margin: 0; font-size: var(--text-lg); font-weight: 600;">Пополнение баланса</h3>
+                        <p style="margin: 0; font-size: var(--text-sm); color: var(--neutral-600);">Выставление счета на оплату</p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeTopUpModal()" style="background: none; border: none; cursor: pointer; padding: var(--space-2); color: var(--neutral-600);">
+                    <i data-lucide="x" style="width: 1.25rem; height: 1.25rem;"></i>
+                </button>
+            </div>
+
+            <form method="POST" action="{{ route('cabinet.invoices.request') }}">
+                @csrf
+                <div class="modal-body">
+                    <div class="alert alert-info" style="margin-bottom: var(--space-4);">
+                        <i data-lucide="info" style="width: 16px; height: 16px;"></i>
+                        <div>
+                            Вам будет выставлен счет на указанную сумму. После оплаты счета средства автоматически поступят на ваш баланс.
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="amount">
+                            Сумма пополнения (₽) <span class="text-danger">*</span>
+                        </label>
+                        <input
+                            type="number"
+                            id="amount"
+                            name="amount"
+                            class="input"
+                            min="100"
+                            step="0.01"
+                            placeholder="Минимум 100 ₽"
+                            required
+                        >
+                        <small class="form-help">
+                            Минимальная сумма пополнения: 100 ₽
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="notes">
+                            Комментарий (опционально)
+                        </label>
+                        <textarea
+                            id="notes"
+                            name="notes"
+                            class="input"
+                            rows="3"
+                            placeholder="Например: Пополнение для тестовой заявки"
+                        ></textarea>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <x-button type="button" variant="secondary" onclick="closeTopUpModal()">
+                        Отмена
+                    </x-button>
+                    <x-button type="submit" variant="primary" icon="file-text">
+                        Выставить счет
+                    </x-button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@push('scripts')
+<script>
+function openTopUpModal() {
+    document.getElementById('topUpModal').style.display = 'block';
+    document.body.style.overflow = 'hidden';
+    setTimeout(() => lucide.createIcons(), 100);
+}
+
+function closeTopUpModal() {
+    document.getElementById('topUpModal').style.display = 'none';
+    document.body.style.overflow = '';
+}
+
+// Закрытие по клику на overlay
+document.addEventListener('click', function(event) {
+    const modal = document.getElementById('topUpModal');
+    if (event.target === modal) {
+        closeTopUpModal();
+    }
+});
+
+// Закрытие по Escape
+document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') {
+        closeTopUpModal();
+    }
+});
+
+lucide.createIcons();
+</script>
+@endpush
+
+@push('styles')
+<style>
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(2px);
+    z-index: 9999;
+    overflow-y: auto;
+}
+
+.modal-dialog {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-6);
+}
+
+.modal-container {
+    background: var(--neutral-0);
+    border-radius: var(--radius-xl);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    max-width: 540px;
+    width: 100%;
+    position: relative;
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-6);
+    border-bottom: 1px solid var(--neutral-200);
+}
+
+.modal-body {
+    padding: var(--space-6);
+}
+
+.modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-3);
+    padding: var(--space-6);
+    border-top: 1px solid var(--neutral-200);
+    background: var(--neutral-50);
+    border-bottom-left-radius: var(--radius-xl);
+    border-bottom-right-radius: var(--radius-xl);
+}
+</style>
+@endpush
 
 <!-- Текущий тариф и лимиты -->
 @if($currentTariff && $limitsInfo['has_tariff'])

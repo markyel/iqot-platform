@@ -81,6 +81,14 @@ Route::middleware(['auth', 'verified'])->prefix('cabinet')->name('cabinet.')->gr
     Route::prefix('questions')->name('questions.')->group(function () {
         Route::post('/{id}/answer', [\App\Http\Controllers\Cabinet\QuestionController::class, 'answer'])->name('answer');
     });
+
+    // Счета на оплату
+    Route::prefix('invoices')->name('invoices.')->group(function () {
+        Route::post('/request', [\App\Http\Controllers\Cabinet\InvoiceController::class, 'request'])->name('request');
+        Route::get('/', [\App\Http\Controllers\Cabinet\InvoiceController::class, 'index'])->name('index');
+        Route::get('/{id}', [\App\Http\Controllers\Cabinet\InvoiceController::class, 'show'])->name('show');
+        Route::get('/{id}/download', [\App\Http\Controllers\Cabinet\InvoiceController::class, 'download'])->name('download');
+    });
 });
 
 // Тестовая страница проверки прав (удалить после отладки)
@@ -220,6 +228,20 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
         Route::get('/', [\App\Http\Controllers\Admin\TaxonomyModerationController::class, 'index'])->name('index');
         Route::get('/domains', [\App\Http\Controllers\Admin\TaxonomyModerationController::class, 'domains'])->name('domains');
         Route::get('/product-types', [\App\Http\Controllers\Admin\TaxonomyModerationController::class, 'productTypes'])->name('product-types');
+    });
+
+    // Биллинг
+    Route::prefix('billing')->name('billing.')->group(function () {
+        // Счета
+        Route::get('/invoices', [\App\Http\Controllers\Admin\InvoiceController::class, 'index'])->name('invoices.index');
+        Route::get('/invoices/{id}', [\App\Http\Controllers\Admin\InvoiceController::class, 'show'])->name('invoices.show');
+        Route::post('/invoices/{id}/mark-as-paid', [\App\Http\Controllers\Admin\InvoiceController::class, 'markAsPaid'])->name('invoices.mark-as-paid');
+        Route::post('/invoices/{id}/mark-as-unpaid', [\App\Http\Controllers\Admin\InvoiceController::class, 'markAsUnpaid'])->name('invoices.mark-as-unpaid');
+        Route::post('/invoices/{id}/cancel', [\App\Http\Controllers\Admin\InvoiceController::class, 'cancel'])->name('invoices.cancel');
+
+        // Реквизиты
+        Route::get('/settings', [\App\Http\Controllers\Admin\BillingSettingsController::class, 'index'])->name('settings.index');
+        Route::post('/settings', [\App\Http\Controllers\Admin\BillingSettingsController::class, 'update'])->name('settings.update');
     });
 
     // API для модерации таксономии
