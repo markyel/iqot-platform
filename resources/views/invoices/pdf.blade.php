@@ -292,7 +292,7 @@
         </tr>
         <tr>
             <td class="label">Покупатель:</td>
-            <td>{{ $buyer->company_name ?? $buyer->name }}, ИНН {{ $buyer->inn ?? 'не указан' }}@if($buyer->kpp), КПП {{ $buyer->kpp }}@endif, {{ $buyer->address ?? 'адрес не указан' }}</td>
+            <td>{{ $buyer->company ?? $buyer->name }}, ИНН {{ $buyer->inn ?? 'не указан' }}@if($buyer->kpp), КПП {{ $buyer->kpp }}@endif, {{ $buyer->legal_address ?? $buyer->address ?? 'адрес не указан' }}@if($buyer->phone), тел. {{ $buyer->phone }}@endif</td>
         </tr>
     </table>
 </div>
