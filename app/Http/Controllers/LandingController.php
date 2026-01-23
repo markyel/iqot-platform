@@ -193,6 +193,14 @@ class LandingController extends Controller
     }
 
     /**
+     * Почему это работает
+     */
+    public function whyItWorks(): View
+    {
+        return view('landing.why-it-works');
+    }
+
+    /**
      * Страница установки пароля
      */
     public function showSetPassword(string $token): View|RedirectResponse

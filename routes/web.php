@@ -23,6 +23,7 @@ Route::get('/privacy', [LandingController::class, 'privacy'])->name('privacy');
 Route::get('/terms', [LandingController::class, 'terms'])->name('terms');
 Route::get('/contract', [LandingController::class, 'contract'])->name('contract');
 Route::get('/pricing', [LandingController::class, 'pricing'])->name('pricing');
+Route::get('/why-it-works', [LandingController::class, 'whyItWorks'])->name('why-it-works');
 
 // Публичный каталог
 Route::get('/catalog', [\App\Http\Controllers\CatalogController::class, 'index'])->name('catalog.index');

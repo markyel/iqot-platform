@@ -2519,8 +2519,17 @@
         <div class="section-container">
             <div class="section-header">
                 <span class="section-label" data-ru="Решение" data-en="Solution">Решение</span>
-                <h2 class="section-title" data-ru="Как работает IQOT" data-en="How IQOT works">Как работает IQOT</h2>
-                <p class="section-subtitle" data-ru="От списка позиций до готового отчёта — полностью автоматически" data-en="From item list to ready report — fully automated">От списка позиций до готового отчёта — полностью автоматически</p>
+                <h2 class="section-title" data-ru="Как работает IQOT" data-en="How IQOT works">
+                    <a href="{{ route('why-it-works') }}" style="color: inherit; text-decoration: none;">
+                        Как работает IQOT
+                    </a>
+                </h2>
+                <p class="section-subtitle" data-ru="От списка позиций до готового отчёта — полностью автоматически" data-en="From item list to ready report — fully automated">
+                    От списка позиций до готового отчёта — полностью автоматически
+                    <a href="{{ route('why-it-works') }}" style="color: var(--accent-primary); text-decoration: none; margin-left: 1rem; font-weight: 600;">
+                        Подробнее →
+                    </a>
+                </p>
             </div>
             <div class="process-flow">
                 <div class="process-step">
