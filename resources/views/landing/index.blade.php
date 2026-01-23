@@ -2608,6 +2608,17 @@
                     <p data-ru="Получите сводную таблицу с ценами, сроками и рекомендациями по выбору" data-en="Get a summary table with prices, terms, and selection recommendations">Получите сводную таблицу с ценами, сроками и рекомендациями по выбору</p>
                 </div>
             </div>
+
+            <!-- Link to detailed page -->
+            <div style="text-align: center; margin-top: 3rem;">
+                <a href="{{ route('why-it-works') }}" class="cta-btn" style="display: inline-flex; align-items: center; gap: 0.5rem; background: var(--accent-gradient); color: white; padding: 1rem 2rem; border-radius: 8px; text-decoration: none; font-weight: 600; transition: all 0.3s;">
+                    <span data-ru="Узнать подробнее" data-en="Learn more">Узнать подробнее</span>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                        <polyline points="12 5 19 12 12 19"></polyline>
+                    </svg>
+                </a>
+            </div>
         </div>
     </section>
 
