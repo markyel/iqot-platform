@@ -24,6 +24,7 @@ Route::get('/terms', [LandingController::class, 'terms'])->name('terms');
 Route::get('/contract', [LandingController::class, 'contract'])->name('contract');
 Route::get('/pricing', [LandingController::class, 'pricing'])->name('pricing');
 Route::get('/why-it-works', [LandingController::class, 'whyItWorks'])->name('why-it-works');
+Route::get('/faq', [LandingController::class, 'faq'])->name('faq');
 
 // Публичный каталог
 Route::get('/catalog', [\App\Http\Controllers\CatalogController::class, 'index'])->name('catalog.index');

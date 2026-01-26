@@ -1486,56 +1486,102 @@
 
         /* Footer */
         .footer {
-            background: var(--bg-secondary);
-            padding: 4rem 2rem;
+            background: #08080c;
             border-top: 1px solid var(--border-color);
+            padding: 48px 24px 32px;
         }
 
         .footer-container {
             max-width: 1200px;
             margin: 0 auto;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
         }
 
-        .footer-left {
-            display: flex;
-            align-items: center;
-            gap: 2rem;
+        /* Main footer content */
+        .footer-main {
+            display: grid;
+            grid-template-columns: 1.5fr 1fr 1fr 1fr;
+            gap: 48px;
+            padding-bottom: 40px;
+            border-bottom: 1px solid var(--border-color);
         }
 
+        /* Brand column */
         .footer-brand {
             display: flex;
             flex-direction: column;
-            gap: 0.25rem;
+            gap: 16px;
+        }
+
+        .footer-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .footer-logo svg {
+            width: 32px;
+            height: 32px;
+            fill: var(--accent-primary);
+        }
+
+        .footer-logo span {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-primary);
         }
 
         .footer-tagline {
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-            font-style: italic;
+            font-size: 14px;
+            color: #58585f;
+            line-height: 1.6;
+            max-width: 280px;
         }
 
-        .footer-copyright {
-            color: var(--text-muted);
-            font-size: 0.9rem;
+        /* Link columns */
+        .footer-column {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .footer-column-title {
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-primary);
         }
 
         .footer-links {
             display: flex;
-            gap: 2rem;
+            flex-direction: column;
+            gap: 12px;
         }
 
         .footer-links a {
+            font-size: 14px;
             color: var(--text-secondary);
             text-decoration: none;
-            font-size: 0.9rem;
-            transition: color 0.2s ease;
+            transition: color 0.2s;
         }
 
         .footer-links a:hover {
-            color: var(--accent-primary);
+            color: var(--text-primary);
+        }
+
+        /* Bottom bar */
+        .footer-bottom {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-top: 24px;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .footer-copy {
+            font-size: 13px;
+            color: #58585f;
         }
 
         /* Animations */
@@ -1977,6 +2023,43 @@
 
             .pricing-name {
                 font-size: 0.85rem;
+            }
+        }
+
+        /* Footer Responsive */
+        @media (max-width: 900px) {
+            .footer-main {
+                grid-template-columns: 1fr 1fr;
+                gap: 40px;
+            }
+
+            .footer-brand {
+                grid-column: 1 / -1;
+            }
+        }
+
+        @media (max-width: 600px) {
+            .footer {
+                padding: 40px 20px 24px;
+            }
+
+            .footer-main {
+                grid-template-columns: 1fr;
+                gap: 32px;
+            }
+
+            .footer-brand {
+                grid-column: auto;
+            }
+
+            .footer-bottom {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .footer-bottom-links {
+                flex-wrap: wrap;
+                justify-content: center;
             }
         }
 
@@ -3077,22 +3160,59 @@
     <!-- Footer -->
     <footer class="footer">
         <div class="footer-container">
-            <div class="footer-left">
-                <a href="#" class="logo">
-                    <div class="logo-icon"><img src="/images/Q.svg" alt="IQOT"></div>
-                    <div class="logo-text"><img src="/images/IQOT.svg" alt="IQOT"></div>
-                </a>
+
+            <!-- Main content -->
+            <div class="footer-main">
+
+                <!-- Brand -->
                 <div class="footer-brand">
-                    <span class="footer-tagline">Intelligent Quotation & Offer Tracking</span>
-                    <span class="footer-copyright">© 2025 IQOT. <span data-ru="Все права защищены" data-en="All rights reserved">Все права защищены</span></span>
+                    <div class="footer-logo">
+                        <svg viewBox="0 0 119.81 119.81" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M59.9,0C26.82,0,0,26.82,0,59.9s26.82,59.9,59.9,59.9,59.9-26.82,59.9-59.9S92.99,0,59.9,0ZM22.91,60.5c0-20.43,16.56-36.99,36.99-36.99s36.99,16.56,36.99,36.99c0,9.7-3.74,18.52-9.84,25.12l-17.05-15.39-3.36,3.73,16.75,15.12c-6.39,5.26-14.57,8.41-23.49,8.41-20.43,0-36.99-16.56-36.99-36.99Z"/>
+                        </svg>
+                        <span>IQOT</span>
+                    </div>
+                    <p class="footer-tagline">
+                        Интеллектуальный сбор и анализ коммерческих предложений для B2B-закупок
+                    </p>
                 </div>
+
+                <!-- Column: Информация -->
+                <div class="footer-column">
+                    <div class="footer-column-title">Информация</div>
+                    <div class="footer-links">
+                        <a href="{{ route('faq') }}">Частые вопросы</a>
+                        <a href="{{ route('why-it-works') }}">Как это работает</a>
+                        <a href="{{ route('pricing') }}">Тарифы</a>
+                    </div>
+                </div>
+
+                <!-- Column: Юридическое -->
+                <div class="footer-column">
+                    <div class="footer-column-title">Юридическое</div>
+                    <div class="footer-links">
+                        <a href="/terms">Условия использования</a>
+                        <a href="/privacy">Политика конфиденциальности</a>
+                        <a href="/contract">Договор-оферта</a>
+                    </div>
+                </div>
+
+                <!-- Column: Контакты -->
+                <div class="footer-column">
+                    <div class="footer-column-title">Контакты</div>
+                    <div class="footer-links">
+                        <a href="mailto:info@iqot.ru">info@iqot.ru</a>
+                        <a href="https://t.me/iqot_support">Telegram</a>
+                    </div>
+                </div>
+
             </div>
-            <div class="footer-links">
-                <a href="mailto:info@iqot.ru" data-ru="Связаться" data-en="Contact">Связаться</a>
-                <a href="/terms" data-ru="Условия использования" data-en="Terms of Service">Условия использования</a>
-                <a href="/privacy" data-ru="Политика конфиденциальности" data-en="Privacy Policy">Политика конфиденциальности</a>
-                <a href="/contract" data-ru="Договор-оферта" data-en="Contract">Договор-оферта</a>
+
+            <!-- Bottom bar -->
+            <div class="footer-bottom">
+                <div class="footer-copy">© 2025 IQOT. Все права защищены</div>
             </div>
+
         </div>
     </footer>
 

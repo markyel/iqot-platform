@@ -201,6 +201,14 @@ class LandingController extends Controller
     }
 
     /**
+     * Частые вопросы (FAQ)
+     */
+    public function faq(): View
+    {
+        return view('landing.faq');
+    }
+
+    /**
      * Страница установки пароля
      */
     public function showSetPassword(string $token): View|RedirectResponse
