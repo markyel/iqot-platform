@@ -204,8 +204,31 @@ class TariffController extends Controller
             ]);
         }
 
-        // Сортируем по дате
-        $transactions = $transactions->sortByDesc('created_at');
+        // Сортируем по дате (от новых к старым)
+        $transactions = $transactions->sortByDesc('created_at')->values()->all();
+
+        // Вычисляем баланс после каждой операции
+        // Идем от текущего баланса назад по времени
+        $balanceAfter = $user->balance; // Текущий баланс = баланс ПОСЛЕ самой новой операции
+
+        foreach ($transactions as $key => $transaction) {
+            // Записываем баланс ПОСЛЕ этой операции
+            $transactions[$key]['balance_after'] = round($balanceAfter, 2);
+
+            // Вычисляем баланс ДО этой операции (для следующей, более старой транзакции)
+            if ($transaction['amount'] < 0) {
+                // Это было пополнение (amount отрицательный, т.е. +1100 в балансе)
+                // Значит ДО этой операции баланс был меньше на эту сумму
+                $balanceAfter = $balanceAfter - abs($transaction['amount']);
+            } else {
+                // Это было списание (amount положительный, т.е. -98 из баланса)
+                // Значит ДО этой операции баланс был больше на эту сумму
+                $balanceAfter = $balanceAfter + $transaction['amount'];
+            }
+        }
+
+        // Преобразуем обратно в коллекцию для пагинации
+        $transactions = collect($transactions);
 
         // Пагинация
         $perPage = 20;

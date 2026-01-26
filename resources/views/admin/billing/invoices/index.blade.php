@@ -5,7 +5,7 @@
 @section('content')
 <x-page-header
     title="Счета"
-    description="Управление выставленными счетами"
+    description="Управление выставленными счетами и отчетность"
 />
 
 @if(session('success'))
@@ -19,6 +19,63 @@
         {{ session('warning') }}
     </div>
 @endif
+
+<!-- Статистика -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-4); margin-bottom: var(--space-6);">
+    <div class="card">
+        <div class="card-body" style="text-align: center;">
+            <div style="font-size: var(--text-3xl); font-weight: 700; color: var(--primary-600); margin-bottom: var(--space-2);">
+                {{ $stats['total'] }}
+            </div>
+            <div style="font-size: var(--text-sm); color: var(--neutral-600);">Всего счетов</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body" style="text-align: center;">
+            <div style="font-size: var(--text-3xl); font-weight: 700; color: var(--success-600); margin-bottom: var(--space-2);">
+                {{ $stats['paid'] }}
+            </div>
+            <div style="font-size: var(--text-sm); color: var(--neutral-600);">Оплачено</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body" style="text-align: center;">
+            <div style="font-size: var(--text-3xl); font-weight: 700; color: var(--info-600); margin-bottom: var(--space-2);">
+                {{ $stats['closed'] }}
+            </div>
+            <div style="font-size: var(--text-sm); color: var(--neutral-600);">Закрыто</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body" style="text-align: center;">
+            <div style="font-size: var(--text-2xl); font-weight: 700; color: var(--accent-600); margin-bottom: var(--space-2);">
+                {{ number_format($stats['total_amount'], 2) }} ₽
+            </div>
+            <div style="font-size: var(--text-sm); color: var(--neutral-600);">Поступило средств</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body" style="text-align: center;">
+            <div style="font-size: var(--text-2xl); font-weight: 700; color: var(--danger-600); margin-bottom: var(--space-2);">
+                {{ number_format($stats['spent_amount'], 2) }} ₽
+            </div>
+            <div style="font-size: var(--text-sm); color: var(--neutral-600);">Потрачено</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body" style="text-align: center;">
+            <div style="font-size: var(--text-2xl); font-weight: 700; color: var(--warning-600); margin-bottom: var(--space-2);">
+                {{ number_format($stats['total_amount'] - $stats['spent_amount'], 2) }} ₽
+            </div>
+            <div style="font-size: var(--text-sm); color: var(--neutral-600);">Остаток</div>
+        </div>
+    </div>
+</div>
 
 {{-- Фильтры --}}
 <div class="card" style="margin-bottom: var(--space-6);">
@@ -43,6 +100,7 @@
                         <option value="draft" {{ request('status') === 'draft' ? 'selected' : '' }}>Черновик</option>
                         <option value="sent" {{ request('status') === 'sent' ? 'selected' : '' }}>Выставлен</option>
                         <option value="paid" {{ request('status') === 'paid' ? 'selected' : '' }}>Оплачен</option>
+                        <option value="closed" {{ request('status') === 'closed' ? 'selected' : '' }}>Закрыт</option>
                         <option value="cancelled" {{ request('status') === 'cancelled' ? 'selected' : '' }}>Отменён</option>
                     </select>
                 </div>
@@ -74,6 +132,8 @@
                         <th>Дата</th>
                         <th>Пользователь</th>
                         <th>Сумма</th>
+                        <th>Потрачено</th>
+                        <th>Остаток</th>
                         <th>Статус</th>
                         <th style="text-align: right;">Действия</th>
                     </tr>
@@ -100,10 +160,26 @@
                             </div>
                         </td>
                         <td>
-                            <strong>{{ number_format($invoice->total, 2, ',', ' ') }} ₽</strong>
+                            <strong>{{ number_format($invoice->subtotal, 2, ',', ' ') }} ₽</strong>
+                        </td>
+                        <td style="font-family: var(--font-mono); color: var(--danger-600);">
+                            {{ number_format($invoice->spent_amount ?? 0, 2, ',', ' ') }} ₽
+                        </td>
+                        <td style="font-family: var(--font-mono); color: var(--success-600);">
+                            {{ number_format($invoice->remaining_amount ?? $invoice->subtotal, 2, ',', ' ') }} ₽
+                            @if(($invoice->spent_amount ?? 0) > 0)
+                                <div style="margin-top: var(--space-1); height: 4px; background: var(--neutral-200); border-radius: var(--radius-full); overflow: hidden;">
+                                    <div style="height: 100%; background: var(--danger-500); width: {{ min(100, $invoice->usage_percent ?? 0) }}%;"></div>
+                                </div>
+                            @endif
                         </td>
                         <td>
-                            @if($invoice->status === 'paid')
+                            @if($invoice->status === 'closed')
+                                <span class="badge badge-info">
+                                    <i data-lucide="archive" style="width: 14px; height: 14px;"></i>
+                                    Закрыт
+                                </span>
+                            @elseif($invoice->status === 'paid')
                                 <span class="badge badge-success">
                                     <i data-lucide="check-circle" style="width: 14px; height: 14px;"></i>
                                     Оплачен

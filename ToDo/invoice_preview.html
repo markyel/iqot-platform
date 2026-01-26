@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Счёт № 611054</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'DejaVu Sans', Arial, sans-serif;
+            font-size: 10pt;
+            line-height: 1.4;
+            color: #000;
+            padding: 15mm;
+        }
+        
+        /* === ШАПКА С ЛОГОТИПОМ === */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 25px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid #000;
+        }
+        .header-logo {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .header-logo svg {
+            width: 80px;
+            height: auto;
+        }
+        .header-brand {
+            font-size: 14pt;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+        .header-tagline {
+            font-size: 8pt;
+            color: #555;
+            margin-top: 3px;
+        }
+        .header-contacts {
+            text-align: right;
+            font-size: 9pt;
+            line-height: 1.6;
+        }
+        .header-contacts .company-name {
+            font-weight: bold;
+            font-size: 10pt;
+            margin-bottom: 5px;
+        }
+        .header-contacts a {
+            color: #000;
+            text-decoration: none;
+        }
+        
+        /* === БАНКОВСКИЕ РЕКВИЗИТЫ === */
+        .bank-details {
+            border: 1px solid #000;
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        .bank-details td {
+            border: 1px solid #000;
+            padding: 4px 8px;
+            vertical-align: top;
+        }
+        .bank-details .label {
+            background: #f5f5f5;
+            width: 120px;
+            font-size: 8pt;
+        }
+        .bank-details .value {
+            font-weight: bold;
+        }
+        .bank-details .bank-name {
+            font-size: 9pt;
+        }
+        .bank-details .recipient {
+            font-size: 11pt;
+            font-weight: bold;
+        }
+        
+        /* === ЗАГОЛОВОК === */
+        .invoice-title {
+            font-size: 16pt;
+            font-weight: bold;
+            text-align: left;
+            margin: 25px 0 20px 0;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #000;
+        }
+        
+        /* === СТОРОНЫ === */
+        .parties {
+            margin-bottom: 20px;
+        }
+        .parties table {
+            width: 100%;
+        }
+        .parties td {
+            padding: 3px 0;
+            vertical-align: top;
+        }
+        .parties .label {
+            width: 120px;
+            font-weight: bold;
+        }
+        
+        /* === ТАБЛИЦА ТОВАРОВ === */
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        .items-table th,
+        .items-table td {
+            border: 1px solid #000;
+            padding: 6px 8px;
+            text-align: left;
+        }
+        .items-table th {
+            background: #e8e8e8;
+            font-weight: bold;
+            text-align: center;
+        }
+        .items-table .num { width: 30px; text-align: center; }
+        .items-table .name { }
+        .items-table .unit { width: 50px; text-align: center; }
+        .items-table .qty { width: 60px; text-align: center; }
+        .items-table .price { width: 100px; text-align: right; }
+        .items-table .sum { width: 120px; text-align: right; }
+        
+        /* === ИТОГИ === */
+        .totals {
+            width: 100%;
+            margin: 15px 0;
+        }
+        .totals td {
+            padding: 4px 8px;
+            text-align: right;
+        }
+        .totals .label {
+            font-weight: bold;
+        }
+        .totals .total-row td {
+            font-size: 12pt;
+            font-weight: bold;
+            border-top: 2px solid #000;
+            padding-top: 8px;
+        }
+        
+        /* === СУММА ПРОПИСЬЮ === */
+        .amount-words {
+            margin: 20px 0;
+            padding: 10px;
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+        }
+        .amount-words strong {
+            font-size: 11pt;
+        }
+        
+        /* === ПОДПИСИ === */
+        .signatures {
+            margin-top: 40px;
+            page-break-inside: avoid;
+        }
+        .signatures table {
+            width: 100%;
+        }
+        .signatures td {
+            padding: 10px 0;
+            vertical-align: bottom;
+        }
+        .signatures .sign-line {
+            border-bottom: 1px solid #000;
+            width: 200px;
+            display: inline-block;
+            margin: 0 10px;
+        }
+        .signatures .sign-label {
+            font-size: 8pt;
+            color: #666;
+        }
+        
+        /* === ПРИМЕЧАНИЕ === */
+        .note {
+            margin-top: 30px;
+            padding: 10px;
+            background: #fffde7;
+            border: 1px solid #ffd54f;
+            font-size: 9pt;
+        }
+        
+        /* === ПЕЧАТЬ === */
+        @media print {
+            body { padding: 10mm; }
+            .note { background: #fff; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- === ШАПКА С ЛОГОТИПОМ === -->
+<div class="header">
+    <div class="header-logo">
+        <svg viewBox="0 0 249.52 119.81" xmlns="http://www.w3.org/2000/svg">
+            <path d="M59.9,0C26.82,0,0,26.82,0,59.9s26.82,59.9,59.9,59.9,59.9-26.82,59.9-59.9S92.99,0,59.9,0ZM22.91,60.5c0-20.43,16.56-36.99,36.99-36.99s36.99,16.56,36.99,36.99c0,9.7-3.74,18.52-9.84,25.12l-17.05-15.39-3.36,3.73,16.75,15.12c-6.39,5.26-14.57,8.41-23.49,8.41-20.43,0-36.99-16.56-36.99-36.99Z"/>
+            <g>
+                <path d="M163.81,46.96h4.49v25.76h-4.49v-25.76Z"/>
+                <path d="M179.77,71.37c-1.99-1.2-3.57-2.82-4.73-4.86-1.16-2.04-1.74-4.26-1.74-6.65s.58-4.61,1.74-6.65,2.73-3.67,4.73-4.88,4.19-1.81,6.58-1.81,4.63.6,6.63,1.81,3.58,2.83,4.73,4.88c1.15,2.04,1.72,4.26,1.72,6.65s-.57,4.61-1.72,6.65c-1.15,2.04-2.72,3.66-4.73,4.86s-4.22,1.79-6.63,1.79-4.59-.6-6.58-1.79ZM190.76,67.73c1.32-.81,2.35-1.91,3.08-3.31.73-1.4,1.1-2.92,1.1-4.56s-.37-3.16-1.1-4.56c-.74-1.4-1.76-2.5-3.08-3.33-1.32-.82-2.79-1.23-4.41-1.23s-3.08.41-4.37,1.23c-1.3.82-2.32,1.93-3.07,3.33-.75,1.4-1.12,2.92-1.12,4.56s.37,3.17,1.12,4.56c.75,1.4,1.77,2.5,3.07,3.31,1.29.81,2.75,1.21,4.37,1.21s3.09-.4,4.41-1.21ZM185.34,64.76l3.29-1.98,7.55,12.3-3.25,1.98-7.59-12.3Z"/>
+                <path d="M209.23,71.37c-1.99-1.2-3.57-2.82-4.73-4.86-1.16-2.04-1.74-4.26-1.74-6.65s.58-4.61,1.74-6.65c1.16-2.04,2.74-3.67,4.73-4.88,1.99-1.21,4.19-1.81,6.58-1.81s4.63.6,6.64,1.81c2.01,1.21,3.58,2.83,4.73,4.86,1.15,2.03,1.72,4.26,1.72,6.67s-.57,4.61-1.72,6.65c-1.15,2.04-2.72,3.66-4.73,4.86-2.01,1.2-4.22,1.79-6.64,1.79s-4.59-.6-6.58-1.79ZM220.22,67.73c1.32-.81,2.35-1.91,3.08-3.31.74-1.4,1.1-2.92,1.1-4.56s-.37-3.16-1.1-4.56c-.74-1.4-1.76-2.5-3.08-3.33s-2.8-1.23-4.45-1.23-3.04.41-4.34,1.23-2.32,1.93-3.07,3.33c-.75,1.4-1.12,2.92-1.12,4.56s.37,3.17,1.12,4.56c.75,1.4,1.77,2.5,3.07,3.31,1.3.81,2.74,1.21,4.34,1.21s3.13-.4,4.45-1.21Z"/>
+                <path d="M230.24,46.96h19.29v4.04h-19.29v-4.04ZM237.64,50.14h4.49v22.58h-4.49v-22.58Z"/>
+            </g>
+        </svg>
+        <div>
+            <div class="header-brand">IQOT</div>
+            <div class="header-tagline">Сервис сбора коммерческих предложений</div>
+        </div>
+    </div>
+    <div class="header-contacts">
+        <div class="company-name">ИП Маркелов Дмитрий Евгеньевич</div>
+        <div>ИНН 771512090267</div>
+        <div>127549, г. Москва, ш. Алтуфьевское, д. 62А, кв. 97</div>
+        <div style="margin-top: 8px;">
+            <a href="https://iqot.ru">iqot.ru</a> &nbsp;|&nbsp; 
+            <a href="mailto:info@iqot.ru">info@iqot.ru</a>
+        </div>
+    </div>
+</div>
+
+<!-- === БАНКОВСКИЕ РЕКВИЗИТЫ === -->
+<table class="bank-details">
+    <tr>
+        <td class="label" rowspan="2">Банк получателя</td>
+        <td class="bank-name" colspan="3">АО "ТИНЬКОФФ БАНК"</td>
+        <td class="label">БИК</td>
+        <td class="value">044525974</td>
+    </tr>
+    <tr>
+        <td colspan="3"></td>
+        <td class="label">Корр. счёт</td>
+        <td class="value">30101810145250000974</td>
+    </tr>
+    <tr>
+        <td class="label">ИНН</td>
+        <td class="value">771512090267</td>
+        <td class="label" rowspan="2">Получатель</td>
+        <td class="recipient" rowspan="2" colspan="2">ИП Маркелов Дмитрий Евгеньевич</td>
+        <td class="label" rowspan="2">Расч. счёт</td>
+    </tr>
+    <tr>
+        <td class="label">ОГРНИП</td>
+        <td class="value">312774625801659</td>
+        <td class="value" rowspan="1">40802810100002456789</td>
+    </tr>
+</table>
+
+<!-- === ЗАГОЛОВОК СЧЁТА === -->
+<div class="invoice-title">
+    Счёт на оплату № 611054 от 21.01.2026 г.
+</div>
+
+<!-- === СТОРОНЫ === -->
+<div class="parties">
+    <table>
+        <tr>
+            <td class="label">Поставщик:</td>
+            <td>ИП Маркелов Дмитрий Евгеньевич, ИНН 771512090267, ОГРНИП 312774625801659, 127549, г. Москва, ш. Алтуфьевское, д. 62А, кв. 97</td>
+        </tr>
+        <tr>
+            <td class="label">Покупатель:</td>
+            <td>ООО "УПРАВЛЯЮЩАЯ КОМПАНИЯ "АЛЬТЭКС", ИНН 5029120613, КПП 502901001, 141009, Московская область, г. Мытищи, пр-кт Олимпийский, строение 10, помещение 14А</td>
+        </tr>
+    </table>
+</div>
+
+<!-- === ТАБЛИЦА УСЛУГ === -->
+<table class="items-table">
+    <thead>
+        <tr>
+            <th class="num">№</th>
+            <th class="name">Наименование товара, работ, услуг</th>
+            <th class="unit">Ед.</th>
+            <th class="qty">Кол-во</th>
+            <th class="price">Цена</th>
+            <th class="sum">Сумма</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td class="num">1</td>
+            <td class="name">Ступень эскалатора Kone ECO3000 и TravelMaster 800мм серебро, с роликами, с 3-мя демаркационными линиями</td>
+            <td class="unit">шт</td>
+            <td class="qty">2</td>
+            <td class="price">30 521,24</td>
+            <td class="sum">61 042,48</td>
+        </tr>
+        <tr>
+            <td class="num">2</td>
+            <td class="name">Доставка</td>
+            <td class="unit">шт</td>
+            <td class="qty">1</td>
+            <td class="price">4 676,19</td>
+            <td class="sum">4 676,19</td>
+        </tr>
+    </tbody>
+</table>
+
+<!-- === ИТОГИ === -->
+<table class="totals">
+    <tr>
+        <td></td>
+        <td class="label" style="width: 150px;">Итого:</td>
+        <td style="width: 150px;">65 718,67</td>
+    </tr>
+    <tr>
+        <td></td>
+        <td class="label">В том числе НДС (5%):</td>
+        <td>3 285,93</td>
+    </tr>
+    <tr class="total-row">
+        <td></td>
+        <td class="label">Всего к оплате:</td>
+        <td>69 004,60</td>
+    </tr>
+</table>
+
+<!-- === СУММА ПРОПИСЬЮ === -->
+<div class="amount-words">
+    Всего наименований 2, на сумму <strong>69 004,60 руб.</strong><br>
+    <strong>Шестьдесят девять тысяч четыре рубля 60 копеек</strong>
+</div>
+
+<!-- === ПРИМЕЧАНИЕ === -->
+<div class="note">
+    <strong>Назначение платежа:</strong> Авансовый платёж за услуги информационного сервиса IQOT согласно Договору-оферте, размещённому на сайте iqot.ru. Счёт № 611054 от 21.01.2026. В том числе НДС (5%) 3 285,93 руб.
+</div>
+
+<!-- === ПОДПИСИ === -->
+<div class="signatures">
+    <table>
+        <tr>
+            <td style="width: 50%;">
+                <strong>Руководитель</strong><br><br>
+                <span class="sign-line"></span> / Маркелов Д. Е. /<br>
+                <span class="sign-label">подпись</span>
+            </td>
+            <td style="width: 50%;">
+                <strong>Бухгалтер</strong><br><br>
+                <span class="sign-line"></span> / Маркелов Д. Е. /<br>
+                <span class="sign-label">подпись</span>
+            </td>
+        </tr>
+    </table>
+    <p style="margin-top: 20px; font-size: 9pt; color: #666;">
+        М.П. (при наличии)
+    </p>
+</div>
+
+</body>
+</html>

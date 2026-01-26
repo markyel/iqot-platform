@@ -1,12 +1,19 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
     public function up(): void
     {
+        // Проверяем существование таблицы tariff_plans
+        if (!Schema::hasTable('tariff_plans')) {
+            return;
+        }
+
         // Получаем тариф "Старт"
         $startTariff = DB::table('tariff_plans')
             ->where('code', 'start')

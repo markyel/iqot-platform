@@ -13,12 +13,22 @@
         </x-button>
         <x-button
             variant="primary"
-            :href="route('cabinet.invoices.download', $invoice->id)"
+            :href="route('admin.billing.invoices.download', $invoice->id)"
             icon="download"
             target="_blank"
         >
-            Скачать PDF
+            Скачать счет
         </x-button>
+        @if(in_array($invoice->status, ['paid', 'closed']))
+        <x-button
+            variant="accent"
+            :href="route('admin.billing.invoices.download-act', $invoice->id)"
+            icon="file-text"
+            target="_blank"
+        >
+            Скачать акт
+        </x-button>
+        @endif
     </x-slot>
 </x-page-header>
 
@@ -145,6 +155,59 @@
         </table>
     </div>
 </div>
+
+{{-- Отслеживание расходования средств --}}
+@if(in_array($invoice->status, ['paid', 'closed']))
+<div class="card" style="margin-bottom: var(--space-6);">
+    <div class="card-header">
+        <h3 class="card-title">Расходование средств</h3>
+    </div>
+    <div class="card-body">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-6); margin-bottom: var(--space-6);">
+            <div style="text-align: center; padding: var(--space-4); background: var(--success-50); border-radius: var(--radius-lg);">
+                <div style="font-size: var(--text-sm); color: var(--success-700); margin-bottom: var(--space-2);">Зачислено</div>
+                <div style="font-size: var(--text-2xl); font-weight: 700; color: var(--success-600);">
+                    {{ number_format($invoice->subtotal, 2, ',', ' ') }} ₽
+                </div>
+            </div>
+            <div style="text-align: center; padding: var(--space-4); background: var(--danger-50); border-radius: var(--radius-lg);">
+                <div style="font-size: var(--text-sm); color: var(--danger-700); margin-bottom: var(--space-2);">Потрачено</div>
+                <div style="font-size: var(--text-2xl); font-weight: 700; color: var(--danger-600);">
+                    {{ number_format($invoice->spent_amount ?? 0, 2, ',', ' ') }} ₽
+                </div>
+            </div>
+            <div style="text-align: center; padding: var(--space-4); background: var(--warning-50); border-radius: var(--radius-lg);">
+                <div style="font-size: var(--text-sm); color: var(--warning-700); margin-bottom: var(--space-2);">Остаток</div>
+                <div style="font-size: var(--text-2xl); font-weight: 700; color: var(--warning-600);">
+                    {{ number_format($invoice->remaining_amount ?? $invoice->subtotal, 2, ',', ' ') }} ₽
+                </div>
+            </div>
+        </div>
+
+        @if(($invoice->spent_amount ?? 0) > 0)
+        <div style="margin-bottom: var(--space-4);">
+            <div style="display: flex; justify-content: space-between; margin-bottom: var(--space-2);">
+                <span style="font-size: var(--text-sm); color: var(--neutral-600);">Использовано</span>
+                <span style="font-size: var(--text-sm); font-weight: 600;">{{ number_format($invoice->usage_percent ?? 0, 1) }}%</span>
+            </div>
+            <div style="height: 12px; background: var(--neutral-200); border-radius: var(--radius-full); overflow: hidden;">
+                <div style="height: 100%; background: linear-gradient(90deg, var(--success-500), var(--danger-500)); width: {{ min(100, $invoice->usage_percent ?? 0) }}%; transition: width 0.3s ease;"></div>
+            </div>
+        </div>
+        @endif
+
+        @if($invoice->status === 'closed')
+        <div style="padding: var(--space-4); background: var(--info-50); border: 1px solid var(--info-200); border-radius: var(--radius-md); display: flex; align-items: center; gap: var(--space-3);">
+            <i data-lucide="archive" style="width: 1.5rem; height: 1.5rem; color: var(--info-600);"></i>
+            <div>
+                <div style="font-weight: 600; color: var(--info-900);">Счет закрыт</div>
+                <div style="font-size: var(--text-sm); color: var(--info-700);">Все средства по этому счету полностью израсходованы</div>
+            </div>
+        </div>
+        @endif
+    </div>
+</div>
+@endif
 
 {{-- Действия --}}
 @if($invoice->status !== 'cancelled')

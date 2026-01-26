@@ -3,6 +3,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
@@ -32,19 +33,32 @@ return new class extends Migration
                 $table->timestamp('pdf_expires_at')->nullable()->after('pdf_content');
             }
 
-            // Добавляем индекс для статуса, если его нет
-            if (!$this->indexExists('reports', 'reports_status_index')) {
-                $table->index('status');
-            }
         });
+
+        // Добавляем индекс для статуса, если его нет
+        if (!$this->indexExists('reports', 'reports_status_index')) {
+            Schema::table('reports', function (Blueprint $table) {
+                $table->index('status');
+            });
+        }
     }
 
-    private function indexExists($table, $index)
+    /**
+     * Проверяет существование индекса через SQL
+     */
+    private function indexExists(string $table, string $indexName): bool
     {
-        $connection = Schema::getConnection();
-        $indexes = $connection->getDoctrineSchemaManager()
-            ->listTableIndexes($table);
-        return array_key_exists($index, $indexes);
+        $database = DB::getDatabaseName();
+        $result = DB::select(
+            "SELECT COUNT(*) as count
+             FROM information_schema.statistics
+             WHERE table_schema = ?
+             AND table_name = ?
+             AND index_name = ?",
+            [$database, $table, $indexName]
+        );
+
+        return $result[0]->count > 0;
     }
 
     /**

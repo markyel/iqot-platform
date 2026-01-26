@@ -149,6 +149,8 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
     // Управление пользователями
     Route::get('/users', [\App\Http\Controllers\Admin\UserController::class, 'index'])->name('users.index');
     Route::get('/users/{user}', [\App\Http\Controllers\Admin\UserController::class, 'show'])->name('users.show');
+    Route::get('/users/{user}/invoices', [\App\Http\Controllers\Admin\UserController::class, 'invoices'])->name('users.invoices');
+    Route::get('/users/{user}/acts', [\App\Http\Controllers\Admin\ActController::class, 'userActs'])->name('users.acts');
     Route::post('/users/{user}/balance', [\App\Http\Controllers\Admin\UserController::class, 'updateBalance'])->name('users.balance');
 
     // Настройки системы
@@ -237,9 +239,18 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
         // Счета
         Route::get('/invoices', [\App\Http\Controllers\Admin\InvoiceController::class, 'index'])->name('invoices.index');
         Route::get('/invoices/{id}', [\App\Http\Controllers\Admin\InvoiceController::class, 'show'])->name('invoices.show');
+        Route::get('/invoices/{id}/download', [\App\Http\Controllers\Admin\InvoiceController::class, 'download'])->name('invoices.download');
+        Route::get('/invoices/{id}/download-act', [\App\Http\Controllers\Admin\InvoiceController::class, 'downloadAct'])->name('invoices.download-act');
         Route::post('/invoices/{id}/mark-as-paid', [\App\Http\Controllers\Admin\InvoiceController::class, 'markAsPaid'])->name('invoices.mark-as-paid');
         Route::post('/invoices/{id}/mark-as-unpaid', [\App\Http\Controllers\Admin\InvoiceController::class, 'markAsUnpaid'])->name('invoices.mark-as-unpaid');
         Route::post('/invoices/{id}/cancel', [\App\Http\Controllers\Admin\InvoiceController::class, 'cancel'])->name('invoices.cancel');
+
+        // Акты
+        Route::get('/acts', [\App\Http\Controllers\Admin\ActController::class, 'index'])->name('acts.index');
+        Route::get('/acts/create', [\App\Http\Controllers\Admin\ActController::class, 'create'])->name('acts.create');
+        Route::post('/acts', [\App\Http\Controllers\Admin\ActController::class, 'store'])->name('acts.store');
+        Route::get('/acts/{id}', [\App\Http\Controllers\Admin\ActController::class, 'show'])->name('acts.show');
+        Route::get('/acts/{id}/download', [\App\Http\Controllers\Admin\ActController::class, 'download'])->name('acts.download');
 
         // Реквизиты
         Route::get('/settings', [\App\Http\Controllers\Admin\BillingSettingsController::class, 'index'])->name('settings.index');

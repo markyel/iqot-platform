@@ -103,11 +103,14 @@ class ItemController extends Controller
             }
 
             // Create purchase record
-            ItemPurchase::create([
+            $purchase = ItemPurchase::create([
                 'user_id' => $user->id,
                 'item_id' => $item->id,
                 'amount' => $unlockPrice,
             ]);
+
+            // Отслеживаем расходование средств из оплаченных счетов
+            app(\App\Services\InvoiceTrackingService::class)->trackItemPurchase($purchase);
 
             // Increment reports_used counter in user's tariff
             if ($tariff) {

@@ -224,6 +224,97 @@
             <div style="font-size: var(--text-sm); color: var(--neutral-600);">Позиций куплено</div>
         </div>
     </div>
+
+    <div class="card" style="cursor: pointer;" onclick="window.location.href='{{ route('admin.users.invoices', $user->id) }}'">
+        <div class="card-body" style="text-align: center;">
+            <div style="font-size: var(--text-3xl); font-weight: 700; color: var(--purple-600); margin-bottom: var(--space-2);">
+                {{ $invoicesCount }}
+            </div>
+            <div style="font-size: var(--text-sm); color: var(--neutral-600);">Счетов выставлено</div>
+            <div style="margin-top: var(--space-2);">
+                <i data-lucide="arrow-right" style="width: 1rem; height: 1rem; color: var(--neutral-400);"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="card" style="cursor: pointer;" onclick="window.location.href='{{ route('admin.users.acts', $user->id) }}'">
+        <div class="card-body" style="text-align: center;">
+            <div style="font-size: var(--text-3xl); font-weight: 700; color: var(--indigo-600); margin-bottom: var(--space-2);">
+                {{ $actsCount }}
+            </div>
+            <div style="font-size: var(--text-sm); color: var(--neutral-600);">Актов сформировано</div>
+            <div style="margin-top: var(--space-2);">
+                <i data-lucide="arrow-right" style="width: 1rem; height: 1rem; color: var(--neutral-400);"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- История транзакций -->
+<div class="card" style="margin-bottom: var(--space-6);">
+    <div class="card-header">
+        <i data-lucide="activity" style="width: 1.25rem; height: 1.25rem;"></i>
+        История транзакций
+    </div>
+    <div class="card-body" style="padding: 0;">
+        @if($transactions->count() > 0)
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Дата</th>
+                    <th>Описание</th>
+                    <th style="text-align: right;">Сумма</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($transactions->take(20) as $transaction)
+                <tr>
+                    <td style="color: var(--neutral-600); font-size: var(--text-sm); white-space: nowrap;">
+                        {{ $transaction['created_at']->format('d.m.Y H:i') }}
+                    </td>
+                    <td>
+                        <div style="display: flex; align-items: center; gap: var(--space-2);">
+                            @php
+                                $iconColor = match($transaction['type']) {
+                                    'top_up' => 'var(--success-600)',
+                                    'hold' => 'var(--warning-600)',
+                                    'release' => 'var(--info-600)',
+                                    'charge', 'report_access', 'item_purchase', 'subscription' => 'var(--danger-600)',
+                                    default => 'var(--neutral-600)'
+                                };
+                                $icon = match($transaction['type']) {
+                                    'top_up' => 'arrow-down-circle',
+                                    'hold' => 'lock',
+                                    'release' => 'unlock',
+                                    'charge' => 'shopping-cart',
+                                    'report_access' => 'file-text',
+                                    'item_purchase' => 'package',
+                                    'subscription' => 'zap',
+                                    default => 'circle'
+                                };
+                            @endphp
+                            <i data-lucide="{{ $icon }}" style="width: 1rem; height: 1rem; color: {{ $iconColor }};"></i>
+                            <span style="font-size: var(--text-sm);">{{ $transaction['description'] }}</span>
+                        </div>
+                    </td>
+                    <td style="text-align: right; font-family: var(--font-mono); font-weight: 600; white-space: nowrap;">
+                        @if($transaction['amount'] < 0)
+                            <span style="color: var(--success-600);">+{{ number_format(abs($transaction['amount']), 2) }} ₽</span>
+                        @else
+                            <span style="color: var(--danger-600);">-{{ number_format($transaction['amount'], 2) }} ₽</span>
+                        @endif
+                    </td>
+                </tr>
+                @endforeach
+            </tbody>
+        </table>
+        @else
+        <div style="padding: var(--space-8); text-align: center;">
+            <i data-lucide="inbox" style="width: 3rem; height: 3rem; color: var(--neutral-300); margin: 0 auto var(--space-4);"></i>
+            <div style="font-size: var(--text-base); color: var(--neutral-600);">Нет транзакций</div>
+        </div>
+        @endif
+    </div>
 </div>
 
 <!-- Последние заявки -->

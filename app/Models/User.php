@@ -191,7 +191,7 @@ class User extends Authenticatable implements FilamentUser
 
         // Записываем транзакцию о списании абонплаты, если тариф платный
         if ($newTariffPlan->monthly_price > 0) {
-            SubscriptionCharge::create([
+            $charge = SubscriptionCharge::create([
                 'user_id' => $this->id,
                 'user_tariff_id' => $newTariff->id,
                 'tariff_plan_id' => $newTariffPlan->id,
@@ -199,6 +199,9 @@ class User extends Authenticatable implements FilamentUser
                 'description' => "Абонентская плата за тариф «{$newTariffPlan->name}»",
                 'charged_at' => now(),
             ]);
+
+            // Отслеживаем расходование средств из оплаченных счетов
+            app(\App\Services\InvoiceTrackingService::class)->trackSubscriptionCharge($charge);
         }
 
         return $newTariff;

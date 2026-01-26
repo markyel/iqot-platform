@@ -13,6 +13,7 @@ class Invoice extends Model
         'number',
         'invoice_date',
         'subtotal',
+        'spent_amount',
         'vat_rate',
         'vat_amount',
         'total',
@@ -27,6 +28,7 @@ class Invoice extends Model
     protected $casts = [
         'invoice_date' => 'date',
         'subtotal' => 'decimal:2',
+        'spent_amount' => 'decimal:2',
         'vat_rate' => 'decimal:2',
         'vat_amount' => 'decimal:2',
         'total' => 'decimal:2',
@@ -188,8 +190,51 @@ class Invoice extends Model
             'draft' => 'Черновик',
             'sent' => 'Отправлен',
             'paid' => 'Оплачен',
+            'closed' => 'Закрыт',
             'cancelled' => 'Отменен',
             default => 'Неизвестно',
         };
+    }
+
+    /**
+     * Получить остаток средств по счету
+     */
+    public function getRemainingAmountAttribute(): float
+    {
+        return max(0, $this->subtotal - $this->spent_amount);
+    }
+
+    /**
+     * Проверить, закрыт ли счет (полностью израсходован)
+     */
+    public function getIsClosedAttribute(): bool
+    {
+        return $this->status === 'paid' && $this->spent_amount >= $this->subtotal;
+    }
+
+    /**
+     * Добавить расход по счету
+     */
+    public function addSpending(float $amount): void
+    {
+        $this->increment('spent_amount', $amount);
+        $this->refresh();
+
+        // Если счет полностью израсходован, меняем статус на closed
+        if ($this->spent_amount >= $this->subtotal && $this->status === 'paid') {
+            $this->update(['status' => 'closed']);
+            \Log::info("Invoice #{$this->number} marked as closed. Fully spent.");
+        }
+    }
+
+    /**
+     * Получить процент использования
+     */
+    public function getUsagePercentAttribute(): float
+    {
+        if ($this->subtotal <= 0) {
+            return 0;
+        }
+        return min(100, ($this->spent_amount / $this->subtotal) * 100);
     }
 }

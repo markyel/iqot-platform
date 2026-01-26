@@ -1,0 +1,539 @@
+{{--
+    Шаблон УПД (Универсальный передаточный документ)
+    Форма по постановлению Правительства РФ № 1137 (в ред. от 16.08.2024 № 1096)
+    
+    Переменные:
+    - $number - номер документа
+    - $date_long - дата в формате "23 января 2026 г."
+    - $date_short - дата в формате "23.01.2026"
+    - $status - статус (1 или 2), по умолчанию 1
+    
+    Продавец:
+    - $seller_name - наименование продавца
+    - $seller_address - адрес продавца
+    - $seller_inn - ИНН (и КПП если есть)
+    - $seller_ogrnip - ОГРНИП (для ИП)
+    - $seller_reg_date - дата регистрации ИП
+    
+    Покупатель:
+    - $buyer_name - наименование покупателя
+    - $buyer_address - адрес покупателя
+    - $buyer_inn_kpp - ИНН/КПП покупателя
+    
+    Грузы:
+    - $shipper - грузоотправитель (по умолчанию "он же")
+    - $consignee - грузополучатель и адрес
+    
+    Товары:
+    - $items - массив товаров, каждый элемент:
+        - code - код товара (колонка А)
+        - name - наименование
+        - product_code - код вида товара (1б)
+        - unit_code - код единицы измерения
+        - unit_name - наименование единицы
+        - quantity - количество
+        - price - цена за единицу
+        - sum_without_tax - стоимость без налога
+        - excise - акциз ("без акциза" или сумма)
+        - tax_rate - ставка налога
+        - tax_sum - сумма налога
+        - sum_with_tax - стоимость с налогом
+        - country_code - код страны
+        - country_name - наименование страны
+        - customs_declaration - номер ТД
+    
+    Итоги:
+    - $total_without_tax - итого без налога
+    - $total_tax - итого налог
+    - $total_with_tax - итого с налогом
+    
+    Нижняя часть:
+    - $basis - основание (договор, счет)
+    - $transport_info - данные о транспортировке
+    - $shipment_day, $shipment_month, $shipment_year - дата отгрузки
+    - $signer_name - ФИО подписанта (краткое: Маркелов Д. Е.)
+    - $signer_position - должность подписанта (для ИП: "Индивидуальный предприниматель")
+    
+    - $currency - валюта (по умолчанию "Российский рубль, 643")
+--}}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>УПД № {{ $number }}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 8pt;
+            line-height: 1.2;
+            color: #000;
+            padding: 5mm;
+        }
+        table { border-collapse: collapse; }
+        .uline { border-bottom: 1px solid #000; }
+        .b { border: 1px solid #000; }
+        .bt { border-top: 1px solid #000; }
+        .bb { border-bottom: 1px solid #000; }
+        .bl { border-left: 1px solid #000; }
+        .br { border-right: 1px solid #000; }
+        .tc { text-align: center; }
+        .tr { text-align: right; }
+        .tl { text-align: left; }
+        .vt { vertical-align: top; }
+        .vm { vertical-align: middle; }
+        .bold { font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<!-- ==================== ЕДИНАЯ ТАБЛИЦА С Г-РАМКОЙ ==================== -->
+<table style="width: 100%;" cellpadding="0" cellspacing="0">
+    <colgroup>
+        <col style="width: 85px;"><!-- Левая колонка Г-рамки -->
+        <col style="width: 20px;"><!-- 1 -->
+        <col><!-- 1а -->
+        <col style="width: 35px;"><!-- 1б -->
+        <col style="width: 25px;"><!-- 2 -->
+        <col style="width: 35px;"><!-- 2а -->
+        <col style="width: 40px;"><!-- 3 -->
+        <col style="width: 55px;"><!-- 4 -->
+        <col style="width: 65px;"><!-- 5 -->
+        <col style="width: 35px;"><!-- 6 -->
+        <col style="width: 40px;"><!-- 7 -->
+        <col style="width: 55px;"><!-- 8 -->
+        <col style="width: 65px;"><!-- 9 -->
+        <col style="width: 25px;"><!-- 10 -->
+        <col style="width: 40px;"><!-- 10а -->
+        <col style="width: 70px;"><!-- 11 -->
+    </colgroup>
+    
+    <!-- ===== ШАПКА ===== -->
+    <tr>
+        <!-- Левая колонка: Универсальный передаточный документ -->
+        <td class="br vt" style="padding: 5px;">
+            <div style="font-size: 8pt; line-height: 1.15;">
+                Универсальный<br>
+                передаточный<br>
+                документ
+            </div>
+            <div style="margin-top: 15px;">
+                <span>Статус:</span>
+                <span class="b" style="padding: 2px 8px; font-size: 12pt; margin-left: 3px;">{{ $status ?? 1 }}</span>
+            </div>
+            <div style="margin-top: 10px; font-size: 6.5pt; line-height: 1.15;">
+                1 – счет-фактура и<br>
+                передаточный<br>
+                документ (акт)<br>
+                2 – передаточный<br>
+                документ (акт)
+            </div>
+        </td>
+        <!-- Правая часть: реквизиты -->
+        <td colspan="15" class="vt" style="padding-left: 5px;">
+            <table style="width: 100%;" cellpadding="0" cellspacing="0">
+                <tr>
+                    <td class="vt" style="padding-right: 15px;">
+                        <table style="width: 100%;" cellpadding="0" cellspacing="0">
+                            <tr>
+                                <td style="width: 95px;">Счет-фактура №</td>
+                                <td class="uline tc" style="width: 50px;">{{ $number }}</td>
+                                <td style="width: 25px;" class="tc">от</td>
+                                <td class="uline" style="width: 130px;">{{ $date_long }}</td>
+                                <td style="width: 25px;" class="tr">(1)</td>
+                            </tr>
+                            <tr>
+                                <td>Исправление №</td>
+                                <td class="uline tc">--</td>
+                                <td class="tc">от</td>
+                                <td class="uline tc">--</td>
+                                <td class="tr">(1а)</td>
+                            </tr>
+                            <tr><td colspan="5" style="height: 8px;"></td></tr>
+                            <tr>
+                                <td class="bold">Продавец:</td>
+                                <td class="uline" colspan="3">{{ $seller_name }}</td>
+                                <td class="tr">(2)</td>
+                            </tr>
+                            <tr>
+                                <td>Адрес:</td>
+                                <td class="uline" colspan="3">{{ $seller_address }}</td>
+                                <td class="tr">(2а)</td>
+                            </tr>
+                            <tr>
+                                <td>ИНН/КПП продавца:</td>
+                                <td class="uline" colspan="3">{{ $seller_inn }}</td>
+                                <td class="tr">(2б)</td>
+                            </tr>
+                            <tr>
+                                <td>Грузоотправитель и его адрес:</td>
+                                <td class="uline" colspan="3">{{ $shipper ?? 'он же' }}</td>
+                                <td class="tr">(3)</td>
+                            </tr>
+                            <tr>
+                                <td class="vt">Грузополучатель и его адрес:</td>
+                                <td class="uline" colspan="3" style="font-size: 7pt;">{{ $consignee }}</td>
+                                <td class="tr vt">(4)</td>
+                            </tr>
+                            <tr>
+                                <td>К платежно-расчетному документу №</td>
+                                <td class="uline tc">{{ $payment_doc_number ?? '' }}</td>
+                                <td class="tc">от</td>
+                                <td class="uline">{{ $payment_doc_date ?? '' }}</td>
+                                <td class="tr">(5)</td>
+                            </tr>
+                            <tr>
+                                <td>Документ об отгрузке</td>
+                                <td class="uline" colspan="3">Универсальный передаточный документ, № {{ $number }} от {{ $date_short }}</td>
+                                <td class="tr">(5а)</td>
+                            </tr>
+                            <tr>
+                                <td colspan="5" style="font-size: 6.5pt; padding-top: 3px;">
+                                    К счету-фактуре (счетам-фактурам), выставленному (выставленным) при получении оплаты, частичной оплаты или иных<br>
+                                    платежей в счет предстоящих поставок товаров (выполнения работ, оказания услуг), передачи имущественных прав
+                                </td>
+                            </tr>
+                            <tr>
+                                <td colspan="4" style="padding-top: 2px;">
+                                    № <span class="uline" style="display: inline-block; width: 30px;">{{ $prepayment_sf_number ?? '' }}</span> от <span class="uline" style="display: inline-block; width: 60px;">{{ $prepayment_sf_date ?? '' }}</span> , исправление № <span class="uline" style="display: inline-block; width: 30px;"></span> от <span class="uline" style="display: inline-block; width: 60px;"></span>
+                                </td>
+                                <td class="tr">(5б)</td>
+                            </tr>
+                        </table>
+                    </td>
+                    <td class="vt" style="width: 300px;">
+                        <div class="tr" style="font-size: 6pt; margin-bottom: 8px;">
+                            Приложение № 1 к постановлению Правительства Российской Федерации от 26 декабря 2011 г. № 1137<br>
+                            (в редакции постановления Правительства Российской Федерации от 16 августа 2024 г. № 1096)
+                        </div>
+                        <table style="width: 100%;" cellpadding="0" cellspacing="0">
+                            <tr>
+                                <td class="bold" style="width: 120px;">Покупатель:</td>
+                                <td class="uline">{{ $buyer_name }}</td>
+                                <td style="width: 25px;" class="tr">(6)</td>
+                            </tr>
+                            <tr>
+                                <td class="vt">Адрес:</td>
+                                <td class="uline" style="font-size: 7pt;">{{ $buyer_address }}</td>
+                                <td class="tr vt">(6а)</td>
+                            </tr>
+                            <tr>
+                                <td>ИНН/КПП покупателя:</td>
+                                <td class="uline">{{ $buyer_inn_kpp }}</td>
+                                <td class="tr">(6б)</td>
+                            </tr>
+                            <tr>
+                                <td>Валюта: наименование, код</td>
+                                <td class="uline">{{ $currency ?? 'Российский рубль, 643' }}</td>
+                                <td class="tr">(7)</td>
+                            </tr>
+                            <tr>
+                                <td colspan="2" style="font-size: 7pt; padding-top: 3px;">Идентификатор государственного контракта,<br>договора (соглашения) (при наличии):</td>
+                                <td></td>
+                            </tr>
+                            <tr>
+                                <td></td>
+                                <td class="uline">{{ $gov_contract_id ?? '' }}</td>
+                                <td class="tr">(8)</td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+
+    <!-- ===== ЗАГОЛОВКИ ТАБЛИЦЫ (строка 1) ===== -->
+    <tr>
+        <td class="br bb tc vm" rowspan="2" style="font-size: 6.5pt; padding: 2px;">Код товара/<br>работ, услуг</td>
+        <td class="bt br bb tc vm" rowspan="2" style="font-size: 6.5pt; padding: 2px;">№<br>п/п</td>
+        <td class="bt br bb tc vm" rowspan="2" style="font-size: 6.5pt; padding: 2px;">Наименование товара (описание выполненных работ, оказанных услуг), имущественного права</td>
+        <td class="bt br bb tc vm" rowspan="2" style="font-size: 6.5pt; padding: 2px;">Код вида<br>товара</td>
+        <td class="bt br bb tc vm" colspan="2" style="font-size: 6.5pt; padding: 2px;">Единица<br>измерения</td>
+        <td class="bt br bb tc vm" rowspan="2" style="font-size: 6.5pt; padding: 2px;">Коли-<br>чество<br>(объем)</td>
+        <td class="bt br bb tc vm" rowspan="2" style="font-size: 6.5pt; padding: 2px;">Цена (тариф)<br>за единицу<br>измерения</td>
+        <td class="bt br bb tc vm" rowspan="2" style="font-size: 6.5pt; padding: 2px;">Стоимость<br>товаров (работ,<br>услуг), имущест-<br>венных прав без<br>налога - всего</td>
+        <td class="bt br bb tc vm" rowspan="2" style="font-size: 6.5pt; padding: 2px;">В том<br>числе<br>сумма<br>акциза</td>
+        <td class="bt br bb tc vm" rowspan="2" style="font-size: 6.5pt; padding: 2px;">Налоговая<br>ставка</td>
+        <td class="bt br bb tc vm" rowspan="2" style="font-size: 6.5pt; padding: 2px;">Сумма налога,<br>предъяв-<br>ляемая<br>покупателю</td>
+        <td class="bt br bb tc vm" rowspan="2" style="font-size: 6.5pt; padding: 2px;">Стоимость<br>товаров (работ,<br>услуг), имущест-<br>венных прав с<br>налогом - всего</td>
+        <td class="bt br bb tc vm" colspan="2" style="font-size: 6.5pt; padding: 2px;">Страна<br>происхождения<br>товара</td>
+        <td class="bt bb tc vm" rowspan="2" style="font-size: 6.5pt; padding: 2px;">Регистрационный<br>номер декларации<br>на товары или<br>регистрационный<br>номер партии товара,<br>подлежащего<br>прослеживаемости</td>
+    </tr>
+    <!-- ===== ЗАГОЛОВКИ ТАБЛИЦЫ (строка 2 - подзаголовки) ===== -->
+    <tr>
+        <td class="br bb tc vm" style="font-size: 6.5pt; padding: 2px;">код</td>
+        <td class="br bb tc vm" style="font-size: 6.5pt; padding: 2px;">условное<br>обозна-<br>чение<br>(нацио-<br>нальное)</td>
+        <td class="br bb tc vm" style="font-size: 6.5pt; padding: 2px;">циф-<br>ро-<br>вой<br>код</td>
+        <td class="br bb tc vm" style="font-size: 6.5pt; padding: 2px;">краткое<br>наименова-<br>ние</td>
+    </tr>
+    
+    <!-- ===== НОМЕРА КОЛОНОК ===== -->
+    <tr style="font-size: 6pt;">
+        <td class="br bb tc" style="padding: 2px;">А</td>
+        <td class="br bb tc" style="padding: 2px;">1</td>
+        <td class="br bb tc" style="padding: 2px;">1а</td>
+        <td class="br bb tc" style="padding: 2px;">1б</td>
+        <td class="br bb tc" style="padding: 2px;">2</td>
+        <td class="br bb tc" style="padding: 2px;">2а</td>
+        <td class="br bb tc" style="padding: 2px;">3</td>
+        <td class="br bb tc" style="padding: 2px;">4</td>
+        <td class="br bb tc" style="padding: 2px;">5</td>
+        <td class="br bb tc" style="padding: 2px;">6</td>
+        <td class="br bb tc" style="padding: 2px;">7</td>
+        <td class="br bb tc" style="padding: 2px;">8</td>
+        <td class="br bb tc" style="padding: 2px;">9</td>
+        <td class="br bb tc" style="padding: 2px;">10</td>
+        <td class="br bb tc" style="padding: 2px;">10а</td>
+        <td class="bb tc" style="padding: 2px;">11</td>
+    </tr>
+    
+    <!-- ===== ТОВАРЫ ===== -->
+    @foreach($items as $index => $item)
+    <tr style="font-size: 7pt;">
+        <td class="br bb tc" style="padding: 3px;">{{ $item['code'] ?? '' }}</td>
+        <td class="br bb tc" style="padding: 3px;">{{ $index + 1 }}</td>
+        <td class="br bb tl" style="padding: 3px;">{{ $item['name'] }}</td>
+        <td class="br bb tc" style="padding: 3px;">{{ $item['product_code'] ?? '--' }}</td>
+        <td class="br bb tc" style="padding: 3px;">{{ $item['unit_code'] ?? '--' }}</td>
+        <td class="br bb tc" style="padding: 3px;">{{ $item['unit_name'] ?? '--' }}</td>
+        <td class="br bb tc" style="padding: 3px;">{{ $item['quantity'] ?? '--' }}</td>
+        <td class="br bb tr" style="padding: 3px;">{{ $item['price'] ?? '--' }}</td>
+        <td class="br bb tr" style="padding: 3px;">{{ $item['sum_without_tax'] }}</td>
+        <td class="br bb tc" style="padding: 3px; font-size: 6pt;">{!! $item['excise'] ?? 'без<br>акциза' !!}</td>
+        <td class="br bb tc" style="padding: 3px;">{{ $item['tax_rate'] }}</td>
+        <td class="br bb tr" style="padding: 3px;">{{ $item['tax_sum'] }}</td>
+        <td class="br bb tr" style="padding: 3px;">{{ $item['sum_with_tax'] }}</td>
+        <td class="br bb tc" style="padding: 3px;">{{ $item['country_code'] ?? '--' }}</td>
+        <td class="br bb tc" style="padding: 3px;">{{ $item['country_name'] ?? '--' }}</td>
+        <td class="bb tc" style="padding: 3px;">{{ $item['customs_declaration'] ?? '--' }}</td>
+    </tr>
+    @endforeach
+    
+    <!-- ===== ИТОГО ===== -->
+    <tr style="font-size: 7pt;">
+        <td class="br bb" style="padding: 3px;"></td>
+        <td class="bb tl" colspan="7" style="padding: 3px;">Всего к оплате (9)</td>
+        <td class="bb tr" style="padding: 3px;">{{ $total_without_tax }}</td>
+        <td class="bb tc" style="padding: 3px;">X</td>
+        <td class="bb" style="padding: 3px;"></td>
+        <td class="bb tr" style="padding: 3px;">{{ $total_tax }}</td>
+        <td class="bb tr" style="padding: 3px;">{{ $total_with_tax }}</td>
+        <td class="bb" colspan="3" style="padding: 3px;"></td>
+    </tr>
+    
+    <!-- ===== ПОДПИСИ СФ ===== -->
+    <tr style="font-size: 7pt;">
+        <td class="br vt" style="padding: 5px;">
+            Документ<br>составлен на<br>{{ $pages_count ?? 1 }} {{ $pages_count == 1 ? 'листе' : 'листах' }}
+        </td>
+        <td class="bb vt" colspan="8" style="padding: 5px;">
+            <!-- Руководитель -->
+            <table style="width: 100%;">
+                <tr>
+                    <td class="vt" style="width: 180px;">Руководитель организации<br>или иное уполномоченное лицо</td>
+                    <td class="uline tc" style="width: 100px;"></td>
+                    <td style="width: 10px;"></td>
+                    <td class="uline tc" style="width: 100px;">{{ $director_name ?? '' }}</td>
+                </tr>
+                <tr style="font-size: 5.5pt;">
+                    <td></td>
+                    <td class="tc">(подпись)</td>
+                    <td></td>
+                    <td class="tc">(ф.и.о.)</td>
+                </tr>
+            </table>
+            <!-- ИП -->
+            <table style="width: 100%; margin-top: 5px;">
+                <tr>
+                    <td class="vt" style="width: 180px;">Индивидуальный предприниматель<br>или иное уполномоченное лицо</td>
+                    <td class="uline tc" style="width: 100px;"></td>
+                    <td style="width: 10px;"></td>
+                    <td class="tc" style="width: 100px;">{{ $ip_signer_name ?? '' }}</td>
+                </tr>
+                <tr style="font-size: 5.5pt;">
+                    <td></td>
+                    <td class="tc">(подпись)</td>
+                    <td></td>
+                    <td class="tc">(ф.и.о.)</td>
+                </tr>
+            </table>
+        </td>
+        <td class="bb vt" colspan="7" style="padding: 5px;">
+            <!-- Главный бухгалтер -->
+            <table style="width: 100%;">
+                <tr>
+                    <td class="vt" style="width: 160px;">Главный бухгалтер<br>или иное уполномоченное лицо</td>
+                    <td class="uline tc" style="width: 100px;"></td>
+                    <td style="width: 10px;"></td>
+                    <td class="uline tc" style="width: 100px;">{{ $accountant_name ?? '' }}</td>
+                </tr>
+                <tr style="font-size: 5.5pt;">
+                    <td></td>
+                    <td class="tc">(подпись)</td>
+                    <td></td>
+                    <td class="tc">(ф.и.о.)</td>
+                </tr>
+            </table>
+            @if($seller_ogrnip ?? false)
+            <div style="margin-top: 8px; font-size: 6pt;">
+                ОГРНИП {{ $seller_ogrnip }}, дата регистрации {{ $seller_reg_date }}
+            </div>
+            <div style="font-size: 5.5pt;">(основной государственный регистрационный номер индивидуального предпринимателя и дата присвоения такого номера)</div>
+            @endif
+        </td>
+    </tr>
+</table>
+
+<!-- ==================== НИЖНЯЯ ЧАСТЬ ==================== -->
+<table style="width: 100%; margin-top: 10px;" cellpadding="0" cellspacing="0">
+    <tr>
+        <td colspan="2" style="padding: 3px 0;">
+            Основание передачи (сдачи) / получения (приемки)
+            <span class="uline" style="display: inline-block; min-width: 350px;">{{ $basis ?? '' }}</span>
+            <span style="float: right;">[8]</span>
+            <div style="font-size: 5.5pt; margin-left: 230px;">(договор; доверенность и др.)</div>
+        </td>
+    </tr>
+    <tr>
+        <td colspan="2" style="padding: 3px 0;">
+            Данные о транспортировке и грузе
+            <span class="uline" style="display: inline-block; min-width: 500px;">{{ $transport_info ?? '' }}</span>
+            <span style="float: right;">[9]</span>
+            <div style="font-size: 5.5pt;">(транспортная накладная, поручение экспедитору, экспедиторская / складская расписка и др. / масса нетто/ брутто груза, если не приведены ссылки на транспортные документы, содержащие эти сведения)</div>
+        </td>
+    </tr>
+    <tr>
+        <td style="width: 50%; padding: 5px 0; vertical-align: top;">
+            Товар (груз) передал / услуги, результаты работ, права сдал
+            <span style="float: right;">[10]</span>
+            <table style="width: 100%; margin-top: 10px;">
+                <tr>
+                    <td class="uline tc" style="width: 120px;">{{ $sender_position ?? '' }}</td>
+                    <td style="width: 10px;"></td>
+                    <td class="uline tc" style="width: 80px;"></td>
+                    <td style="width: 10px;"></td>
+                    <td class="uline tc" style="width: 100px;">{{ $sender_name ?? '' }}</td>
+                </tr>
+                <tr style="font-size: 5.5pt;">
+                    <td class="tc">(должность)</td>
+                    <td></td>
+                    <td class="tc">(подпись)</td>
+                    <td></td>
+                    <td class="tc">(ф.и.о.)</td>
+                </tr>
+            </table>
+        </td>
+        <td style="width: 50%; padding: 5px 0 5px 20px; vertical-align: top;">
+            Товар (груз) получил / услуги, результаты работ, права принял
+            <span style="float: right;">[15]</span>
+            <table style="width: 100%; margin-top: 10px;">
+                <tr>
+                    <td class="uline tc" style="width: 120px;">{{ $receiver_position ?? '' }}</td>
+                    <td style="width: 10px;"></td>
+                    <td class="uline tc" style="width: 80px;"></td>
+                    <td style="width: 10px;"></td>
+                    <td class="uline tc" style="width: 100px;">{{ $receiver_name ?? '' }}</td>
+                </tr>
+                <tr style="font-size: 5.5pt;">
+                    <td class="tc">(должность)</td>
+                    <td></td>
+                    <td class="tc">(подпись)</td>
+                    <td></td>
+                    <td class="tc">(ф.и.о.)</td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+    <tr>
+        <td style="padding: 3px 0;">
+            Дата отгрузки, передачи (сдачи)
+            « <span class="uline" style="display: inline-block; width: 25px; text-align: center;">{{ $shipment_day ?? '' }}</span> »
+            <span class="uline" style="display: inline-block; width: 80px; text-align: center;">{{ $shipment_month ?? '' }}</span>
+            <span class="uline" style="display: inline-block; width: 40px; text-align: center;">{{ $shipment_year ?? '' }}</span> года
+            <span style="float: right;">[11]</span>
+        </td>
+        <td style="padding: 3px 0 3px 20px;">
+            Дата получения (приемки)
+            « <span class="uline" style="display: inline-block; width: 25px;">{{ $receipt_day ?? '' }}</span> »
+            <span class="uline" style="display: inline-block; width: 80px;">{{ $receipt_month ?? '' }}</span>
+            20<span class="uline" style="display: inline-block; width: 25px;">{{ $receipt_year ?? '' }}</span> года
+            <span style="float: right;">[16]</span>
+        </td>
+    </tr>
+    <tr>
+        <td style="padding: 3px 0; vertical-align: top;">
+            Иные сведения об отгрузке, передаче
+            <span style="float: right;">[12]</span>
+            <div class="uline" style="min-height: 15px; margin-top: 5px;">{{ $other_shipment_info ?? '' }}</div>
+            <div style="font-size: 5.5pt;">(ссылки на неотъемлемые приложения, сопутствующие документы, иные документы и т.п.)</div>
+        </td>
+        <td style="padding: 3px 0 3px 20px; vertical-align: top;">
+            Иные сведения о получении, приемке
+            <span style="float: right;">[17]</span>
+            <div class="uline" style="min-height: 15px; margin-top: 5px;">{{ $other_receipt_info ?? '' }}</div>
+            <div style="font-size: 5.5pt;">(информация о наличии/отсутствии претензии; ссылки на неотъемлемые приложения, и другие документы и т.п.)</div>
+        </td>
+    </tr>
+    <tr>
+        <td style="padding: 5px 0; vertical-align: top;">
+            Ответственный за правильность оформления факта хозяйственной жизни
+            <div style="margin-top: 3px;">
+                {{ $seller_responsible_position ?? 'Индивидуальный предприниматель' }}
+                <span class="uline" style="display: inline-block; width: 80px; margin: 0 10px;"></span>
+                {{ $seller_responsible_name ?? '' }}
+                <span style="float: right;">[13]</span>
+            </div>
+            <div style="font-size: 5.5pt;">
+                <span>(должность)</span>
+                <span style="margin-left: 50px;">(подпись)</span>
+                <span style="margin-left: 50px;">(ф.и.о.)</span>
+            </div>
+        </td>
+        <td style="padding: 5px 0 5px 20px; vertical-align: top;">
+            Ответственный за правильность оформления факта хозяйственной жизни
+            <span style="float: right;">[18]</span>
+            <table style="width: 100%; margin-top: 10px;">
+                <tr>
+                    <td class="uline tc" style="width: 120px;">{{ $buyer_responsible_position ?? '' }}</td>
+                    <td style="width: 10px;"></td>
+                    <td class="uline tc" style="width: 80px;"></td>
+                    <td style="width: 10px;"></td>
+                    <td class="uline tc" style="width: 100px;">{{ $buyer_responsible_name ?? '' }}</td>
+                </tr>
+                <tr style="font-size: 5.5pt;">
+                    <td class="tc">(должность)</td>
+                    <td></td>
+                    <td class="tc">(подпись)</td>
+                    <td></td>
+                    <td class="tc">(ф.и.о.)</td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+    <tr>
+        <td style="padding: 5px 0; vertical-align: top;">
+            Наименование экономического субъекта – составителя документа (в т.ч. комиссионера / агента)
+            <div style="margin-top: 3px;">
+                <strong>{{ $seller_name }}, ИНН {{ $seller_inn }}</strong>
+                <span style="float: right;">[14]</span>
+            </div>
+            <div style="font-size: 5.5pt;">(может не заполняться при проставлении печати в М.П., может быть указан ИНН / КПП)</div>
+        </td>
+        <td style="padding: 5px 0 5px 20px; vertical-align: top;">
+            Наименование экономического субъекта – составителя документа
+            <div style="margin-top: 3px;">
+                <strong>{{ $buyer_name }}, ИНН/КПП {{ $buyer_inn_kpp }}</strong>
+                <span style="float: right;">[19]</span>
+            </div>
+            <div style="font-size: 5.5pt;">(может не заполняться при проставлении печати в М.П., может быть указан ИНН / КПП)</div>
+        </td>
+    </tr>
+    <tr>
+        <td class="tc" style="padding: 15px 0;">М.П.</td>
+        <td class="tc" style="padding: 15px 0;">М.П.</td>
+    </tr>
+</table>
+
+</body>
+</html>

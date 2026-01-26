@@ -108,6 +108,9 @@ class BalanceHold extends Model
         // Списываем с баланса пользователя
         $this->user->decrement('balance', $itemCost);
 
+        // Отслеживаем расходование средств из оплаченных счетов
+        app(\App\Services\InvoiceTrackingService::class)->trackBalanceCharge($charge);
+
         // Проверяем, списаны ли все позиции
         $totalCharged = $this->charges()->sum('amount');
         if ($totalCharged >= $this->amount) {

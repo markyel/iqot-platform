@@ -63,6 +63,21 @@ return [
             'engine' => null,
         ],
 
+        'mysql_production' => [
+            'driver' => 'mysql',
+            'host' => env('DB_PRODUCTION_HOST', '127.0.0.1'),
+            'port' => env('DB_PRODUCTION_PORT', '3306'),
+            'database' => env('DB_PRODUCTION_DATABASE', 'forge'),
+            'username' => env('DB_PRODUCTION_USERNAME', 'forge'),
+            'password' => env('DB_PRODUCTION_PASSWORD', ''),
+            'unix_socket' => env('DB_PRODUCTION_SOCKET', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'strict' => true,
+            'engine' => null,
+        ],
+
     ],
 
     /*
