@@ -439,6 +439,12 @@
                             <span class="sidebar-item-tooltip">Промокоды</span>
                         </a>
 
+                        <a href="{{ route('admin.campaigns.index') }}" class="sidebar-item {{ request()->routeIs('admin.campaigns*') ? 'active' : '' }}">
+                            <i data-lucide="mail" class="sidebar-item-icon"></i>
+                            <span class="sidebar-item-text">Рассылки</span>
+                            <span class="sidebar-item-tooltip">Рассылки</span>
+                        </a>
+
                         <a href="{{ route('admin.billing.settings.index') }}" class="sidebar-item {{ request()->routeIs('admin.billing.settings*') ? 'active' : '' }}">
                             <i data-lucide="settings" class="sidebar-item-icon"></i>
                             <span class="sidebar-item-text">Настройки биллинга</span>

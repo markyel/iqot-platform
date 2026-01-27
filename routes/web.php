@@ -129,6 +129,9 @@ Route::get('/test-auth', function() {
     return $html;
 });
 
+// Публичный роут для отписки от рассылки
+Route::get('/unsubscribe/{recipient}', [\App\Http\Controllers\Admin\CampaignController::class, 'unsubscribe'])->name('campaign.unsubscribe');
+
 // Управление демо-заявками (требует is_admin) - переименовано из /admin в /manage чтобы не конфликтовать с Filament
 Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.')->group(function () {
     // Редирект с корневого пути /manage на управление заявками
@@ -164,6 +167,21 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
     Route::post('/promo-codes', [\App\Http\Controllers\Admin\PromoCodeController::class, 'store'])->name('promo-codes.store');
     Route::delete('/promo-codes/{promoCode}', [\App\Http\Controllers\Admin\PromoCodeController::class, 'destroy'])->name('promo-codes.destroy');
     Route::get('/promo-codes/export', [\App\Http\Controllers\Admin\PromoCodeController::class, 'export'])->name('promo-codes.export');
+
+    // Рассылки
+    Route::get('/campaigns', [\App\Http\Controllers\Admin\CampaignController::class, 'index'])->name('campaigns.index');
+    Route::get('/campaigns/create', [\App\Http\Controllers\Admin\CampaignController::class, 'create'])->name('campaigns.create');
+    Route::post('/campaigns', [\App\Http\Controllers\Admin\CampaignController::class, 'store'])->name('campaigns.store');
+    Route::get('/campaigns/{campaign}/edit', [\App\Http\Controllers\Admin\CampaignController::class, 'edit'])->name('campaigns.edit');
+    Route::put('/campaigns/{campaign}', [\App\Http\Controllers\Admin\CampaignController::class, 'update'])->name('campaigns.update');
+    Route::get('/campaigns/{campaign}/upload', [\App\Http\Controllers\Admin\CampaignController::class, 'upload'])->name('campaigns.upload');
+    Route::post('/campaigns/{campaign}/upload', [\App\Http\Controllers\Admin\CampaignController::class, 'processUpload'])->name('campaigns.process-upload');
+    Route::get('/campaigns/{campaign}/mapping', [\App\Http\Controllers\Admin\CampaignController::class, 'mapping'])->name('campaigns.mapping');
+    Route::post('/campaigns/{campaign}/mapping', [\App\Http\Controllers\Admin\CampaignController::class, 'saveMapping'])->name('campaigns.save-mapping');
+    Route::get('/campaigns/{campaign}', [\App\Http\Controllers\Admin\CampaignController::class, 'show'])->name('campaigns.show');
+    Route::post('/campaigns/{campaign}/send-test', [\App\Http\Controllers\Admin\CampaignController::class, 'sendTest'])->name('campaigns.send-test');
+    Route::post('/campaigns/{campaign}/start', [\App\Http\Controllers\Admin\CampaignController::class, 'start'])->name('campaigns.start');
+    Route::delete('/campaigns/{campaign}', [\App\Http\Controllers\Admin\CampaignController::class, 'destroy'])->name('campaigns.destroy');
 
     // Диагностика
     Route::get('/diagnostics', [\App\Http\Controllers\Admin\DiagnosticsController::class, 'index'])->name('diagnostics.index');

@@ -1,0 +1,196 @@
+@extends('layouts.cabinet')
+
+@section('title', $campaign->name)
+
+@section('content')
+<x-page-header
+    :title="$campaign->name"
+    :description="'Тема: ' . $campaign->subject"
+>
+    <x-slot name="actions">
+        @if($campaign->isEditable())
+            <x-button
+                variant="secondary"
+                icon="edit"
+                href="{{ route('admin.campaigns.edit', $campaign) }}"
+            >
+                Редактировать
+            </x-button>
+        @endif
+
+        @if($campaign->status === 'draft' && $campaign->total_recipients > 0)
+            <form action="{{ route('admin.campaigns.start', $campaign) }}" method="POST" style="display: inline;">
+                @csrf
+                <x-button
+                    type="submit"
+                    variant="success"
+                    icon="play"
+                    onclick="return confirm('Запустить рассылку?')"
+                >
+                    Запустить рассылку
+                </x-button>
+            </form>
+        @endif
+
+        <x-button
+            variant="secondary"
+            icon="arrow-left"
+            href="{{ route('admin.campaigns.index') }}"
+        >
+            К списку
+        </x-button>
+    </x-slot>
+</x-page-header>
+
+@if($campaign->status === 'sending')
+    <div class="alert alert-info" style="margin-bottom: var(--space-6);">
+        <div style="display: flex; align-items: center; gap: var(--space-3);">
+            <i data-lucide="loader" class="icon-md" style="animation: spin 1s linear infinite;"></i>
+            <div>
+                <strong>Рассылка в процессе</strong>
+                <p style="margin-top: var(--space-1); margin-bottom: 0;">
+                    Письма отправляются. Это может занять некоторое время...
+                </p>
+            </div>
+        </div>
+    </div>
+@endif
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-4); margin-bottom: var(--space-6);">
+    <div class="card">
+        <div class="card-body text-center">
+            <div class="text-muted" style="font-size: var(--text-sm);">Получателей</div>
+            <div style="font-size: var(--text-2xl); font-weight: 700; margin-top: var(--space-1);">
+                {{ $campaign->total_recipients }}
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body text-center">
+            <div class="text-muted" style="font-size: var(--text-sm);">Отправлено</div>
+            <div class="text-success" style="font-size: var(--text-2xl); font-weight: 700; margin-top: var(--space-1);">
+                {{ $campaign->sent_count }}
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body text-center">
+            <div class="text-muted" style="font-size: var(--text-sm);">Ошибок</div>
+            <div class="text-danger" style="font-size: var(--text-2xl); font-weight: 700; margin-top: var(--space-1);">
+                {{ $campaign->failed_count }}
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body text-center">
+            <div class="text-muted" style="font-size: var(--text-sm);">Задержка</div>
+            <div style="font-size: var(--text-2xl); font-weight: 700; margin-top: var(--space-1);">
+                {{ $campaign->delay_seconds }}с
+            </div>
+        </div>
+    </div>
+</div>
+
+@if($campaign->total_recipients > 0)
+<div class="card" style="margin-bottom: var(--space-6);">
+    <div class="card-header">
+        <h2 style="margin: 0; font-size: var(--text-lg); font-weight: 600; display: flex; align-items: center; gap: var(--space-2);">
+            <i data-lucide="send" class="icon-md"></i>
+            Тестовая отправка
+        </h2>
+    </div>
+    <div class="card-body">
+        <form action="{{ route('admin.campaigns.send-test', $campaign) }}" method="POST" style="display: flex; gap: var(--space-3); align-items: end;">
+            @csrf
+            <div class="form-group" style="flex: 1; margin: 0;">
+                <label class="form-label" for="test_email">Email для теста</label>
+                <input
+                    type="email"
+                    id="test_email"
+                    name="test_email"
+                    class="input"
+                    placeholder="test@example.com"
+                    required
+                >
+            </div>
+            <x-button type="submit" variant="secondary" icon="send">
+                Отправить тест
+            </x-button>
+        </form>
+    </div>
+</div>
+@endif
+
+<div class="card">
+    <div class="card-header">
+        <h2 style="margin: 0; font-size: var(--text-lg); font-weight: 600;">
+            Список получателей
+        </h2>
+    </div>
+
+    @if($recipients->isEmpty())
+        <div class="empty-state">
+            <p>Получатели не загружены</p>
+            <a href="{{ route('admin.campaigns.upload', $campaign) }}" class="btn btn-primary">
+                Загрузить данные
+            </a>
+        </div>
+    @else
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Email</th>
+                    <th>Данные</th>
+                    <th>Статус</th>
+                    <th>Дата отправки</th>
+                    <th>Ошибка</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($recipients as $recipient)
+                <tr>
+                    <td>{{ $recipient->email }}</td>
+                    <td>
+                        <details>
+                            <summary style="cursor: pointer; color: var(--accent-600);">Показать данные</summary>
+                            <pre style="margin-top: var(--space-2); font-size: 0.75rem;">{{ json_encode($recipient->data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) }}</pre>
+                        </details>
+                    </td>
+                    <td>
+                        @if($recipient->status === 'pending')
+                            <x-badge type="pending">Ожидает</x-badge>
+                        @elseif($recipient->status === 'sent')
+                            <x-badge type="completed">Отправлено</x-badge>
+                        @else
+                            <x-badge type="failed">Ошибка</x-badge>
+                        @endif
+                    </td>
+                    <td>{{ $recipient->sent_at?->format('d.m.Y H:i') ?? '—' }}</td>
+                    <td>
+                        @if($recipient->error_message)
+                            <span class="text-danger" style="font-size: 0.875rem;">{{ $recipient->error_message }}</span>
+                        @else
+                            —
+                        @endif
+                    </td>
+                </tr>
+                @endforeach
+            </tbody>
+        </table>
+
+        <div class="card-footer">
+            {{ $recipients->links() }}
+        </div>
+    @endif
+</div>
+
+<style>
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+</style>
+@endsection
