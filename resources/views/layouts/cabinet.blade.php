@@ -358,11 +358,6 @@
                         <span class="sidebar-item-text">Мониторинг позиций</span>
                         <span class="sidebar-item-tooltip">Мониторинг позиций</span>
                     </a>
-                    <a href="{{ route('cabinet.suppliers') }}" class="sidebar-item {{ request()->routeIs('cabinet.suppliers*') ? 'active' : '' }}">
-                        <i data-lucide="building-2" class="sidebar-item-icon"></i>
-                        <span class="sidebar-item-text">Поставщики</span>
-                        <span class="sidebar-item-tooltip">Поставщики</span>
-                    </a>
                     <a href="{{ route('cabinet.tariff.index') }}" class="sidebar-item {{ request()->routeIs('cabinet.tariff*') ? 'active' : '' }}">
                         <i data-lucide="credit-card" class="sidebar-item-icon"></i>
                         <span class="sidebar-item-text">Мой тариф</span>
