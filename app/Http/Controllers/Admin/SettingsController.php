@@ -15,6 +15,15 @@ class SettingsController extends Controller
         $pricePerItem = SystemSetting::get('price_per_item', 50);
         $initialBalance = SystemSetting::get('initial_balance', 500);
 
+        // Настройки SMTP для рассылок
+        $smtpHost = SystemSetting::get('smtp_host', '');
+        $smtpPort = SystemSetting::get('smtp_port', 587);
+        $smtpEncryption = SystemSetting::get('smtp_encryption', 'tls');
+        $smtpUsername = SystemSetting::get('smtp_username', '');
+        $smtpPassword = SystemSetting::get('smtp_password', '');
+        $smtpFromAddress = SystemSetting::get('smtp_from_address', '');
+        $smtpFromName = SystemSetting::get('smtp_from_name', 'IQOT');
+
         // Настройки тарифов для лендинга
         $pricingMonitoring = SystemSetting::get('pricing_monitoring', 396);
         $pricingReportUnlock = SystemSetting::get('pricing_report_unlock', 99);
@@ -42,6 +51,13 @@ class SettingsController extends Controller
             'unlockPrice',
             'pricePerItem',
             'initialBalance',
+            'smtpHost',
+            'smtpPort',
+            'smtpEncryption',
+            'smtpUsername',
+            'smtpPassword',
+            'smtpFromAddress',
+            'smtpFromName',
             'pricingMonitoring',
             'pricingReportUnlock',
             'subscriptionBasicPrice',
@@ -68,6 +84,13 @@ class SettingsController extends Controller
             'item_unlock_price' => 'required|numeric|min:0',
             'price_per_item' => 'required|numeric|min:0',
             'initial_balance' => 'required|numeric|min:0',
+            'smtp_host' => 'nullable|string|max:255',
+            'smtp_port' => 'nullable|integer|min:1|max:65535',
+            'smtp_encryption' => 'nullable|string|in:tls,ssl',
+            'smtp_username' => 'nullable|string|max:255',
+            'smtp_password' => 'nullable|string|max:255',
+            'smtp_from_address' => 'nullable|email|max:255',
+            'smtp_from_name' => 'nullable|string|max:255',
             'pricing_monitoring' => 'required|numeric|min:0',
             'pricing_report_unlock' => 'required|numeric|min:0',
             'subscription_basic_price' => 'required|numeric|min:0',
@@ -90,6 +113,15 @@ class SettingsController extends Controller
         Setting::set('item_unlock_price', $request->item_unlock_price);
         SystemSetting::set('price_per_item', $request->price_per_item);
         SystemSetting::set('initial_balance', $request->initial_balance);
+
+        // SMTP настройки
+        SystemSetting::set('smtp_host', $request->smtp_host);
+        SystemSetting::set('smtp_port', $request->smtp_port);
+        SystemSetting::set('smtp_encryption', $request->smtp_encryption);
+        SystemSetting::set('smtp_username', $request->smtp_username);
+        SystemSetting::set('smtp_password', $request->smtp_password);
+        SystemSetting::set('smtp_from_address', $request->smtp_from_address);
+        SystemSetting::set('smtp_from_name', $request->smtp_from_name);
 
         // Тарифы для лендинга
         SystemSetting::set('pricing_monitoring', $request->pricing_monitoring);

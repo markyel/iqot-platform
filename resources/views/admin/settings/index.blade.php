@@ -101,6 +101,110 @@
             </div>
 
             <h3 style="margin: var(--space-8) 0 var(--space-4) 0; font-size: var(--text-base); font-weight: 600; display: flex; align-items: center; gap: var(--space-2);">
+                <i data-lucide="mail" class="icon-sm"></i>
+                Настройки SMTP для рассылок
+            </h3>
+
+            <div class="form-group">
+                <label class="form-label">
+                    SMTP Host
+                </label>
+                <input
+                    type="text"
+                    name="smtp_host"
+                    value="{{ $smtpHost }}"
+                    class="input"
+                    style="max-width: 400px;"
+                    placeholder="smtp.example.com"
+                >
+                <small class="form-help">
+                    Адрес SMTP сервера для отправки писем
+                </small>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); max-width: 400px;">
+                <div class="form-group">
+                    <label class="form-label">
+                        SMTP Port
+                    </label>
+                    <input
+                        type="number"
+                        name="smtp_port"
+                        value="{{ $smtpPort }}"
+                        class="input"
+                        min="1"
+                        max="65535"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">
+                        Шифрование
+                    </label>
+                    <select name="smtp_encryption" class="input">
+                        <option value="tls" {{ $smtpEncryption === 'tls' ? 'selected' : '' }}>TLS</option>
+                        <option value="ssl" {{ $smtpEncryption === 'ssl' ? 'selected' : '' }}>SSL</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">
+                    SMTP Username
+                </label>
+                <input
+                    type="text"
+                    name="smtp_username"
+                    value="{{ $smtpUsername }}"
+                    class="input"
+                    style="max-width: 400px;"
+                    placeholder="user@example.com"
+                >
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">
+                    SMTP Password
+                </label>
+                <input
+                    type="password"
+                    name="smtp_password"
+                    value="{{ $smtpPassword }}"
+                    class="input"
+                    style="max-width: 400px;"
+                    placeholder="••••••••"
+                >
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">
+                    Email отправителя
+                </label>
+                <input
+                    type="email"
+                    name="smtp_from_address"
+                    value="{{ $smtpFromAddress }}"
+                    class="input"
+                    style="max-width: 400px;"
+                    placeholder="noreply@example.com"
+                >
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">
+                    Имя отправителя
+                </label>
+                <input
+                    type="text"
+                    name="smtp_from_name"
+                    value="{{ $smtpFromName }}"
+                    class="input"
+                    style="max-width: 400px;"
+                    placeholder="IQOT"
+                >
+            </div>
+
+            <h3 style="margin: var(--space-8) 0 var(--space-4) 0; font-size: var(--text-base); font-weight: 600; display: flex; align-items: center; gap: var(--space-2);">
                 <i data-lucide="tag" class="icon-sm"></i>
                 Тарифы для лендинга
             </h3>
