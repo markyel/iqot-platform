@@ -10,6 +10,7 @@ use App\Models\ReportAccess;
 use App\Models\ItemPurchase;
 use App\Models\SubscriptionCharge;
 use App\Models\Invoice;
+use App\Models\PromoCode;
 use App\Services\TariffService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -204,6 +205,20 @@ class TariffController extends Controller
             ]);
         }
 
+        // Активация промокода
+        if ($user->promo_code_id && $user->promo_code_activated_at) {
+            $promoCode = $user->promoCode;
+            if ($promoCode) {
+                $transactions->push([
+                    'created_at' => $user->promo_code_activated_at,
+                    'type' => 'promo_code',
+                    'description' => 'Активация промокода ' . $promoCode->code,
+                    'amount' => -$promoCode->amount, // Отрицательная сумма для пополнения
+                    'balance_after' => null,
+                ]);
+            }
+        }
+
         // Сортируем по дате (от новых к старым)
         $transactions = $transactions->sortByDesc('created_at')->values()->all();
 
@@ -347,5 +362,46 @@ class TariffController extends Controller
             'reportsRemaining',
             'limitUsage'
         ));
+    }
+
+    /**
+     * Применить промокод
+     */
+    public function applyPromoCode(Request $request)
+    {
+        $request->validate([
+            'promo_code' => 'required|string|max:50',
+        ]);
+
+        $user = auth()->user();
+
+        // Проверяем, не использовал ли пользователь уже промокод
+        if ($user->promo_code_id) {
+            return back()->with('error', 'Вы уже активировали промокод ранее');
+        }
+
+        // Ищем промокод
+        $promoCode = PromoCode::where('code', strtoupper($request->promo_code))
+            ->where('is_used', false)
+            ->first();
+
+        if (!$promoCode) {
+            return back()->with('error', 'Промокод не найден или уже использован');
+        }
+
+        DB::transaction(function () use ($user, $promoCode) {
+            // Активируем промокод
+            $promoCode->activate($user);
+
+            // Начисляем баланс
+            $user->increment('balance', $promoCode->amount);
+            $user->update([
+                'promo_code_id' => $promoCode->id,
+                'promo_code_activated_at' => now(),
+                'has_promo_priority' => true,
+            ]);
+        });
+
+        return back()->with('success', "Промокод успешно активирован! На ваш баланс зачислено {$promoCode->amount} ₽");
     }
 }

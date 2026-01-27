@@ -65,14 +65,23 @@
             <tr>
                 <td data-label="ID" style="color: var(--text-secondary); font-family: var(--font-mono);">{{ $user->id }}</td>
                 <td data-label="Пользователь">
-                    <div style="font-weight: 600; color: var(--text-primary);">{{ $user->name }}</div>
-                    <div style="font-size: 0.875rem; color: var(--text-secondary);">{{ $user->email }}</div>
-                    @if($user->phone)
-                        <div style="font-size: 0.875rem; color: var(--text-secondary);">
-                            <i data-lucide="phone" style="width: 14px; height: 14px;"></i>
-                            {{ $user->phone }}
+                    <div style="display: flex; align-items: center; gap: var(--space-2);">
+                        <div>
+                            <div style="font-weight: 600; color: var(--text-primary);">{{ $user->name }}</div>
+                            <div style="font-size: 0.875rem; color: var(--text-secondary);">{{ $user->email }}</div>
+                            @if($user->phone)
+                                <div style="font-size: 0.875rem; color: var(--text-secondary);">
+                                    <i data-lucide="phone" style="width: 14px; height: 14px;"></i>
+                                    {{ $user->phone }}
+                                </div>
+                            @endif
                         </div>
-                    @endif
+                        @if($user->promo_code_id)
+                            <div title="Использовал промокод" style="display: inline-flex;">
+                                <i data-lucide="gift" style="width: 16px; height: 16px; color: var(--accent-600);"></i>
+                            </div>
+                        @endif
+                    </div>
                 </td>
                 <td data-label="Компания" style="color: var(--text-primary);">
                     {{ $user->company ?? '—' }}

@@ -13,6 +13,7 @@ class SettingsController extends Controller
     {
         $unlockPrice = Setting::get('item_unlock_price', 99);
         $pricePerItem = SystemSetting::get('price_per_item', 50);
+        $initialBalance = SystemSetting::get('initial_balance', 500);
 
         // Настройки тарифов для лендинга
         $pricingMonitoring = SystemSetting::get('pricing_monitoring', 396);
@@ -40,6 +41,7 @@ class SettingsController extends Controller
         return view('admin.settings.index', compact(
             'unlockPrice',
             'pricePerItem',
+            'initialBalance',
             'pricingMonitoring',
             'pricingReportUnlock',
             'subscriptionBasicPrice',
@@ -65,6 +67,7 @@ class SettingsController extends Controller
         $request->validate([
             'item_unlock_price' => 'required|numeric|min:0',
             'price_per_item' => 'required|numeric|min:0',
+            'initial_balance' => 'required|numeric|min:0',
             'pricing_monitoring' => 'required|numeric|min:0',
             'pricing_report_unlock' => 'required|numeric|min:0',
             'subscription_basic_price' => 'required|numeric|min:0',
@@ -86,6 +89,7 @@ class SettingsController extends Controller
 
         Setting::set('item_unlock_price', $request->item_unlock_price);
         SystemSetting::set('price_per_item', $request->price_per_item);
+        SystemSetting::set('initial_balance', $request->initial_balance);
 
         // Тарифы для лендинга
         SystemSetting::set('pricing_monitoring', $request->pricing_monitoring);

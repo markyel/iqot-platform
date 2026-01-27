@@ -6,6 +6,7 @@ use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -35,6 +36,9 @@ class User extends Authenticatable implements FilamentUser
         'sender_id',
         'client_organization_id',
         'balance',
+        'promo_code_id',
+        'promo_code_activated_at',
+        'has_promo_priority',
     ];
 
     protected $hidden = [
@@ -49,6 +53,8 @@ class User extends Authenticatable implements FilamentUser
             'password' => 'hashed',
             'is_admin' => 'boolean',
             'settings' => 'array',
+            'promo_code_activated_at' => 'datetime',
+            'has_promo_priority' => 'boolean',
         ];
     }
 
@@ -227,6 +233,14 @@ class User extends Authenticatable implements FilamentUser
         return (float) $this->balanceHolds()
             ->where('status', 'held')
             ->sum('amount');
+    }
+
+    /**
+     * Промокод пользователя
+     */
+    public function promoCode(): BelongsTo
+    {
+        return $this->belongsTo(PromoCode::class);
     }
 
     /**

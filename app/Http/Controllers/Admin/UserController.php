@@ -208,6 +208,20 @@ class UserController extends Controller
             ]);
         }
 
+        // Активация промокода
+        if ($user->promo_code_id && $user->promo_code_activated_at) {
+            $promoCode = $user->promoCode;
+            if ($promoCode) {
+                $transactions->push([
+                    'created_at' => $user->promo_code_activated_at,
+                    'type' => 'promo_code',
+                    'description' => 'Активация промокода ' . $promoCode->code,
+                    'amount' => -$promoCode->amount, // Отрицательная сумма для пополнения
+                    'balance_after' => null,
+                ]);
+            }
+        }
+
         // Сортируем по дате (от новых к старым)
         $transactions = $transactions->sortByDesc('created_at')->values()->all();
 

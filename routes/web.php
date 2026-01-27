@@ -59,6 +59,7 @@ Route::middleware(['auth', 'verified'])->prefix('cabinet')->name('cabinet.')->gr
     Route::get('/tariff/transactions', [\App\Http\Controllers\TariffController::class, 'transactions'])->name('tariff.transactions');
     Route::get('/tariff/limits-usage', [\App\Http\Controllers\TariffController::class, 'limitsUsage'])->name('tariff.limits-usage');
     Route::post('/tariff/switch', [\App\Http\Controllers\TariffController::class, 'switch'])->name('tariff.switch');
+    Route::post('/tariff/apply-promo-code', [\App\Http\Controllers\TariffController::class, 'applyPromoCode'])->name('tariff.apply-promo-code');
 
     // Мониторинг позиций
     Route::get('/items', [\App\Http\Controllers\Cabinet\ItemController::class, 'index'])->name('items.index');
@@ -156,6 +157,13 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
     // Настройки системы
     Route::get('/settings', [\App\Http\Controllers\Admin\SettingsController::class, 'index'])->name('settings.index');
     Route::post('/settings', [\App\Http\Controllers\Admin\SettingsController::class, 'update'])->name('settings.update');
+
+    // Промокоды
+    Route::get('/promo-codes', [\App\Http\Controllers\Admin\PromoCodeController::class, 'index'])->name('promo-codes.index');
+    Route::get('/promo-codes/create', [\App\Http\Controllers\Admin\PromoCodeController::class, 'create'])->name('promo-codes.create');
+    Route::post('/promo-codes', [\App\Http\Controllers\Admin\PromoCodeController::class, 'store'])->name('promo-codes.store');
+    Route::delete('/promo-codes/{promoCode}', [\App\Http\Controllers\Admin\PromoCodeController::class, 'destroy'])->name('promo-codes.destroy');
+    Route::get('/promo-codes/export', [\App\Http\Controllers\Admin\PromoCodeController::class, 'export'])->name('promo-codes.export');
 
     // Диагностика
     Route::get('/diagnostics', [\App\Http\Controllers\Admin\DiagnosticsController::class, 'index'])->name('diagnostics.index');

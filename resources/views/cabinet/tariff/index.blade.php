@@ -70,9 +70,23 @@
         </div>
 
         <div style="margin-top: var(--space-6); padding-top: var(--space-6); border-top: 1px solid var(--neutral-200);">
-            <x-button variant="primary" icon="plus" onclick="openTopUpModal()">
-                Пополнить баланс
-            </x-button>
+            <div style="display: flex; gap: var(--space-3); flex-wrap: wrap;">
+                <x-button variant="primary" icon="plus" onclick="openTopUpModal()">
+                    Пополнить баланс
+                </x-button>
+                @if(!auth()->user()->promo_code_id)
+                    <x-button variant="secondary" icon="gift" onclick="openPromoCodeModal()">
+                        Активировать промокод
+                    </x-button>
+                @else
+                    <div style="display: flex; align-items: center; gap: var(--space-2); padding: 0.5rem 1rem; background: var(--success-50); border: 1px solid var(--success-200); border-radius: var(--radius-md);">
+                        <i data-lucide="check-circle" style="width: 1rem; height: 1rem; color: var(--success-600);"></i>
+                        <span style="font-size: var(--text-sm); color: var(--success-700);">
+                            Промокод активирован
+                        </span>
+                    </div>
+                @endif
+            </div>
         </div>
     </div>
 </div>
@@ -514,12 +528,94 @@ lucide.createIcons();
     </div>
 </div>
 
+<!-- Модальное окно активации промокода -->
+<div id="promoCodeModal" class="modal-overlay" style="display: none;">
+    <div class="modal-dialog">
+        <div class="modal-container">
+            <div class="modal-header">
+                <div style="display: flex; align-items: center; gap: var(--space-3);">
+                    <div style="width: 40px; height: 40px; border-radius: var(--radius-lg); background: var(--accent-100); display: flex; align-items: center; justify-content: center;">
+                        <i data-lucide="gift" style="width: 1.25rem; height: 1.25rem; color: var(--accent-600);"></i>
+                    </div>
+                    <div>
+                        <h3 style="margin: 0; font-size: var(--text-lg); font-weight: 600;">Активация промокода</h3>
+                        <p style="margin: 0; font-size: var(--text-sm); color: var(--neutral-600);">Введите промокод для пополнения баланса</p>
+                    </div>
+                </div>
+                <button type="button" onclick="closePromoCodeModal()" style="background: none; border: none; cursor: pointer; padding: var(--space-2); color: var(--neutral-600);">
+                    <i data-lucide="x" style="width: 1.25rem; height: 1.25rem;"></i>
+                </button>
+            </div>
+
+            <form method="POST" action="{{ route('cabinet.tariff.apply-promo-code') }}">
+                @csrf
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label" for="promo_code_input">Промокод</label>
+                        <input
+                            type="text"
+                            id="promo_code_input"
+                            name="promo_code"
+                            class="input"
+                            placeholder="Введите код"
+                            style="text-transform: uppercase;"
+                            required
+                            autocomplete="off"
+                        >
+                        <small class="form-help" style="display: block; margin-top: 0.5rem;">
+                            Промокод можно использовать только один раз
+                        </small>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <x-button type="button" variant="ghost" onclick="closePromoCodeModal()">
+                        Отмена
+                    </x-button>
+                    <x-button type="submit" variant="accent" icon="check">
+                        Активировать
+                    </x-button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 @push('scripts')
 <script>
     // Reinitialize Lucide icons
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
     }
+
+    // Promo code modal
+    function openPromoCodeModal() {
+        document.getElementById('promoCodeModal').style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+        setTimeout(() => {
+            document.getElementById('promo_code_input')?.focus();
+            lucide.createIcons();
+        }, 100);
+    }
+
+    function closePromoCodeModal() {
+        document.getElementById('promoCodeModal').style.display = 'none';
+        document.body.style.overflow = '';
+    }
+
+    // Close on outside click
+    document.getElementById('promoCodeModal')?.addEventListener('click', function(e) {
+        if (e.target === this) {
+            closePromoCodeModal();
+        }
+    });
+
+    // Close on Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            closePromoCodeModal();
+        }
+    });
 </script>
 @endpush
 

@@ -81,6 +81,25 @@
                 </small>
             </div>
 
+            <div class="form-group">
+                <label class="form-label">
+                    Стартовый баланс при регистрации (₽)
+                </label>
+                <input
+                    type="number"
+                    name="initial_balance"
+                    value="{{ $initialBalance }}"
+                    step="0.01"
+                    min="0"
+                    class="input"
+                    style="max-width: 400px;"
+                    required
+                >
+                <small class="form-help">
+                    Сумма, которая автоматически зачисляется на баланс каждого нового пользователя при регистрации
+                </small>
+            </div>
+
             <h3 style="margin: var(--space-8) 0 var(--space-4) 0; font-size: var(--text-base); font-weight: 600; display: flex; align-items: center; gap: var(--space-2);">
                 <i data-lucide="tag" class="icon-sm"></i>
                 Тарифы для лендинга

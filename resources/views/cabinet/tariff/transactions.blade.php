@@ -120,13 +120,18 @@
                                     <i data-lucide="calendar" style="width: 0.875rem; height: 0.875rem;"></i>
                                     Абонентская плата
                                 </x-badge>
+                            @elseif($transaction['type'] === 'promo_code')
+                                <x-badge type="completed" size="sm">
+                                    <i data-lucide="gift" style="width: 0.875rem; height: 0.875rem;"></i>
+                                    Промокод
+                                </x-badge>
                             @endif
                         </td>
                         <td data-label="Описание">
                             {{ $transaction['description'] }}
                         </td>
                         <td data-label="Сумма" style="text-align: right; font-weight: 600; font-family: var(--font-mono);">
-                            @if($transaction['type'] === 'top_up' || $transaction['type'] === 'deposit' || $transaction['type'] === 'release')
+                            @if($transaction['type'] === 'top_up' || $transaction['type'] === 'deposit' || $transaction['type'] === 'release' || $transaction['type'] === 'promo_code')
                                 <span style="color: var(--success-600);">+{{ number_format(abs($transaction['amount']), 2) }} ₽</span>
                             @else
                                 <span style="color: var(--danger-600);">-{{ number_format($transaction['amount'], 2) }} ₽</span>

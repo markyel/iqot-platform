@@ -96,15 +96,35 @@
 
         <div class="form-group">
             <label for="password_confirmation" class="form-label">Подтвердите пароль</label>
-            <input 
-                type="password" 
-                id="password_confirmation" 
-                name="password_confirmation" 
-                class="form-input" 
+            <input
+                type="password"
+                id="password_confirmation"
+                name="password_confirmation"
+                class="form-input"
                 placeholder="Повторите пароль"
-                required 
+                required
                 autocomplete="new-password"
             >
+        </div>
+
+        <div class="form-group">
+            <label for="promo_code" class="form-label">Промокод (необязательно)</label>
+            <input
+                type="text"
+                id="promo_code"
+                name="promo_code"
+                class="form-input @error('promo_code') error @enderror"
+                value="{{ old('promo_code', request('promo')) }}"
+                placeholder="Введите промокод"
+                style="text-transform: uppercase;"
+                autocomplete="off"
+            >
+            @error('promo_code')
+                <div class="form-error">{{ $message }}</div>
+            @enderror
+            <small class="form-help" style="display: block; margin-top: 0.5rem; font-size: 0.875rem; color: var(--text-secondary);">
+                Если у вас есть промокод, введите его для получения дополнительного баланса
+            </small>
         </div>
 
         <button type="submit" class="btn btn-primary" style="margin-top: 0.5rem;">

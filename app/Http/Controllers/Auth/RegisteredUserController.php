@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\TariffPlan;
 use App\Models\Setting;
+use App\Models\SystemSetting;
+use App\Models\PromoCode;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -35,7 +37,26 @@ class RegisteredUserController extends Controller
             'company' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
+            'promo_code' => ['nullable', 'string', 'max:50'],
         ]);
+
+        // Получаем стартовый баланс из настроек
+        $initialBalance = SystemSetting::get('initial_balance', 500);
+
+        // Проверяем промокод, если он указан
+        $promoCode = null;
+        $promoCodeBonus = 0;
+        if ($request->filled('promo_code')) {
+            $promoCode = PromoCode::where('code', strtoupper($request->promo_code))
+                ->where('is_used', false)
+                ->first();
+
+            if (!$promoCode) {
+                return back()->withInput()->withErrors(['promo_code' => 'Промокод не найден или уже использован']);
+            }
+
+            $promoCodeBonus = $promoCode->amount;
+        }
 
         $user = User::create([
             'name' => $request->name,
@@ -43,7 +64,18 @@ class RegisteredUserController extends Controller
             'company' => $request->company,
             'phone' => $request->phone,
             'password' => Hash::make($request->password),
+            'balance' => $initialBalance + $promoCodeBonus,
         ]);
+
+        // Активируем промокод, если он был указан
+        if ($promoCode) {
+            $promoCode->activate($user);
+            $user->update([
+                'promo_code_id' => $promoCode->id,
+                'promo_code_activated_at' => now(),
+                'has_promo_priority' => true,
+            ]);
+        }
 
         // Назначаем тариф по умолчанию
         $this->assignDefaultTariff($user);

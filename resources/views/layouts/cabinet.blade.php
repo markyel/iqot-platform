@@ -433,6 +433,12 @@
                             <span class="sidebar-item-text">Счета</span>
                             <span class="sidebar-item-tooltip">Счета</span>
                         </a>
+                        <a href="{{ route('admin.promo-codes.index') }}" class="sidebar-item {{ request()->routeIs('admin.promo-codes*') ? 'active' : '' }}">
+                            <i data-lucide="gift" class="sidebar-item-icon"></i>
+                            <span class="sidebar-item-text">Промокоды</span>
+                            <span class="sidebar-item-tooltip">Промокоды</span>
+                        </a>
+
                         <a href="{{ route('admin.billing.settings.index') }}" class="sidebar-item {{ request()->routeIs('admin.billing.settings*') ? 'active' : '' }}">
                             <i data-lucide="settings" class="sidebar-item-icon"></i>
                             <span class="sidebar-item-text">Настройки биллинга</span>
