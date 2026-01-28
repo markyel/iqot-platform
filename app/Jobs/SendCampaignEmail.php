@@ -115,14 +115,17 @@ class SendCampaignEmail implements ShouldQueue
             foreach ($campaign->images as $image) {
                 $filePath = storage_path('app/public/' . $image->file_path);
                 if (file_exists($filePath)) {
+                    // CID должен быть в формате id@domain (требование Symfony)
+                    $cid = $image->cid . '@iqot.ru';
+
                     $email->addPart(
-                        (new DataPart(new File($filePath)))->asInline()->setContentId($image->cid)
+                        (new DataPart(new File($filePath)))->asInline()->setContentId($cid)
                     );
 
                     // Заменяем src в HTML на cid:
                     $html = str_replace(
                         'src="' . $image->original_src . '"',
-                        'src="cid:' . $image->cid . '"',
+                        'src="cid:' . $cid . '"',
                         $html
                     );
                 }
