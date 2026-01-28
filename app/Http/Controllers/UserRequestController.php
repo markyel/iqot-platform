@@ -58,8 +58,8 @@ class UserRequestController extends Controller
         }
 
         $categories = Category::getActiveForSelect();
-        $productTypes = ProductType::getActiveForSelect();
-        $applicationDomains = ApplicationDomain::getActiveForSelect();
+        $productTypes = ProductType::getActiveWithStatus();
+        $applicationDomains = ApplicationDomain::getActiveWithStatus();
 
         return view('requests.create', [
             'user' => $user,
@@ -83,6 +83,14 @@ class UserRequestController extends Controller
 
         $result = $this->parseService->parseRequest($request->text);
 
+        // Логируем результат парсинга для отладки
+        \Log::info('Parse request result', [
+            'user_id' => Auth::id(),
+            'success' => $result['success'] ?? false,
+            'items_count' => count($result['items'] ?? []),
+            'items' => $result['items'] ?? []
+        ]);
+
         if ($result['success'] ?? false) {
             $pricePerItem = (float) SystemSetting::get('price_per_item', 50);
             $itemsCount = count($result['items'] ?? []);
@@ -99,8 +107,8 @@ class UserRequestController extends Controller
 
             // Если были созданы новые категории - вернуть обновленные списки
             if ($result['has_new_classifications'] ?? false) {
-                $result['updated_product_types'] = ProductType::getActiveForSelect();
-                $result['updated_application_domains'] = ApplicationDomain::getActiveForSelect();
+                $result['updated_product_types'] = ProductType::getActiveWithStatus();
+                $result['updated_application_domains'] = ApplicationDomain::getActiveWithStatus();
             }
         }
 

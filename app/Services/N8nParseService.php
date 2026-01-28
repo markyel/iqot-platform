@@ -80,7 +80,24 @@ class N8nParseService
                     ];
                 }
 
-                return is_array($jsonData) ? $jsonData : ['data' => $jsonData];
+                // Нормализуем данные от n8n
+                $result = is_array($jsonData) ? $jsonData : ['data' => $jsonData];
+
+                // Исправляем строки "null" в реальные null для каждого item
+                if (isset($result['items']) && is_array($result['items'])) {
+                    foreach ($result['items'] as &$item) {
+                        // Нормализуем поля классификации
+                        $item['product_type_id'] = $this->normalizeNull($item['product_type_id'] ?? null);
+                        $item['product_type_name'] = $this->normalizeNull($item['product_type_name'] ?? null);
+                        $item['domain_id'] = $this->normalizeNull($item['domain_id'] ?? null);
+                        $item['domain_name'] = $this->normalizeNull($item['domain_name'] ?? null);
+                        $item['brand'] = $this->normalizeNull($item['brand'] ?? null);
+                        $item['article'] = $this->normalizeNull($item['article'] ?? null);
+                    }
+                    unset($item); // Разрываем ссылку
+                }
+
+                return $result;
             }
 
             $statusCode = $response->status();
@@ -132,5 +149,16 @@ class N8nParseService
                 'items' => []
             ];
         }
+    }
+
+    /**
+     * Преобразует строку "null" в реальный null
+     */
+    private function normalizeNull($value)
+    {
+        if ($value === 'null' || $value === 'NULL' || $value === '') {
+            return null;
+        }
+        return $value;
     }
 }

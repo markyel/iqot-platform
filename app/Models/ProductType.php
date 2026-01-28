@@ -48,15 +48,39 @@ class ProductType extends Model
 
     /**
      * Получить активные типы для выбора (только листовые)
+     * Включает pending записи для использования при создании заявок
      */
     public static function getActiveForSelect(): array
     {
         return static::where('is_active', true)
-            ->where('status', 'active')
+            ->whereIn('status', ['active', 'pending'])
             ->where('is_leaf', true)
             ->orderBy('sort_order')
             ->orderBy('name')
             ->pluck('name', 'id')
+            ->toArray();
+    }
+
+    /**
+     * Получить активные типы с дополнительной информацией
+     * Для отображения статуса pending в UI
+     */
+    public static function getActiveWithStatus(): array
+    {
+        return static::where('is_active', true)
+            ->whereIn('status', ['active', 'pending'])
+            ->where('is_leaf', true)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get(['id', 'name', 'status', 'created_by'])
+            ->mapWithKeys(function ($item) {
+                return [$item->id => [
+                    'name' => $item->name,
+                    'status' => $item->status,
+                    'is_pending' => $item->status === 'pending',
+                    'is_ai_generated' => $item->created_by === 'ai_suggested'
+                ]];
+            })
             ->toArray();
     }
 

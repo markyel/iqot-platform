@@ -200,7 +200,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (result.updated_application_domains) {
                         applicationDomains = result.updated_application_domains;
                     }
-                    console.log('Обновлены списки классификаций после создания новых категорий');
+
+                    // Показываем уведомление о создании новых категорий
+                    const createdCount = (result.created_types_count || 0) + (result.created_domains_count || 0);
+                    if (createdCount > 0) {
+                        console.log(`AI создал ${createdCount} новых категорий, которые ожидают модерации`);
+                    }
                 }
 
                 renderItems();
@@ -234,13 +239,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 `<option value="${escapeHtml(name)}" ${item.category === name ? 'selected' : ''}>${escapeHtml(name)}</option>`
             ).join('');
 
-            const productTypeOptions = Object.entries(productTypes).map(([id, name]) =>
-                `<option value="${id}" ${item.product_type_id == id ? 'selected' : ''}>${escapeHtml(name)}</option>`
-            ).join('');
+            const productTypeOptions = Object.entries(productTypes).map(([id, data]) => {
+                const label = typeof data === 'object' ? data.name : data;
+                const isPending = typeof data === 'object' && data.is_pending;
+                const suffix = isPending ? ' ⏳ (ожидает модерации)' : '';
+                return `<option value="${id}" ${item.product_type_id && item.product_type_id == id ? 'selected' : ''}>${escapeHtml(label)}${suffix}</option>`;
+            }).join('');
 
-            const domainOptions = Object.entries(applicationDomains).map(([id, name]) =>
-                `<option value="${id}" ${item.domain_id == id ? 'selected' : ''}>${escapeHtml(name)}</option>`
-            ).join('');
+            const domainOptions = Object.entries(applicationDomains).map(([id, data]) => {
+                const label = typeof data === 'object' ? data.name : data;
+                const isPending = typeof data === 'object' && data.is_pending;
+                const suffix = isPending ? ' ⏳ (ожидает модерации)' : '';
+                return `<option value="${id}" ${item.domain_id && item.domain_id == id ? 'selected' : ''}>${escapeHtml(label)}${suffix}</option>`;
+            }).join('');
 
             return `
                 <tr data-index="${index}">
@@ -358,13 +369,19 @@ document.addEventListener('DOMContentLoaded', function() {
             `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`
         ).join('');
 
-        const productTypeOptions = Object.entries(productTypes).map(([id, name]) =>
-            `<option value="${id}">${escapeHtml(name)}</option>`
-        ).join('');
+        const productTypeOptions = Object.entries(productTypes).map(([id, data]) => {
+            const label = typeof data === 'object' ? data.name : data;
+            const isPending = typeof data === 'object' && data.is_pending;
+            const suffix = isPending ? ' ⏳ (ожидает модерации)' : '';
+            return `<option value="${id}">${escapeHtml(label)}${suffix}</option>`;
+        }).join('');
 
-        const domainOptions = Object.entries(applicationDomains).map(([id, name]) =>
-            `<option value="${id}">${escapeHtml(name)}</option>`
-        ).join('');
+        const domainOptions = Object.entries(applicationDomains).map(([id, data]) => {
+            const label = typeof data === 'object' ? data.name : data;
+            const isPending = typeof data === 'object' && data.is_pending;
+            const suffix = isPending ? ' ⏳ (ожидает модерации)' : '';
+            return `<option value="${id}">${escapeHtml(label)}${suffix}</option>`;
+        }).join('');
 
         const row = document.createElement('tr');
         row.dataset.index = index;
