@@ -24,6 +24,14 @@ class SitemapController extends Controller
         // Главная страница
         $xml .= $this->addUrl('/', now(), '1.0', 'daily');
 
+        // Статичные информационные страницы
+        $xml .= $this->addUrl('/faq', now(), '0.9', 'weekly');
+        $xml .= $this->addUrl('/why-it-works', now(), '0.9', 'weekly');
+        $xml .= $this->addUrl('/pricing', now(), '0.9', 'daily');
+        $xml .= $this->addUrl('/terms', now(), '0.7', 'monthly');
+        $xml .= $this->addUrl('/privacy', now(), '0.7', 'monthly');
+        $xml .= $this->addUrl('/contract', now(), '0.7', 'monthly');
+
         // Каталог
         $xml .= $this->addUrl('/catalog', now(), '0.9', 'daily');
 
