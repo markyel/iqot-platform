@@ -43,13 +43,22 @@
 </x-page-header>
 
 @if($campaign->status === 'sending')
-    <div class="alert alert-info" style="margin-bottom: var(--space-6);">
+    <div class="alert alert-info" style="margin-bottom: var(--space-6);" id="sending-alert">
         <div style="display: flex; align-items: center; gap: var(--space-3);">
             <i data-lucide="loader" class="icon-md" style="animation: spin 1s linear infinite;"></i>
-            <div>
+            <div style="flex: 1;">
                 <strong>Рассылка в процессе</strong>
-                <p style="margin-top: var(--space-1); margin-bottom: 0;">
-                    Письма отправляются. Это может занять некоторое время...
+                <p style="margin-top: var(--space-1); margin-bottom: var(--space-2);">
+                    Письма отправляются асинхронно через очередь. Прогресс обновляется автоматически.
+                </p>
+                <!-- Прогресс-бар -->
+                <div style="background: rgba(255,255,255,0.3); border-radius: var(--radius-sm); height: 24px; overflow: hidden; position: relative;">
+                    <div id="progress-bar" style="background: var(--success-500); height: 100%; width: 0%; transition: width 0.5s ease; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: var(--text-sm);">
+                        <span id="progress-text">0%</span>
+                    </div>
+                </div>
+                <p style="margin-top: var(--space-2); margin-bottom: 0; font-size: var(--text-sm);" id="progress-status">
+                    Отправлено: <span id="progress-sent">0</span> / <span id="progress-total">0</span>
                 </p>
             </div>
         </div>
@@ -193,4 +202,46 @@
     to { transform: rotate(360deg); }
 }
 </style>
+
+@if($campaign->status === 'sending')
+<script>
+// Автоматическое обновление прогресса рассылки
+let progressInterval = null;
+
+function updateProgress() {
+    fetch('{{ route("admin.campaigns.progress", $campaign) }}')
+        .then(response => response.json())
+        .then(data => {
+            // Обновляем прогресс-бар
+            document.getElementById('progress-bar').style.width = data.percent_complete + '%';
+            document.getElementById('progress-text').textContent = data.percent_complete + '%';
+
+            // Обновляем счетчики
+            document.getElementById('progress-sent').textContent = data.sent;
+            document.getElementById('progress-total').textContent = data.total;
+
+            // Обновляем карточки статистики
+            document.querySelectorAll('.card-body .text-success')[0].textContent = data.sent;
+            document.querySelectorAll('.card-body .text-danger')[0].textContent = data.failed;
+
+            // Если завершена - перезагружаем страницу
+            if (data.is_completed) {
+                clearInterval(progressInterval);
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка получения прогресса:', error);
+        });
+}
+
+// Запускаем обновление каждые 3 секунды
+progressInterval = setInterval(updateProgress, 3000);
+
+// Первое обновление сразу
+updateProgress();
+</script>
+@endif
 @endsection

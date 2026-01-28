@@ -179,6 +179,7 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
     Route::get('/campaigns/{campaign}/mapping', [\App\Http\Controllers\Admin\CampaignController::class, 'mapping'])->name('campaigns.mapping');
     Route::post('/campaigns/{campaign}/mapping', [\App\Http\Controllers\Admin\CampaignController::class, 'saveMapping'])->name('campaigns.save-mapping');
     Route::get('/campaigns/{campaign}', [\App\Http\Controllers\Admin\CampaignController::class, 'show'])->name('campaigns.show');
+    Route::get('/campaigns/{campaign}/progress', [\App\Http\Controllers\Admin\CampaignController::class, 'progress'])->name('campaigns.progress');
     Route::post('/campaigns/{campaign}/send-test', [\App\Http\Controllers\Admin\CampaignController::class, 'sendTest'])->name('campaigns.send-test');
     Route::post('/campaigns/{campaign}/start', [\App\Http\Controllers\Admin\CampaignController::class, 'start'])->name('campaigns.start');
     Route::delete('/campaigns/{campaign}', [\App\Http\Controllers\Admin\CampaignController::class, 'destroy'])->name('campaigns.destroy');

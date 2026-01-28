@@ -369,7 +369,7 @@ class CampaignController extends Controller
     }
 
     /**
-     * Запуск рассылки
+     * Запуск рассылки (асинхронно через Queue)
      */
     public function start(Campaign $campaign)
     {
@@ -377,105 +377,65 @@ class CampaignController extends Controller
             return back()->with('error', 'Рассылку нельзя запустить в текущем статусе');
         }
 
+        // Проверяем настройки SMTP
+        $smtpHost = SystemSetting::get('smtp_host');
+        $fromAddress = SystemSetting::get('smtp_from_address');
+
+        if (!$smtpHost || !$fromAddress) {
+            return back()->with('error', 'SMTP не настроен в системе');
+        }
+
         $campaign->update([
             'status' => 'sending',
             'started_at' => now(),
         ]);
 
-        // Получаем настройки SMTP
-        $smtpHost = SystemSetting::get('smtp_host');
-        $smtpPort = SystemSetting::get('smtp_port', 587);
-        $smtpEncryption = SystemSetting::get('smtp_encryption', 'tls');
-        $smtpUsername = SystemSetting::get('smtp_username');
-        $smtpPassword = SystemSetting::get('smtp_password');
-        $fromAddress = SystemSetting::get('smtp_from_address');
-        $fromName = SystemSetting::get('smtp_from_name', 'IQOT');
+        // Получаем всех получателей со статусом pending
+        $recipients = $campaign->recipients()->where('status', 'pending')->get();
 
-        if (!$smtpHost || !$fromAddress) {
-            $campaign->update(['status' => 'failed']);
-            return back()->with('error', 'SMTP не настроен в системе');
+        // Добавляем задачи в очередь с задержкой между письмами
+        $delaySeconds = $campaign->delay_seconds;
+        $currentDelay = 0;
+
+        foreach ($recipients as $recipient) {
+            \App\Jobs\SendCampaignEmail::dispatch($recipient->id, $campaign->id)
+                ->delay(now()->addSeconds($currentDelay));
+
+            $currentDelay += $delaySeconds;
         }
 
-        // Создаем транспорт
-        $transport = new \Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport(
-            $smtpHost,
-            $smtpPort,
-            $smtpEncryption === 'ssl'
-        );
+        return redirect()->route('admin.campaigns.show', $campaign)->with('success', "Рассылка запущена! {$recipients->count()} писем добавлено в очередь. Отслеживайте прогресс на этой странице.");
+    }
 
-        if ($smtpEncryption === 'tls') {
-            $transport->setStreamOptions([
-                'ssl' => [
-                    'verify_peer' => false,
-                    'verify_peer_name' => false,
-                    'allow_self_signed' => true
-                ]
+    /**
+     * API: Получение прогресса отправки
+     */
+    public function progress(Campaign $campaign)
+    {
+        $total = $campaign->total_recipients;
+        $sent = $campaign->sent_count;
+        $failed = $campaign->failed_count;
+        $pending = $campaign->recipients()->where('status', 'pending')->count();
+
+        $percentComplete = $total > 0 ? round(($sent + $failed) / $total * 100, 1) : 0;
+
+        // Проверяем, завершена ли рассылка
+        if ($campaign->status === 'sending' && $pending === 0) {
+            $campaign->update([
+                'status' => 'completed',
+                'completed_at' => now(),
             ]);
         }
 
-        if ($smtpUsername && $smtpPassword) {
-            $transport->setUsername($smtpUsername);
-            $transport->setPassword($smtpPassword);
-        }
-
-        $mailer = new \Symfony\Component\Mailer\Mailer($transport);
-
-        // Отправляем письма
-        $recipients = $campaign->recipients()->where('status', 'pending')->get();
-
-        foreach ($recipients as $recipient) {
-            try {
-                // Рендерим HTML с подстановкой данных
-                $html = $campaign->renderTemplate($recipient->data);
-
-                // Заменяем маркер URL отписки на реальный URL
-                $unsubscribeUrl = route('campaign.unsubscribe', ['recipient' => $recipient->id]);
-                $html = str_replace('__UNSUBSCRIBE_URL__', $unsubscribeUrl, $html);
-
-                // Заменяем src изображений на CID и встраиваем
-                foreach ($campaign->images as $image) {
-                    $html = str_replace($image->original_src, 'cid:' . $image->cid, $html);
-                }
-
-                // Отправляем письмо
-                $email = (new \Symfony\Component\Mime\Email())
-                    ->from(new \Symfony\Component\Mime\Address($fromAddress, $fromName))
-                    ->to($recipient->email)
-                    ->subject($campaign->subject)
-                    ->html($html);
-
-                // Встраиваем изображения как CID-вложения
-                foreach ($campaign->images as $image) {
-                    $filePath = storage_path('app/public/' . $image->file_path);
-                    if (file_exists($filePath)) {
-                        $email->embedFromPath($filePath, $image->cid);
-                    }
-                }
-
-                $mailer->send($email);
-
-                // Помечаем как отправленное
-                $recipient->markAsSent();
-                $campaign->increment('sent_count');
-
-                // Задержка между письмами
-                if ($campaign->delay_seconds > 0) {
-                    sleep($campaign->delay_seconds);
-                }
-            } catch (\Exception $e) {
-                // Помечаем как ошибочное
-                $recipient->markAsFailed($e->getMessage());
-                $campaign->increment('failed_count');
-            }
-        }
-
-        // Обновляем статус рассылки
-        $campaign->update([
-            'status' => 'completed',
-            'completed_at' => now(),
+        return response()->json([
+            'status' => $campaign->status,
+            'total' => $total,
+            'sent' => $sent,
+            'failed' => $failed,
+            'pending' => $pending,
+            'percent_complete' => $percentComplete,
+            'is_completed' => $campaign->status === 'completed',
         ]);
-
-        return redirect()->route('admin.campaigns.show', $campaign)->with('success', "Рассылка завершена! Отправлено: {$campaign->sent_count}, ошибок: {$campaign->failed_count}");
     }
 
     /**
