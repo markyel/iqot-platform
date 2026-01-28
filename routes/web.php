@@ -30,6 +30,9 @@ Route::get('/faq', [LandingController::class, 'faq'])->name('faq');
 Route::get('/catalog', [\App\Http\Controllers\CatalogController::class, 'index'])->name('catalog.index');
 Route::get('/catalog/{id}', [\App\Http\Controllers\CatalogController::class, 'show'])->name('catalog.show');
 
+// SEO
+Route::get('/sitemap.xml', [\App\Http\Controllers\SitemapController::class, 'index'])->name('sitemap');
+
 // Личный кабинет (требует авторизации)
 Route::middleware(['auth', 'verified'])->prefix('cabinet')->name('cabinet.')->group(function () {
 

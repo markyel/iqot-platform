@@ -1,0 +1,37 @@
+# Robots.txt для IQOT Platform
+# https://iqot.ru/robots.txt
+
+User-agent: *
+
+# Разрешаем главную и публичные страницы
+Allow: /
+Allow: /catalog
+Allow: /catalog/*
+
+# Запрещаем закрытые разделы
+Disallow: /cabinet
+Disallow: /cabinet/*
+Disallow: /manage
+Disallow: /manage/*
+Disallow: /admin
+Disallow: /admin/*
+
+# Запрещаем служебные разделы
+Disallow: /api
+Disallow: /api/*
+Disallow: /login
+Disallow: /register
+Disallow: /password
+Disallow: /unsubscribe
+Disallow: /unsubscribe/*
+
+# Запрещаем технические файлы
+Disallow: /*.json
+Disallow: /*.xml$
+Disallow: /*?*
+
+# Карта сайта
+Sitemap: https://iqot.ru/sitemap.xml
+
+# Задержка между запросами (для вежливых ботов)
+Crawl-delay: 1
