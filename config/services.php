@@ -52,9 +52,37 @@ return [
     | Telegram Bot
     |--------------------------------------------------------------------------
     */
-    
+
     'telegram' => [
         'bot_token' => env('TELEGRAM_BOT_TOKEN'),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Email Validation Services
+    |--------------------------------------------------------------------------
+    */
+
+    'neverbounce' => [
+        'api_key' => env('NEVERBOUNCE_API_KEY'),
+    ],
+
+    'emaillistverify' => [
+        'api_key' => env('EMAILLISTVERIFY_API_KEY'),
+    ],
+
+    'datavalidation' => [
+        'api_key' => env('DATAVALIDATION_API_KEY'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Email Validation Provider
+    |--------------------------------------------------------------------------
+    | Провайдер для валидации email: neverbounce, emaillistverify, datavalidation
+    | Если не указан, будет использоваться только базовая валидация
+    */
+
+    'email_validation_provider' => env('EMAIL_VALIDATION_PROVIDER', null),
 
 ];

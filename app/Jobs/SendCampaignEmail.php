@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Campaign;
 use App\Models\CampaignRecipient;
 use App\Models\SystemSetting;
+use App\Services\EmailValidationService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -41,7 +42,7 @@ class SendCampaignEmail implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(): void
+    public function handle(EmailValidationService $validator): void
     {
         $recipient = CampaignRecipient::find($this->recipientId);
         $campaign = Campaign::find($this->campaignId);
@@ -54,8 +55,28 @@ class SendCampaignEmail implements ShouldQueue
             return;
         }
 
-        // Пропускаем если уже отправлено или отписался
-        if (in_array($recipient->status, ['sent', 'unsubscribed'])) {
+        // Проверяем валидность email перед отправкой (если еще не проверен)
+        if (!$recipient->email_validated) {
+            $validationResult = $validator->validate($recipient->email);
+            $recipient->markAsValidated($validationResult);
+
+            if (!$validationResult['valid']) {
+                $recipient->markAsFailed("Invalid email: {$validationResult['reason']}");
+                $campaign->increment('failed_count');
+
+                Log::info('Email validation failed, skipping send', [
+                    'campaign_id' => $this->campaignId,
+                    'recipient_id' => $this->recipientId,
+                    'email' => $recipient->email,
+                    'reason' => $validationResult['reason']
+                ]);
+
+                return;
+            }
+        }
+
+        // Проверяем, можно ли отправить
+        if (!$recipient->canSend()) {
             return;
         }
 

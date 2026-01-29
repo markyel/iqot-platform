@@ -103,6 +103,45 @@
     </div>
 </div>
 
+@if($validationStats['total_validated'] > 0)
+<div class="card" style="margin-bottom: var(--space-6);">
+    <div class="card-header">
+        <h2 style="margin: 0; font-size: var(--text-lg); font-weight: 600; display: flex; align-items: center; gap: var(--space-2);">
+            <i data-lucide="check-circle" class="icon-md"></i>
+            Статистика валидации email
+        </h2>
+    </div>
+    <div class="card-body">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-4);">
+            <div style="text-align: center; padding: var(--space-3); background: var(--gray-50); border-radius: var(--radius-md);">
+                <div class="text-muted" style="font-size: var(--text-sm);">Проверено</div>
+                <div style="font-size: var(--text-xl); font-weight: 700; margin-top: var(--space-1); color: var(--primary-600);">
+                    {{ $validationStats['total_validated'] }}
+                </div>
+            </div>
+            <div style="text-align: center; padding: var(--space-3); background: var(--success-50); border-radius: var(--radius-md);">
+                <div class="text-muted" style="font-size: var(--text-sm);">Валидных</div>
+                <div class="text-success" style="font-size: var(--text-xl); font-weight: 700; margin-top: var(--space-1);">
+                    {{ $validationStats['valid'] }}
+                </div>
+            </div>
+            <div style="text-align: center; padding: var(--space-3); background: var(--danger-50); border-radius: var(--radius-md);">
+                <div class="text-muted" style="font-size: var(--text-sm);">Невалидных</div>
+                <div class="text-danger" style="font-size: var(--text-xl); font-weight: 700; margin-top: var(--space-1);">
+                    {{ $validationStats['invalid'] }}
+                </div>
+            </div>
+            <div style="text-align: center; padding: var(--space-3); background: var(--gray-50); border-radius: var(--radius-md);">
+                <div class="text-muted" style="font-size: var(--text-sm);">Не проверено</div>
+                <div style="font-size: var(--text-xl); font-weight: 700; margin-top: var(--space-1);">
+                    {{ $validationStats['not_validated'] }}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+@endif
+
 @if($campaign->total_recipients > 0)
 <div class="card" style="margin-bottom: var(--space-6);">
     <div class="card-header">
@@ -152,6 +191,7 @@
             <thead>
                 <tr>
                     <th>Email</th>
+                    <th>Валидация</th>
                     <th>Данные</th>
                     <th>Статус</th>
                     <th>Дата отправки</th>
@@ -162,6 +202,20 @@
                 @foreach($recipients as $recipient)
                 <tr>
                     <td>{{ $recipient->email }}</td>
+                    <td>
+                        @if($recipient->email_validated)
+                            @if($recipient->validation_status === 'valid')
+                                <x-badge type="completed">✓ Валидный</x-badge>
+                            @else
+                                <x-badge type="failed">✗ {{ $recipient->validation_reason }}</x-badge>
+                            @endif
+                            <div style="font-size: 0.75rem; color: var(--gray-500); margin-top: 2px;">
+                                {{ $recipient->validation_provider }}
+                            </div>
+                        @else
+                            <x-badge type="pending">Не проверен</x-badge>
+                        @endif
+                    </td>
                     <td>
                         <details>
                             <summary style="cursor: pointer; color: var(--accent-600);">Показать данные</summary>

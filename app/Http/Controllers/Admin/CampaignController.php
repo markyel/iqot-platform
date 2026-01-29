@@ -298,6 +298,8 @@ class CampaignController extends Controller
                 'campaign_id' => $campaign->id,
                 'email' => $email,
                 'data' => $data,
+                'status' => 'pending',
+                'email_validated' => false,
             ]);
 
             $additionalIndex++;
@@ -318,7 +320,16 @@ class CampaignController extends Controller
     public function show(Campaign $campaign)
     {
         $recipients = $campaign->recipients()->paginate(50);
-        return view('admin.campaigns.show', compact('campaign', 'recipients'));
+
+        // Статистика валидации
+        $validationStats = [
+            'total_validated' => $campaign->recipients()->where('email_validated', true)->count(),
+            'valid' => $campaign->recipients()->where('validation_status', 'valid')->count(),
+            'invalid' => $campaign->recipients()->where('validation_status', 'invalid')->count(),
+            'not_validated' => $campaign->recipients()->where('email_validated', false)->count(),
+        ];
+
+        return view('admin.campaigns.show', compact('campaign', 'recipients', 'validationStats'));
     }
 
     /**
