@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\RequestController;
 use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\Admin\TaxonomyController;
+use App\Http\Controllers\Api\V1\CatalogExportController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -63,8 +64,26 @@ Route::middleware('api.key')->prefix('internal')->name('internal.')->group(funct
     // n8n запрашивает данные для обработки
     Route::get('pending-requests', [RequestController::class, 'pending'])->name('requests.pending');
     Route::get('suppliers-for-request/{request}', [SupplierController::class, 'forRequest'])->name('suppliers.for-request');
-    
+
     // n8n обновляет статусы
     Route::patch('requests/{request}/status', [RequestController::class, 'updateStatus'])->name('requests.status');
     Route::post('offers', [RequestController::class, 'storeOffer'])->name('offers.store');
+});
+
+// Публичный API v1 для экспорта каталога (открытый, без авторизации)
+Route::prefix('v1')->name('v1.')->group(function () {
+    // Состояние API
+    Route::get('health', [CatalogExportController::class, 'health'])->name('health');
+
+    // Домены
+    Route::get('domains', [CatalogExportController::class, 'domains'])->name('domains');
+    Route::get('domains/{id}', [CatalogExportController::class, 'showDomain'])->name('domains.show');
+
+    // Категории
+    Route::get('categories', [CatalogExportController::class, 'categories'])->name('categories');
+    Route::get('categories/tree', [CatalogExportController::class, 'categoriesTree'])->name('categories.tree');
+    Route::get('categories/{id}', [CatalogExportController::class, 'showCategory'])->name('categories.show');
+
+    // Полный экспорт
+    Route::get('export', [CatalogExportController::class, 'export'])->name('export');
 });
