@@ -235,7 +235,7 @@ class CatalogExportController extends Controller
     /**
      * Форматирование категории для API
      */
-    private function formatCategory(ProductType $category, string $domainId = 'lifty'): array
+    private function formatCategory(ProductType $category, ?string $domainId = null): array
     {
         // Вычисляем глубину
         $depth = 0;
@@ -245,9 +245,15 @@ class CatalogExportController extends Controller
             $parent = $parent->parent;
         }
 
+        // Определяем домен по ключевым словам
+        $actualDomainId = $this->detectDomainForCategory($category);
+        if ($domainId) {
+            $actualDomainId = $domainId;
+        }
+
         return [
             'id' => $category->slug ?? (string) $category->id,
-            'domain_id' => $domainId,
+            'domain_id' => $actualDomainId,
             'parent_id' => $category->parent_id ? ($category->parent->slug ?? $category->parent_id) : null,
             'name' => $category->name,
             'name_en' => null,
@@ -262,6 +268,26 @@ class CatalogExportController extends Controller
                 'keywords' => $category->keywords ?? [],
             ],
         ];
+    }
+
+    /**
+     * Определить домен для категории по ключевым словам
+     */
+    private function detectDomainForCategory(ProductType $category): string
+    {
+        $name = mb_strtolower($category->name);
+        $keywords = is_array($category->keywords) ? $category->keywords : [];
+        $keywordsStr = mb_strtolower(implode(' ', $keywords));
+
+        // Если в названии или ключевых словах есть "эскалатор"
+        if (str_contains($name, 'эскалатор') || str_contains($keywordsStr, 'эскалатор') ||
+            str_contains($name, 'траволатор') || str_contains($keywordsStr, 'траволатор') ||
+            str_contains($name, 'escalator') || str_contains($keywordsStr, 'escalator')) {
+            return 'escalators';
+        }
+
+        // По умолчанию - лифты (elevators)
+        return 'elevators';
     }
 
     /**
