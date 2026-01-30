@@ -1,10 +1,10 @@
 <?php
 
 use App\Http\Controllers\Api\WebhookController;
-use App\Http\Controllers\Api\RequestController;
-use App\Http\Controllers\Api\SupplierController;
-use App\Http\Controllers\Api\ReportController;
-use App\Http\Controllers\Api\Admin\TaxonomyController;
+// use App\Http\Controllers\Api\RequestController;
+// use App\Http\Controllers\Api\SupplierController;
+// use App\Http\Controllers\Api\ReportController;
+// use App\Http\Controllers\Api\Admin\TaxonomyController;
 use App\Http\Controllers\Api\V1\CatalogExportController;
 use Illuminate\Support\Facades\Route;
 
@@ -37,8 +37,9 @@ Route::prefix('webhooks')->name('webhooks.')->group(function () {
 });
 
 // Защищённые API роуты (требуют Sanctum токен)
+// Временно закомментированы до создания соответствующих контроллеров
+/*
 Route::middleware('auth:sanctum')->group(function () {
-
     // Заявки
     Route::apiResource('requests', RequestController::class);
     Route::post('requests/{request}/resend', [RequestController::class, 'resend'])->name('requests.resend');
@@ -69,6 +70,7 @@ Route::middleware('api.key')->prefix('internal')->name('internal.')->group(funct
     Route::patch('requests/{request}/status', [RequestController::class, 'updateStatus'])->name('requests.status');
     Route::post('offers', [RequestController::class, 'storeOffer'])->name('offers.store');
 });
+*/
 
 // Публичный API v1 для экспорта каталога (открытый, без авторизации)
 Route::prefix('v1')->name('v1.')->group(function () {
