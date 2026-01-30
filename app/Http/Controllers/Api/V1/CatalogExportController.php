@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\ApplicationDomain;
-use App\Models\Category;
+use App\Models\ProductType;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -19,7 +19,7 @@ class CatalogExportController extends Controller
     public function health(): JsonResponse
     {
         $sourceUpdatedAt = DB::connection('reports')
-            ->table('categories')
+            ->table('product_types')
             ->max('updated_at') ?? now();
 
         return $this->success([
@@ -64,7 +64,7 @@ class CatalogExportController extends Controller
             return $this->error('NOT_FOUND', 'Domain not found', 404);
         }
 
-        $categoriesCount = Category::where('is_active', true)->count();
+        $categoriesCount = ProductType::where('is_active', true)->where('status', 'active')->count();
 
         return $this->success($this->formatDomain($domain, false, $categoriesCount));
     }
@@ -75,21 +75,23 @@ class CatalogExportController extends Controller
      */
     public function categories(Request $request): JsonResponse
     {
-        $query = Category::where('is_active', true)
+        $query = ProductType::where('is_active', true)
+            ->where('status', 'active')
             ->orderBy('sort_order')
             ->orderBy('name');
 
         if ($domainSlug = $request->query('domain')) {
-            $domain = ApplicationDomain::where('slug', $domainSlug)->first();
+            $domain = ApplicationDomain::where('slug', $domainSlug)
+                ->where('is_active', true)
+                ->first();
             if (!$domain) {
                 return $this->error('NOT_FOUND', 'Domain not found', 404);
             }
-            // Если у категорий есть связь с доменами, фильтруем
-            // Пока оставляем без фильтрации, так как в текущей структуре нет domain_id
+            // Фильтруем по домену, если нужно (пока оставляем все типы для всех доменов)
         }
 
-        $categories = $query->get()->map(function ($category) {
-            return $this->formatCategory($category);
+        $categories = $query->get()->map(function ($category) use ($request) {
+            return $this->formatCategory($category, $request->query('domain', 'lifty'));
         });
 
         return $this->success($categories, [
@@ -120,7 +122,8 @@ class CatalogExportController extends Controller
         }
 
         // Получаем все активные категории
-        $categories = Category::where('is_active', true)
+        $categories = ProductType::where('is_active', true)
+            ->where('status', 'active')
             ->orderBy('sort_order')
             ->orderBy('name')
             ->get();
@@ -141,20 +144,23 @@ class CatalogExportController extends Controller
      */
     public function showCategory(string $id): JsonResponse
     {
-        $category = Category::where('slug', $id)
+        $category = ProductType::where('slug', $id)
             ->orWhere('id', $id)
             ->where('is_active', true)
+            ->where('status', 'active')
             ->first();
 
         if (!$category) {
             return $this->error('NOT_FOUND', 'Category not found', 404);
         }
 
-        $data = $this->formatCategory($category);
+        $data = $this->formatCategory($category, 'lifty');
 
         // Добавляем breadcrumbs и children
         $data['breadcrumbs'] = $this->getBreadcrumbs($category);
-        $data['children'] = Category::where('is_active', true)
+        $data['children'] = ProductType::where('parent_id', $category->id)
+            ->where('is_active', true)
+            ->where('status', 'active')
             ->orderBy('sort_order')
             ->get()
             ->map(fn($c) => ['id' => $c->slug ?? $c->id, 'name' => $c->name])
@@ -175,10 +181,11 @@ class CatalogExportController extends Controller
             ->get()
             ->map(fn($d) => $this->formatDomain($d, false));
 
-        $categories = Category::where('is_active', true)
+        $categories = ProductType::where('is_active', true)
+            ->where('status', 'active')
             ->orderBy('sort_order')
             ->get()
-            ->map(fn($c) => $this->formatCategory($c));
+            ->map(fn($c) => $this->formatCategory($c, 'lifty'));
 
         $data = [
             'domains' => $domains,
@@ -210,7 +217,7 @@ class CatalogExportController extends Controller
         ];
 
         if ($withCounts || $categoriesCount !== null) {
-            $data['categories_count'] = $categoriesCount ?? Category::where('is_active', true)->count();
+            $data['categories_count'] = $categoriesCount ?? ProductType::where('is_active', true)->where('status', 'active')->count();
         }
 
         // SEO данные если есть
@@ -228,23 +235,31 @@ class CatalogExportController extends Controller
     /**
      * Форматирование категории для API
      */
-    private function formatCategory(Category $category): array
+    private function formatCategory(ProductType $category, string $domainId = 'lifty'): array
     {
+        // Вычисляем глубину
+        $depth = 0;
+        $parent = $category->parent;
+        while ($parent) {
+            $depth++;
+            $parent = $parent->parent;
+        }
+
         return [
             'id' => $category->slug ?? (string) $category->id,
-            'domain_id' => 'lifty', // По умолчанию, измените если есть связь
-            'parent_id' => null, // Добавьте parent_id в модель если есть иерархия
+            'domain_id' => $domainId,
+            'parent_id' => $category->parent_id ? ($category->parent->slug ?? $category->parent_id) : null,
             'name' => $category->name,
-            'name_en' => null, // Добавьте поле в модель если нужно
+            'name_en' => null,
             'description' => $category->description,
-            'image' => null, // Добавьте поле в модель если нужно
-            'icon' => null, // Добавьте поле в модель если нужно
+            'image' => null,
+            'icon' => null,
             'sort_order' => $category->sort_order,
-            'depth' => 0, // Рассчитывается на основе parent_id
+            'depth' => $depth,
             'seo' => [
                 'title' => null,
                 'description' => $category->description,
-                'keywords' => [],
+                'keywords' => $category->keywords ?? [],
             ],
         ];
     }
@@ -276,12 +291,30 @@ class CatalogExportController extends Controller
     /**
      * Получить breadcrumbs для категории
      */
-    private function getBreadcrumbs(Category $category): array
+    private function getBreadcrumbs(ProductType $category): array
     {
-        // Упрощенная версия без parent_id
-        return [
+        $breadcrumbs = [
             ['id' => 'lifty', 'name' => 'Лифты', 'type' => 'domain'],
         ];
+
+        // Собираем родителей
+        $parents = [];
+        $parent = $category->parent;
+        while ($parent) {
+            $parents[] = [
+                'id' => $parent->slug ?? $parent->id,
+                'name' => $parent->name,
+                'type' => 'category'
+            ];
+            $parent = $parent->parent;
+        }
+
+        // Добавляем в обратном порядке
+        foreach (array_reverse($parents) as $p) {
+            $breadcrumbs[] = $p;
+        }
+
+        return $breadcrumbs;
     }
 
     /**
