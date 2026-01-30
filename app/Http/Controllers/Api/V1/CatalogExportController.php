@@ -90,8 +90,8 @@ class CatalogExportController extends Controller
             // Фильтруем по домену, если нужно (пока оставляем все типы для всех доменов)
         }
 
-        $categories = $query->get()->map(function ($category) use ($request) {
-            return $this->formatCategory($category, $request->query('domain', 'lifty'));
+        $categories = $query->get()->map(function ($category) {
+            return $this->formatCategory($category);
         });
 
         return $this->success($categories, [
@@ -154,7 +154,7 @@ class CatalogExportController extends Controller
             return $this->error('NOT_FOUND', 'Category not found', 404);
         }
 
-        $data = $this->formatCategory($category, 'lifty');
+        $data = $this->formatCategory($category);
 
         // Добавляем breadcrumbs и children
         $data['breadcrumbs'] = $this->getBreadcrumbs($category);
@@ -185,7 +185,7 @@ class CatalogExportController extends Controller
             ->where('status', 'active')
             ->orderBy('sort_order')
             ->get()
-            ->map(fn($c) => $this->formatCategory($c, 'lifty'));
+            ->map(fn($c) => $this->formatCategory($c));
 
         $data = [
             'domains' => $domains,
