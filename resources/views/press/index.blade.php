@@ -478,9 +478,9 @@ body {
   <p class="section-description">Скриншоты продукта для использования в публикациях.</p>
 
   <div class="screenshots-grid">
-    @if(file_exists(public_path('press/Отчет-по-заявке-REQ-20260130-9685-IQOT-02-09-2026_03_02_PM.png')))
-    <a href="{{ asset('press/Отчет-по-заявке-REQ-20260130-9685-IQOT-02-09-2026_03_02_PM.png') }}" download class="screenshot-card">
-      <img src="{{ asset('press/Отчет-по-заявке-REQ-20260130-9685-IQOT-02-09-2026_03_02_PM.png') }}" alt="Сводный отчёт" class="screenshot-img">
+    @if(file_exists(public_path('images/Отчет-по-заявке-REQ-20260130-9685-IQOT-02-09-2026_03_02_PM.png')))
+    <a href="{{ asset('images/Отчет-по-заявке-REQ-20260130-9685-IQOT-02-09-2026_03_02_PM.png') }}" download class="screenshot-card">
+      <img src="{{ asset('images/Отчет-по-заявке-REQ-20260130-9685-IQOT-02-09-2026_03_02_PM.png') }}" alt="Сводный отчёт" class="screenshot-img">
       <div class="screenshot-info">
         <div class="screenshot-title">Сводный отчёт по заявке</div>
         <div class="screenshot-desc">Все позиции, все поставщики, лучшие цены подсвечены</div>
@@ -488,9 +488,9 @@ body {
     </a>
     @endif
 
-    @if(file_exists(public_path('press/Мониторинг-позиций-IQOT-02-09-2026_03_03_PM.png')))
-    <a href="{{ asset('press/Мониторинг-позиций-IQOT-02-09-2026_03_03_PM.png') }}" download class="screenshot-card">
-      <img src="{{ asset('press/Мониторинг-позиций-IQOT-02-09-2026_03_03_PM.png') }}" alt="Мониторинг позиций" class="screenshot-img">
+    @if(file_exists(public_path('images/Мониторинг-позиций-IQOT-02-09-2026_03_03_PM.png')))
+    <a href="{{ asset('images/Мониторинг-позиций-IQOT-02-09-2026_03_03_PM.png') }}" download class="screenshot-card">
+      <img src="{{ asset('images/Мониторинг-позиций-IQOT-02-09-2026_03_03_PM.png') }}" alt="Мониторинг позиций" class="screenshot-img">
       <div class="screenshot-info">
         <div class="screenshot-title">Мониторинг позиций</div>
         <div class="screenshot-desc">Отслеживание цен и наличия товаров в реальном времени</div>
@@ -498,9 +498,9 @@ body {
     </a>
     @endif
 
-    @if(file_exists(public_path('press/2026-02-09_15-00-09.png')))
-    <a href="{{ asset('press/2026-02-09_15-00-09.png') }}" download class="screenshot-card">
-      <img src="{{ asset('press/2026-02-09_15-00-09.png') }}" alt="Интерфейс платформы" class="screenshot-img">
+    @if(file_exists(public_path('images/2026-02-09_15-00-09.png')))
+    <a href="{{ asset('images/2026-02-09_15-00-09.png') }}" download class="screenshot-card">
+      <img src="{{ asset('images/2026-02-09_15-00-09.png') }}" alt="Интерфейс платформы" class="screenshot-img">
       <div class="screenshot-info">
         <div class="screenshot-title">Интерфейс платформы</div>
         <div class="screenshot-desc">Рабочее пространство пользователя</div>
