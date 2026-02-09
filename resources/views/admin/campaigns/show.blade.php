@@ -19,17 +19,13 @@
         @endif
 
         @if($campaign->status === 'draft' && $campaign->total_recipients > 0)
-            <form action="{{ route('admin.campaigns.start', $campaign) }}" method="POST" style="display: inline;">
-                @csrf
-                <x-button
-                    type="submit"
-                    variant="success"
-                    icon="play"
-                    onclick="return confirm('Запустить рассылку?')"
-                >
-                    Запустить рассылку
-                </x-button>
-            </form>
+            <x-button
+                variant="success"
+                icon="play"
+                onclick="document.getElementById('start-campaign-modal').style.display = 'flex'"
+            >
+                Запустить рассылку
+            </x-button>
         @endif
 
         <x-button
@@ -138,6 +134,46 @@
                 </div>
             </div>
         </div>
+    </div>
+</div>
+@endif
+
+@if($campaign->failed_count > 0)
+<div class="card" style="margin-bottom: var(--space-6);">
+    <div class="card-header">
+        <h2 style="margin: 0; font-size: var(--text-lg); font-weight: 600; display: flex; align-items: center; gap: var(--space-2);">
+            <i data-lucide="alert-circle" class="icon-md" style="color: var(--danger-500);"></i>
+            Дорассылка (повторная отправка)
+        </h2>
+    </div>
+    <div class="card-body">
+        <p style="margin-bottom: var(--space-4); color: var(--gray-600);">
+            Найдено {{ $campaign->failed_count }} получателей с ошибками.
+            Вы можете повторно отправить письма, отключив валидацию email (если ошибка связана с исчерпанием кредитов на EmailListVerify).
+        </p>
+        <form action="{{ route('admin.campaigns.retry', $campaign) }}" method="POST" style="display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap;">
+            @csrf
+            <div class="form-group" style="margin: 0; display: flex; align-items: center; gap: var(--space-2);">
+                <input
+                    type="checkbox"
+                    id="use_email_validation_retry"
+                    name="use_email_validation"
+                    value="1"
+                    style="width: 20px; height: 20px; cursor: pointer;"
+                >
+                <label for="use_email_validation_retry" style="margin: 0; cursor: pointer; user-select: none;">
+                    Использовать валидацию email (EmailListVerify)
+                </label>
+            </div>
+            <x-button
+                type="submit"
+                variant="warning"
+                icon="refresh-cw"
+                onclick="return confirm('Запустить дорассылку для получателей с ошибками?')"
+            >
+                Запустить дорассылку
+            </x-button>
+        </form>
     </div>
 </div>
 @endif
@@ -298,4 +334,65 @@ progressInterval = setInterval(updateProgress, 3000);
 updateProgress();
 </script>
 @endif
+
+<!-- Модалка запуска рассылки -->
+<div id="start-campaign-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 9999;">
+    <div style="background: white; border-radius: var(--radius-lg); padding: var(--space-6); max-width: 500px; width: 90%;">
+        <h3 style="margin: 0 0 var(--space-4) 0; font-size: var(--text-xl); font-weight: 700;">
+            Запуск рассылки
+        </h3>
+        <form action="{{ route('admin.campaigns.start', $campaign) }}" method="POST">
+            @csrf
+            <div style="margin-bottom: var(--space-5);">
+                <div style="display: flex; align-items: start; gap: var(--space-3); padding: var(--space-4); background: var(--gray-50); border-radius: var(--radius-md);">
+                    <input
+                        type="checkbox"
+                        id="use_email_validation_start"
+                        name="use_email_validation"
+                        value="1"
+                        checked
+                        style="width: 20px; height: 20px; cursor: pointer; margin-top: 2px;"
+                    >
+                    <label for="use_email_validation_start" style="margin: 0; cursor: pointer; user-select: none; flex: 1;">
+                        <strong>Использовать валидацию email (EmailListVerify)</strong>
+                        <p style="margin: var(--space-1) 0 0 0; font-size: var(--text-sm); color: var(--gray-600);">
+                            Рекомендуется для проверки адресов перед отправкой. Требует кредиты на EmailListVerify.
+                        </p>
+                    </label>
+                </div>
+                <p style="margin: var(--space-3) 0 0 0; font-size: var(--text-sm); color: var(--gray-600);">
+                    После запуска письма будут отправлены асинхронно через очередь.
+                    Прогресс отправки можно отслеживать на этой странице.
+                </p>
+            </div>
+            <div style="display: flex; gap: var(--space-3); justify-content: flex-end;">
+                <button
+                    type="button"
+                    class="btn btn-secondary"
+                    onclick="document.getElementById('start-campaign-modal').style.display = 'none'"
+                >
+                    Отмена
+                </button>
+                <button
+                    type="submit"
+                    class="btn btn-success"
+                    style="display: inline-flex; align-items: center; gap: var(--space-2);"
+                >
+                    <i data-lucide="play" class="icon-sm"></i>
+                    Запустить
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+// Закрытие модалки по клику вне её
+document.getElementById('start-campaign-modal')?.addEventListener('click', function(e) {
+    if (e.target === this) {
+        this.style.display = 'none';
+    }
+});
+</script>
+
 @endsection

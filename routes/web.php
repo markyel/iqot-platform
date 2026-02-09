@@ -187,6 +187,7 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
     Route::get('/campaigns/{campaign}/progress', [\App\Http\Controllers\Admin\CampaignController::class, 'progress'])->name('campaigns.progress');
     Route::post('/campaigns/{campaign}/send-test', [\App\Http\Controllers\Admin\CampaignController::class, 'sendTest'])->name('campaigns.send-test');
     Route::post('/campaigns/{campaign}/start', [\App\Http\Controllers\Admin\CampaignController::class, 'start'])->name('campaigns.start');
+    Route::post('/campaigns/{campaign}/retry', [\App\Http\Controllers\Admin\CampaignController::class, 'retry'])->name('campaigns.retry');
     Route::delete('/campaigns/{campaign}', [\App\Http\Controllers\Admin\CampaignController::class, 'destroy'])->name('campaigns.destroy');
 
     // Диагностика

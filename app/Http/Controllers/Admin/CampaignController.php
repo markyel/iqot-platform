@@ -382,7 +382,7 @@ class CampaignController extends Controller
     /**
      * Запуск рассылки (асинхронно через Queue)
      */
-    public function start(Campaign $campaign)
+    public function start(Request $request, Campaign $campaign)
     {
         if (!$campaign->canStart()) {
             return back()->with('error', 'Рассылку нельзя запустить в текущем статусе');
@@ -396,9 +396,13 @@ class CampaignController extends Controller
             return back()->with('error', 'SMTP не настроен в системе');
         }
 
+        // Обновляем настройку использования валидации email
+        $useEmailValidation = $request->input('use_email_validation', true);
+
         $campaign->update([
             'status' => 'sending',
             'started_at' => now(),
+            'use_email_validation' => $useEmailValidation,
         ]);
 
         // Получаем всех получателей со статусом pending
@@ -416,6 +420,81 @@ class CampaignController extends Controller
         }
 
         return redirect()->route('admin.campaigns.show', $campaign)->with('success', "Рассылка запущена! {$recipients->count()} писем добавлено в очередь. Отслеживайте прогресс на этой странице.");
+    }
+
+    /**
+     * Дорассылка для получателей с ошибками
+     */
+    public function retry(Request $request, Campaign $campaign)
+    {
+        // Проверяем настройки SMTP
+        $smtpHost = SystemSetting::get('smtp_host');
+        $fromAddress = SystemSetting::get('smtp_from_address');
+
+        if (!$smtpHost || !$fromAddress) {
+            return back()->with('error', 'SMTP не настроен в системе');
+        }
+
+        // Обновляем настройку использования валидации email
+        $useEmailValidation = $request->input('use_email_validation', false);
+
+        $campaign->update([
+            'use_email_validation' => $useEmailValidation,
+        ]);
+
+        // Получаем получателей с ошибками валидации (error_credit и др.)
+        $recipients = $campaign->recipients()
+            ->where('status', 'failed')
+            ->where(function($query) {
+                $query->where('error_message', 'like', '%error_credit%')
+                      ->orWhere('validation_status', 'error_credit')
+                      ->orWhereNull('email_validated'); // Непроверенные тоже включаем
+            })
+            ->get();
+
+        if ($recipients->isEmpty()) {
+            return back()->with('error', 'Нет получателей для дорассылки');
+        }
+
+        // Сбрасываем статус на pending для повторной отправки
+        foreach ($recipients as $recipient) {
+            $recipient->update([
+                'status' => 'pending',
+                'error_message' => null,
+                'sent_at' => null,
+            ]);
+
+            // Если отключена валидация, сбрасываем флаг валидации
+            if (!$useEmailValidation) {
+                $recipient->update([
+                    'email_validated' => true,
+                    'validation_status' => 'skipped',
+                    'validation_result' => json_encode(['valid' => true, 'reason' => 'Validation skipped']),
+                ]);
+            }
+        }
+
+        // Уменьшаем счетчик failed
+        $campaign->decrement('failed_count', $recipients->count());
+
+        // Добавляем задачи в очередь
+        $delaySeconds = $campaign->delay_seconds;
+        $currentDelay = 0;
+
+        foreach ($recipients as $recipient) {
+            \App\Jobs\SendCampaignEmail::dispatch($recipient->id, $campaign->id)
+                ->delay(now()->addSeconds($currentDelay));
+
+            $currentDelay += $delaySeconds;
+        }
+
+        // Обновляем статус кампании если нужно
+        if ($campaign->status === 'completed' || $campaign->status === 'failed') {
+            $campaign->update(['status' => 'sending']);
+        }
+
+        return redirect()->route('admin.campaigns.show', $campaign)
+            ->with('success', "Дорассылка запущена! {$recipients->count()} писем добавлено в очередь.");
     }
 
     /**

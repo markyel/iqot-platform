@@ -17,12 +17,14 @@ class Campaign extends Model
         'sent_count',
         'failed_count',
         'delay_seconds',
+        'use_email_validation',
         'started_at',
         'completed_at',
     ];
 
     protected $casts = [
         'field_mapping' => 'array',
+        'use_email_validation' => 'boolean',
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
     ];
