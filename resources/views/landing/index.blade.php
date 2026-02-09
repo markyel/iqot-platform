@@ -3205,6 +3205,7 @@
                     <div class="footer-links">
                         <a href="mailto:info@iqot.ru">info@iqot.ru</a>
                         <a href="https://t.me/iqot_support">Telegram</a>
+                        <a href="{{ route('press') }}">Для СМИ</a>
                     </div>
                 </div>
 

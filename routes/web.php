@@ -3,6 +3,7 @@
 use App\Http\Controllers\LandingController;
 use App\Http\Controllers\CabinetController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\PressKitController;
 use App\Http\Controllers\Api\Admin\TaxonomyController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
@@ -25,6 +26,7 @@ Route::get('/contract', [LandingController::class, 'contract'])->name('contract'
 Route::get('/pricing', [LandingController::class, 'pricing'])->name('pricing');
 Route::get('/why-it-works', [LandingController::class, 'whyItWorks'])->name('why-it-works');
 Route::get('/faq', [LandingController::class, 'faq'])->name('faq');
+Route::get('/press', [PressKitController::class, 'index'])->name('press');
 
 // Публичный каталог
 Route::get('/catalog', [\App\Http\Controllers\CatalogController::class, 'index'])->name('catalog.index');
