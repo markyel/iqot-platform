@@ -150,6 +150,15 @@ class N8nParseService
                 ];
             }
 
+            if ($statusCode === 524) {
+                return [
+                    'success' => false,
+                    'error' => 'Cloudflare timeout',
+                    'message' => 'Превышен лимит времени обработки Cloudflare (100 сек). Попробуйте сократить объем текста или разбить заявку на части.',
+                    'items' => []
+                ];
+            }
+
             return [
                 'success' => false,
                 'error' => 'API request failed',
