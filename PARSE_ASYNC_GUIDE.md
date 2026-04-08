@@ -12,19 +12,37 @@ Cloudflare обрывал соединение через 100 секунд (HTTP
 
 ## Что нужно изменить в n8n workflow
 
-### 1. Убрать старую ноду "Respond to Webhook"
-Старая нода:
+### ВАЖНО! Структура workflow должна быть:
+
+```
+[Webhook]
+    ↓
+[Respond Immediately] ← СРАЗУ отвечаем 200 OK (до AI-обработки!)
+    ↓
+[AI парсинг и вся обработка...]
+    ↓
+[HTTP Request] → отправляем результат на callback_url
+```
+
+### 1. Переместить "Respond to Webhook" в начало
+
+Нода должна быть СРАЗУ после Webhook, ДО всей AI-обработки:
+
 ```json
 {
-  "name": "Respond",
+  "name": "Respond Immediately",
   "type": "n8n-nodes-base.respondToWebhook",
   "parameters": {
     "respondWith": "json",
-    "responseBody": "={{ JSON.stringify($json) }}"
+    "responseBody": "{ \"success\": true, \"message\": \"Task accepted\" }",
+    "options": {
+      "responseCode": 200
+    }
   }
 }
 ```
-**Удалить её!** Теперь мы не отвечаем сразу.
+
+Это заставит n8n СРАЗУ ответить Laravel (в течение 1 секунды), а потом продолжить обработку асинхронно.
 
 ### 2. Добавить HTTP Request ноду для callback
 
