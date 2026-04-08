@@ -44,9 +44,16 @@ class N8nParseService
         }
 
         try {
+            // Увеличиваем socket timeout для долгих операций AI-парсинга
+            $previousTimeout = ini_get('default_socket_timeout');
+            ini_set('default_socket_timeout', 300);
+
             $response = Http::timeout(300)
                 ->withHeaders(['X-Auth-Token' => $this->authToken])
                 ->post($this->webhookUrl, ['text' => $text]);
+
+            // Восстанавливаем предыдущее значение
+            ini_set('default_socket_timeout', $previousTimeout);
 
             if ($response->successful()) {
                 $jsonData = $response->json();
@@ -136,6 +143,11 @@ class N8nParseService
             ];
 
         } catch (\Exception $e) {
+            // Восстанавливаем socket timeout в случае ошибки
+            if (isset($previousTimeout)) {
+                ini_set('default_socket_timeout', $previousTimeout);
+            }
+
             Log::error('N8n Parse API exception', [
                 'url' => $this->webhookUrl,
                 'error' => $e->getMessage(),
