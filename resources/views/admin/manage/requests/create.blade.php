@@ -436,15 +436,21 @@ document.getElementById('btn-parse')?.addEventListener('click', async function()
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Распознаю...';
 
     try {
+        // Создаем AbortController для таймаута
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 минут
+
         const response = await fetch('{{ route("admin.manage.requests.parse-text") }}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRF-TOKEN': '{{ csrf_token() }}'
             },
-            body: JSON.stringify({ text: text })
+            body: JSON.stringify({ text: text }),
+            signal: controller.signal
         });
 
+        clearTimeout(timeoutId);
         const result = await response.json();
 
         if (result.success && result.items && result.items.length > 0) {
@@ -474,7 +480,11 @@ document.getElementById('btn-parse')?.addEventListener('click', async function()
         }
     } catch (error) {
         console.error('Ошибка парсинга:', error);
-        alert('Ошибка соединения');
+        if (error.name === 'AbortError') {
+            alert('Превышено время ожидания ответа (5 минут). Попробуйте разбить заявку на несколько частей.');
+        } else {
+            alert('Ошибка соединения: ' + error.message);
+        }
     } finally {
         btn.disabled = false;
         btn.innerHTML = '<i data-lucide="wand-2"></i> Распознать позиции';
