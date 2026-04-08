@@ -44,7 +44,7 @@ class N8nParseService
         }
 
         try {
-            $response = Http::timeout(60)
+            $response = Http::timeout(300)
                 ->withHeaders(['X-Auth-Token' => $this->authToken])
                 ->post($this->webhookUrl, ['text' => $text]);
 
