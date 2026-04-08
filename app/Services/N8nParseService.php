@@ -48,12 +48,27 @@ class N8nParseService
             $previousTimeout = ini_get('default_socket_timeout');
             ini_set('default_socket_timeout', 300);
 
+            Log::info('N8n Parse started', [
+                'url' => $this->webhookUrl,
+                'text_length' => strlen($text),
+                'socket_timeout' => ini_get('default_socket_timeout'),
+                'time' => now()->toDateTimeString()
+            ]);
+
+            $startTime = microtime(true);
             $response = Http::timeout(300)
                 ->withHeaders(['X-Auth-Token' => $this->authToken])
                 ->post($this->webhookUrl, ['text' => $text]);
+            $duration = microtime(true) - $startTime;
 
             // Восстанавливаем предыдущее значение
             ini_set('default_socket_timeout', $previousTimeout);
+
+            Log::info('N8n Parse response received', [
+                'duration' => round($duration, 2) . 's',
+                'status' => $response->status(),
+                'success' => $response->successful()
+            ]);
 
             if ($response->successful()) {
                 $jsonData = $response->json();
