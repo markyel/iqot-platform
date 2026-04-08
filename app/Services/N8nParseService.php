@@ -63,9 +63,10 @@ class N8nParseService
                 'callback_url' => $callbackUrl
             ]);
 
-            // Отправляем запрос в n8n без ожидания ответа (fire and forget)
-            // n8n сам отправит результат на callback URL
-            Http::timeout(10)
+            // Отправляем запрос в n8n с увеличенным таймаутом
+            // n8n должен принять задачу и сразу вернуть 200 OK (быстро)
+            // Саму обработку n8n делает асинхронно
+            Http::timeout(30)
                 ->withHeaders(['X-Auth-Token' => $this->authToken])
                 ->post($this->webhookUrl, [
                     'text' => $text,
