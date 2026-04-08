@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Models\ParseTask;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class N8nParseService
 {
@@ -14,6 +16,99 @@ class N8nParseService
     {
         $this->webhookUrl = config('services.n8n.parse_webhook_url') ?: config('services.n8n.webhook_url') . '/parse-request';
         $this->authToken = config('services.n8n.parse_auth_token');
+    }
+
+    /**
+     * Запуск асинхронного парсинга (новый метод)
+     *
+     * @param string $text Текст заявки
+     * @param int|null $userId ID пользователя
+     * @return array ['success' => bool, 'task_id' => string, 'message' => string]
+     */
+    public function parseRequestAsync(string $text, ?int $userId = null): array
+    {
+        // Проверка конфигурации
+        if (empty($this->webhookUrl)) {
+            return [
+                'success' => false,
+                'error' => 'Configuration error',
+                'message' => 'N8N_PARSE_WEBHOOK_URL не настроен. Обратитесь к администратору.',
+            ];
+        }
+
+        if (empty($this->authToken)) {
+            return [
+                'success' => false,
+                'error' => 'Configuration error',
+                'message' => 'N8N_PARSE_AUTH_TOKEN не настроен. Обратитесь к администратору.',
+            ];
+        }
+
+        try {
+            // Создаем задачу в БД
+            $taskId = 'parse_' . Str::uuid();
+            $task = ParseTask::create([
+                'task_id' => $taskId,
+                'user_id' => $userId,
+                'text' => $text,
+                'status' => ParseTask::STATUS_PENDING,
+            ]);
+
+            // Формируем callback URL
+            $callbackUrl = route('webhooks.parse.callback');
+
+            Log::info('N8n Parse async started', [
+                'task_id' => $taskId,
+                'text_length' => strlen($text),
+                'callback_url' => $callbackUrl
+            ]);
+
+            // Отправляем запрос в n8n без ожидания ответа (fire and forget)
+            // n8n сам отправит результат на callback URL
+            Http::timeout(10)
+                ->withHeaders(['X-Auth-Token' => $this->authToken])
+                ->post($this->webhookUrl, [
+                    'text' => $text,
+                    'task_id' => $taskId,
+                    'callback_url' => $callbackUrl,
+                ]);
+
+            return [
+                'success' => true,
+                'task_id' => $taskId,
+                'message' => 'Задача парсинга запущена',
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('N8n Parse async exception', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return [
+                'success' => false,
+                'error' => 'Connection failed',
+                'message' => 'Не удалось запустить задачу парсинга: ' . $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Получить статус задачи парсинга
+     */
+    public function getTaskStatus(string $taskId): array
+    {
+        $task = ParseTask::where('task_id', $taskId)->first();
+
+        if (!$task) {
+            return [
+                'success' => false,
+                'error' => 'Task not found',
+                'message' => 'Задача не найдена',
+            ];
+        }
+
+        return $task->toApiResponse();
     }
 
     /**

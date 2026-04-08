@@ -421,7 +421,7 @@ class ManageRequestController extends Controller
     }
 
     /**
-     * AJAX: Парсинг текста заявки
+     * AJAX: Запуск асинхронного парсинга текста заявки
      */
     public function parseText(Request $request)
     {
@@ -429,13 +429,24 @@ class ManageRequestController extends Controller
             'text' => 'required|string|min:3|max:10000'
         ]);
 
-        $result = $this->parseService->parseRequest($validated['text']);
+        $result = $this->parseService->parseRequestAsync(
+            $validated['text'],
+            auth()->id()
+        );
 
-        // Если были созданы новые категории - вернуть обновленные списки
-        if (($result['success'] ?? false) && ($result['has_new_classifications'] ?? false)) {
-            $result['updated_product_types'] = ProductType::getActiveForSelect();
-            $result['updated_application_domains'] = ApplicationDomain::getActiveForSelect();
-        }
+        return response()->json($result);
+    }
+
+    /**
+     * AJAX: Проверка статуса парсинга
+     */
+    public function parseStatus(Request $request)
+    {
+        $validated = $request->validate([
+            'task_id' => 'required|string'
+        ]);
+
+        $result = $this->parseService->getTaskStatus($validated['task_id']);
 
         return response()->json($result);
     }

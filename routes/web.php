@@ -231,6 +231,7 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
         Route::put('/{id}', [\App\Http\Controllers\Admin\ManageRequestController::class, 'update'])->name('update');
         Route::post('/{id}/cancel', [\App\Http\Controllers\Admin\ManageRequestController::class, 'cancel'])->name('cancel');
         Route::post('/parse-text', [\App\Http\Controllers\Admin\ManageRequestController::class, 'parseText'])->name('parse-text');
+        Route::post('/parse-status', [\App\Http\Controllers\Admin\ManageRequestController::class, 'parseStatus'])->name('parse-status');
     });
 
     // Вопросы от поставщиков

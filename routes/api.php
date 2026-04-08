@@ -34,6 +34,9 @@ Route::prefix('webhooks')->name('webhooks.')->group(function () {
 
     // PDF отчёт готов (от n8n Report Management API)
     Route::post('/report-ready-pdf', [WebhookController::class, 'pdfReportReady'])->name('report.ready-pdf');
+
+    // Результат AI-парсинга заявки (от n8n Parse Request API)
+    Route::post('/parse-callback', [\App\Http\Controllers\Webhooks\ParseWebhookController::class, 'callback'])->name('parse.callback');
 });
 
 // Защищённые API роуты (требуют Sanctum токен)

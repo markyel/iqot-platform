@@ -423,7 +423,7 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// AI-парсинг
+// AI-парсинг (асинхронный с polling)
 document.getElementById('btn-parse')?.addEventListener('click', async function() {
     const text = document.getElementById('parse-text').value.trim();
     if (!text) {
@@ -433,59 +433,106 @@ document.getElementById('btn-parse')?.addEventListener('click', async function()
 
     const btn = this;
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Распознаю...';
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Запускаю AI-парсинг...';
 
     try {
-        // Создаем AbortController для таймаута
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 минут
-
-        const response = await fetch('{{ route("admin.manage.requests.parse-text") }}', {
+        // Запускаем задачу парсинга
+        const startResponse = await fetch('{{ route("admin.manage.requests.parse-text") }}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRF-TOKEN': '{{ csrf_token() }}'
             },
-            body: JSON.stringify({ text: text }),
-            signal: controller.signal
+            body: JSON.stringify({ text: text })
         });
 
-        clearTimeout(timeoutId);
-        const result = await response.json();
+        const startResult = await startResponse.json();
 
-        if (result.success && result.items && result.items.length > 0) {
-            // Если AI создал новые категории - обновляем списки
-            if (result.has_new_classifications) {
-                if (result.updated_product_types) {
-                    productTypes = result.updated_product_types;
-                }
-                if (result.updated_application_domains) {
-                    applicationDomains = result.updated_application_domains;
-                }
-                console.log('Обновлены списки классификаций после создания новых категорий');
-            }
+        if (!startResult.success || !startResult.task_id) {
+            alert(startResult.message || 'Не удалось запустить парсинг');
+            return;
+        }
 
-            // Очистить текущие строки
-            document.getElementById('items-tbody').innerHTML = '';
-            itemIndex = 0;
+        // Начинаем polling статуса
+        const taskId = startResult.task_id;
+        let attempts = 0;
+        const maxAttempts = 60; // 5 минут (каждые 5 сек)
 
-            // Добавить распознанные позиции
-            result.items.forEach(item => {
-                addItemRow(item);
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Обрабатываю... (это может занять до 3 минут)';
+
+        const checkStatus = async () => {
+            attempts++;
+
+            const statusResponse = await fetch('{{ route("admin.manage.requests.parse-status") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify({ task_id: taskId })
             });
 
-            lucide.createIcons();
-        } else {
-            alert(result.message || 'Не удалось распознать позиции');
-        }
+            const result = await statusResponse.json();
+
+            // Задача завершена
+            if (result.status === 'completed' && result.success) {
+                // Если AI создал новые категории - обновляем списки
+                if (result.has_new_classifications) {
+                    if (result.updated_product_types) {
+                        productTypes = result.updated_product_types;
+                    }
+                    if (result.updated_application_domains) {
+                        applicationDomains = result.updated_application_domains;
+                    }
+                    console.log('Обновлены списки классификаций после создания новых категорий');
+                }
+
+                // Очистить текущие строки
+                document.getElementById('items-tbody').innerHTML = '';
+                itemIndex = 0;
+
+                // Добавить распознанные позиции
+                if (result.items && result.items.length > 0) {
+                    result.items.forEach(item => {
+                        addItemRow(item);
+                    });
+                }
+
+                lucide.createIcons();
+                btn.disabled = false;
+                btn.innerHTML = '<i data-lucide="wand-2"></i> Распознать позиции';
+                lucide.createIcons();
+                return;
+            }
+
+            // Задача провалилась
+            if (result.status === 'failed') {
+                alert(result.message || 'Ошибка при парсинге');
+                btn.disabled = false;
+                btn.innerHTML = '<i data-lucide="wand-2"></i> Распознать позиции';
+                lucide.createIcons();
+                return;
+            }
+
+            // Превышен лимит попыток
+            if (attempts >= maxAttempts) {
+                alert('Превышено время ожидания. Парсинг занимает слишком много времени.');
+                btn.disabled = false;
+                btn.innerHTML = '<i data-lucide="wand-2"></i> Распознать позиции';
+                lucide.createIcons();
+                return;
+            }
+
+            // Продолжаем ждать
+            setTimeout(checkStatus, 5000); // Проверяем каждые 5 секунд
+        };
+
+        // Запускаем polling
+        setTimeout(checkStatus, 2000); // Первая проверка через 2 секунды
+
     } catch (error) {
         console.error('Ошибка парсинга:', error);
-        if (error.name === 'AbortError') {
-            alert('Превышено время ожидания ответа (5 минут). Попробуйте разбить заявку на несколько частей.');
-        } else {
-            alert('Ошибка соединения: ' + error.message);
-        }
-    } finally {
+        alert('Ошибка соединения: ' + error.message);
         btn.disabled = false;
         btn.innerHTML = '<i data-lucide="wand-2"></i> Распознать позиции';
         lucide.createIcons();
