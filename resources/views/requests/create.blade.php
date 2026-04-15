@@ -179,7 +179,8 @@ document.addEventListener('DOMContentLoaded', function() {
         spinner.classList.remove('d-none');
 
         try {
-            const response = await fetch('{{ route("cabinet.my.requests.parse") }}', {
+            // Запускаем асинхронный парсинг
+            const startResponse = await fetch('{{ route("cabinet.my.requests.parse") }}', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -187,39 +188,92 @@ document.addEventListener('DOMContentLoaded', function() {
                 },
                 body: JSON.stringify({ text: text })
             });
-            const result = await response.json();
 
-            if (result.success && result.items?.length > 0) {
-                parsedItems = result.items;
+            const startResult = await startResponse.json();
 
-                // Если AI создал новые категории - обновляем списки
-                if (result.has_new_classifications) {
-                    if (result.updated_product_types) {
-                        productTypes = result.updated_product_types;
-                    }
-                    if (result.updated_application_domains) {
-                        applicationDomains = result.updated_application_domains;
+            if (!startResult.success || !startResult.task_id) {
+                alert(startResult.message || 'Не удалось запустить парсинг');
+                btn.disabled = false;
+                spinner.classList.add('d-none');
+                return;
+            }
+
+            // Начинаем polling статуса
+            const taskId = startResult.task_id;
+            let attempts = 0;
+            const maxAttempts = 60; // 5 минут (каждые 5 сек)
+
+            const checkStatus = async () => {
+                attempts++;
+
+                const statusResponse = await fetch('{{ route("cabinet.my.requests.parse-status") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ task_id: taskId })
+                });
+
+                const result = await statusResponse.json();
+
+                // Задача завершена
+                if (result.status === 'completed' && result.success) {
+                    parsedItems = result.items || [];
+
+                    // Если AI создал новые категории - обновляем списки
+                    if (result.has_new_classifications) {
+                        if (result.updated_product_types) {
+                            productTypes = result.updated_product_types;
+                        }
+                        if (result.updated_application_domains) {
+                            applicationDomains = result.updated_application_domains;
+                        }
+
+                        // Показываем уведомление о создании новых категорий
+                        const createdCount = (result.created_types_count || 0) + (result.created_domains_count || 0);
+                        if (createdCount > 0) {
+                            console.log(`AI создал ${createdCount} новых категорий, которые ожидают модерации`);
+                        }
                     }
 
-                    // Показываем уведомление о создании новых категорий
-                    const createdCount = (result.created_types_count || 0) + (result.created_domains_count || 0);
-                    if (createdCount > 0) {
-                        console.log(`AI создал ${createdCount} новых категорий, которые ожидают модерации`);
-                    }
+                    renderItems();
+                    updateCostInfo(result.cost_info);
+                    document.getElementById('step-input').classList.add('d-none');
+                    document.getElementById('step-confirm').classList.remove('d-none');
+                    lucide.createIcons();
+
+                    btn.disabled = false;
+                    spinner.classList.add('d-none');
+                    return;
                 }
 
-                renderItems();
-                updateCostInfo(result.cost_info);
-                document.getElementById('step-input').classList.add('d-none');
-                document.getElementById('step-confirm').classList.remove('d-none');
-                lucide.createIcons();
-            } else {
-                alert(result.message || 'Не удалось распознать позиции');
-            }
+                // Задача провалилась
+                if (result.status === 'failed') {
+                    alert(result.message || 'Ошибка при парсинге');
+                    btn.disabled = false;
+                    spinner.classList.add('d-none');
+                    return;
+                }
+
+                // Превышен лимит попыток
+                if (attempts >= maxAttempts) {
+                    alert('Превышено время ожидания. Парсинг занимает слишком много времени.');
+                    btn.disabled = false;
+                    spinner.classList.add('d-none');
+                    return;
+                }
+
+                // Продолжаем ждать
+                setTimeout(checkStatus, 5000); // Проверяем каждые 5 секунд
+            };
+
+            // Запускаем polling
+            setTimeout(checkStatus, 2000); // Первая проверка через 2 секунды
+
         } catch (e) {
             console.error('Ошибка парсинга:', e);
-            alert('Ошибка соединения');
-        } finally {
+            alert('Ошибка соединения: ' + e.message);
             btn.disabled = false;
             spinner.classList.add('d-none');
         }

@@ -76,6 +76,7 @@ Route::middleware(['auth', 'verified'])->prefix('cabinet')->name('cabinet.')->gr
         Route::get('/requests', [\App\Http\Controllers\UserRequestController::class, 'index'])->name('requests.index');
         Route::get('/requests/create', [\App\Http\Controllers\UserRequestController::class, 'create'])->name('requests.create');
         Route::post('/requests/parse', [\App\Http\Controllers\UserRequestController::class, 'parse'])->name('requests.parse');
+        Route::post('/requests/parse-status', [\App\Http\Controllers\UserRequestController::class, 'parseStatus'])->name('requests.parse-status');
         Route::post('/requests', [\App\Http\Controllers\UserRequestController::class, 'store'])->name('requests.store');
         Route::get('/requests/balance', [\App\Http\Controllers\UserRequestController::class, 'checkBalance'])->name('requests.balance');
         Route::get('/requests/{id}', [\App\Http\Controllers\UserRequestController::class, 'show'])->name('requests.show');

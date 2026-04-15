@@ -73,7 +73,7 @@ class UserRequestController extends Controller
     }
 
     /**
-     * AJAX: Парсинг текста через n8n AI
+     * AJAX: Запуск асинхронного парсинга текста через n8n AI
      */
     public function parse(Request $request)
     {
@@ -81,21 +81,46 @@ class UserRequestController extends Controller
             'text' => 'required|string|min:3|max:10000'
         ]);
 
-        $result = $this->parseService->parseRequest($request->text);
+        $result = $this->parseService->parseRequestAsync(
+            $request->text,
+            Auth::id()
+        );
 
-        // Логируем результат парсинга для отладки
-        \Log::info('Parse request result', [
-            'user_id' => Auth::id(),
-            'success' => $result['success'] ?? false,
-            'items_count' => count($result['items'] ?? []),
-            'items' => $result['items'] ?? []
+        return response()->json($result);
+    }
+
+    /**
+     * AJAX: Проверка статуса парсинга
+     */
+    public function parseStatus(Request $request)
+    {
+        $validated = $request->validate([
+            'task_id' => 'required|string'
         ]);
 
-        if ($result['success'] ?? false) {
-            $pricePerItem = (float) SystemSetting::get('price_per_item', 50);
+        $result = $this->parseService->getTaskStatus($validated['task_id']);
+
+        // Добавляем информацию о стоимости после успешного парсинга
+        if (($result['status'] ?? '') === 'completed' && ($result['success'] ?? false)) {
+            $user = Auth::user();
+            $tariff = $user->getActiveTariff();
+            $limitsInfo = app(\App\Services\TariffService::class)->getUserLimitsInfo($user);
+
+            // Определяем цену за позицию с учетом лимитов
+            $pricePerItem = 0;
+            if ($tariff) {
+                // Если есть лимит и он исчерпан - берем цену сверх лимита
+                if ($limitsInfo['items_limit'] !== null && $limitsInfo['items_used'] >= $limitsInfo['items_limit']) {
+                    $pricePerItem = (float) $tariff->tariffPlan->price_per_item_over_limit;
+                }
+            } else {
+                // Нет тарифа - используем системную настройку
+                $pricePerItem = (float) SystemSetting::get('price_per_item', 50);
+            }
+
             $itemsCount = count($result['items'] ?? []);
             $totalCost = $itemsCount * $pricePerItem;
-            $availableBalance = Auth::user()->available_balance;
+            $availableBalance = $user->available_balance;
 
             $result['cost_info'] = [
                 'price_per_item' => $pricePerItem,
