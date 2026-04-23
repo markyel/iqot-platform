@@ -49,7 +49,7 @@ class SupplierDiscoveryController extends Controller
         ]);
     }
 
-    public function show(SupplierDiscoveryRun $run): View
+    public function show(SupplierDiscoveryRun $run, SupplierCoverageService $coverage): View
     {
         $productType = ProductType::find($run->product_type_id);
         $domain = $run->domain_id ? ApplicationDomain::find($run->domain_id) : null;
@@ -69,11 +69,16 @@ class SupplierDiscoveryController extends Controller
                 ->get(['id', 'name', 'email', 'phone', 'website', 'profile_confidence', 'created_at']);
         }
 
+        // Текущее покрытие пары (domain, product_type) — считается по всем активным
+        // поставщикам в БД, независимо от этого run.
+        $coverageInfo = $coverage->checkCoverage($run->domain_id, $run->product_type_id);
+
         return view('admin.supplier-discovery.show', [
             'run' => $run,
             'productType' => $productType,
             'domain' => $domain,
             'createdSuppliers' => $createdSuppliers,
+            'coverage' => $coverageInfo,
         ]);
     }
 

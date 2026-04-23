@@ -11,6 +11,49 @@
 </x-page-header>
 
 <div style="max-width: 1100px;">
+    @php
+        $covPct = $coverage['threshold'] > 0
+            ? min(100, (int) round($coverage['available'] / $coverage['threshold'] * 100))
+            : 0;
+        $covColor = $coverage['is_sufficient']
+            ? 'var(--green-600)'
+            : ($covPct >= 50 ? '#d97706' : 'var(--red-600)');
+    @endphp
+    <div class="card" style="margin-bottom: var(--space-4); border-left: 4px solid {{ $covColor }};">
+        <div class="card-body">
+            <div style="display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap;">
+                <div>
+                    <div style="font-size: 0.85em; color: var(--gray-600); text-transform: uppercase; letter-spacing: 0.5px;">Текущее покрытие</div>
+                    <div style="font-size: 1.6em; font-weight: 700; color: {{ $covColor }};">
+                        {{ $coverage['available'] }} / {{ $coverage['threshold'] }}
+                    </div>
+                    <div style="font-size: 0.9em; color: var(--gray-600);">
+                        @if($coverage['is_sufficient'])
+                            ✓ достаточно поставщиков для broadcast
+                        @else
+                            не хватает {{ $coverage['threshold'] - $coverage['available'] }} — discovery будет перезапускаться
+                        @endif
+                    </div>
+                </div>
+                <div style="flex: 1; min-width: 200px;">
+                    <div style="background: var(--gray-200); border-radius: 999px; height: 14px; overflow: hidden;">
+                        <div style="width: {{ $covPct }}%; height: 100%; background: {{ $covColor }}; transition: width 0.3s;"></div>
+                    </div>
+                    <div style="font-size: 0.8em; color: var(--gray-500); margin-top: var(--space-1);">
+                        {{ $covPct }}% от порога
+                        @if($coverage['is_sufficient']) · условие покрытия выполнено @endif
+                    </div>
+                </div>
+            </div>
+            <div style="margin-top: var(--space-2); font-size: 0.85em; color: var(--gray-500);">
+                Фильтр: <code>is_active=1 AND notify_email=1 AND profile_confidence≥0.3</code> +
+                совпадение scope по domain / product_type. Threshold берётся из
+                <code>domain_product_types.min_suppliers_threshold</code>, затем <code>product_types.min_suppliers_threshold</code>,
+                иначе default = {{ \App\Services\Api\SupplierCoverageService::DEFAULT_THRESHOLD }}.
+            </div>
+        </div>
+    </div>
+
     <div class="card" style="margin-bottom: var(--space-6);">
         <div class="card-body">
             <dl style="display: grid; grid-template-columns: max-content 1fr; gap: var(--space-2) var(--space-4);">
