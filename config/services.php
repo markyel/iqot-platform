@@ -85,4 +85,17 @@ return [
 
     'email_validation_provider' => env('EMAIL_VALIDATION_PROVIDER', null),
 
+    /*
+     * Классификация API-заявок через OpenAI-совместимый прокси (ai.lazylift.ru).
+     * Используется сервисом App\Services\Api\OpenAIClassifierClient.
+     */
+    'openai_classifier' => [
+        'base_url' => env('OPENAI_CLASSIFIER_BASE_URL', 'https://ai.lazylift.ru/v1'),
+        'api_key' => env('OPENAI_CLASSIFIER_API_KEY'),
+        'proxy_key' => env('OPENAI_CLASSIFIER_PROXY_KEY'),
+        'model_mini' => env('OPENAI_CLASSIFIER_MODEL_MINI', 'gpt-4o-mini'),
+        'model_full' => env('OPENAI_CLASSIFIER_MODEL_FULL', 'gpt-4o'),
+        'timeout' => (int) env('OPENAI_CLASSIFIER_TIMEOUT', 30),
+    ],
+
 ];

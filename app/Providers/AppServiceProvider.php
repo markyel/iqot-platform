@@ -21,6 +21,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(N8nParseService::class, function ($app) {
             return new N8nParseService();
         });
+
+        $this->app->singleton(\App\Services\Api\OpenAIClassifierClient::class, function () {
+            return \App\Services\Api\OpenAIClassifierClient::fromConfig();
+        });
     }
 
     public function boot(): void

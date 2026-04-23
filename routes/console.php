@@ -22,3 +22,6 @@ Schedule::command('tariffs:renew')->daily();
 
 // Синхронизация публичного каталога
 Schedule::command('catalog:sync')->hourly();
+
+// Публичный API: обработка inbox (классификация) — каждые 5 минут.
+Schedule::command('api:inbox:process')->everyFiveMinutes()->withoutOverlapping();
