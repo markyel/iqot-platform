@@ -98,4 +98,16 @@ return [
         'timeout' => (int) env('OPENAI_CLASSIFIER_TIMEOUT', 30),
     ],
 
+    /*
+     * Yandex Cloud Search API v2 (https://searchapi.api.cloud.yandex.net/v2/web/search).
+     * Используется App\Services\Discovery\YandexSearchClient для поиска новых поставщиков.
+     */
+    'yandex_search' => [
+        'endpoint' => env('YANDEX_SEARCH_ENDPOINT', 'https://searchapi.api.cloud.yandex.net/v2/web/search'),
+        'api_key' => env('YANDEX_SEARCH_API_KEY'),
+        'folder_id' => env('YANDEX_SEARCH_FOLDER_ID'),
+        'results_per_query' => (int) env('YANDEX_SEARCH_RESULTS_PER_QUERY', 5),
+        'timeout' => (int) env('YANDEX_SEARCH_TIMEOUT', 30),
+    ],
+
 ];

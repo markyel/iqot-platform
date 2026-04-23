@@ -3,7 +3,7 @@
 namespace App\Jobs\Api;
 
 use App\Models\Api\SupplierDiscoveryRun;
-use App\Services\Api\SupplierCoverageService;
+use App\Services\Discovery\SupplierDiscoveryService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -12,20 +12,19 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Discovery по одной паре (domain, product_type) (§7.2).
+ * Discovery по одной паре (domain, product_type) — §7.2/§7.3.
  *
- * MVP-реализация: структура пайплайна зафиксирована (queued → running → finalize),
- * но сами итерации поиска поставщиков — заглушка. Реальный web-scrape + AI-валидация
- * будет добавлены отдельным этапом. На MVP run сразу переводится в success_partial
- * если coverage уже достаточен, либо exhausted — если недобор.
- *
- * Это даёт корректное поведение cooldown (30 дней exhausted) без реальных вызовов.
+ * Реальный pipeline:
+ *   queued → running → N итераций (query gen → Yandex search → fetch → AI extract → persist)
+ *   → finalize (success_covered | success_partial | exhausted | failed).
+ * Cooldown политика на уровне supplier_discovery_runs обеспечивает отсутствие
+ * повторной работы для пары слишком часто.
  */
 class DiscoverSuppliersForPairJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public $timeout = 600;
+    public $timeout = 1800; // до 30 минут на весь pipeline (5 итераций × до 15 страниц)
     public $tries = 1;
 
     public int $runId;
@@ -36,7 +35,7 @@ class DiscoverSuppliersForPairJob implements ShouldQueue
         $this->onConnection('database');
     }
 
-    public function handle(SupplierCoverageService $coverage): void
+    public function handle(SupplierDiscoveryService $discovery): void
     {
         /** @var SupplierDiscoveryRun|null $run */
         $run = SupplierDiscoveryRun::find($this->runId);
@@ -57,32 +56,32 @@ class DiscoverSuppliersForPairJob implements ShouldQueue
         ]);
 
         try {
-            // MVP: не делаем реальный поиск. Просто считаем текущее coverage и
-            // фиксируем итог. Структура позволит заменить на реальный сбор,
-            // не меняя интерфейс.
-            $result = $coverage->checkCoverage($run->domain_id, $run->product_type_id);
+            $summary = $discovery->runFullDiscovery($run->product_type_id, $run->domain_id);
 
-            $status = $result['is_sufficient'] ? 'success_covered' : 'exhausted';
             $run->update([
-                'status' => $status,
-                'iterations_used' => 0,
-                'suppliers_found' => 0,
+                'status' => $summary['status'],
+                'iterations_used' => $summary['iterations_used'],
+                'suppliers_found' => $summary['total_new'],
                 'finished_at' => now(),
             ]);
 
-            Log::info('DiscoverSuppliersForPair: finished (stub)', [
+            Log::info('DiscoverSuppliersForPair: finished', [
                 'run_id' => $run->id,
                 'domain_id' => $run->domain_id,
                 'product_type_id' => $run->product_type_id,
-                'available' => $result['available'],
-                'threshold' => $result['threshold'],
-                'status' => $status,
+                'status' => $summary['status'],
+                'new_suppliers' => $summary['total_new'],
+                'iterations' => $summary['iterations_used'],
             ]);
         } catch (\Throwable $e) {
             $run->update([
                 'status' => 'failed',
                 'finished_at' => now(),
                 'error' => substr($e->getMessage(), 0, 2000),
+            ]);
+            Log::error('DiscoverSuppliersForPair: run failed', [
+                'run_id' => $run->id,
+                'error' => $e->getMessage(),
             ]);
             throw $e;
         }

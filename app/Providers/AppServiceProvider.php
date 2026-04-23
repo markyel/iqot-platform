@@ -25,6 +25,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(\App\Services\Api\OpenAIClassifierClient::class, function () {
             return \App\Services\Api\OpenAIClassifierClient::fromConfig();
         });
+
+        $this->app->singleton(\App\Services\Discovery\YandexSearchClient::class, function () {
+            return \App\Services\Discovery\YandexSearchClient::fromConfig();
+        });
     }
 
     public function boot(): void
