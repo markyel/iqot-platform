@@ -2,6 +2,7 @@
 
 namespace App\Jobs\Api;
 
+use App\Models\Api\ApiClient;
 use App\Models\Api\ApiInbox;
 use App\Models\Api\ApiSubmission;
 use App\Models\Api\ClientCategory;
@@ -9,6 +10,7 @@ use App\Models\Api\RequestItemStaging;
 use App\Models\Api\RequestStaging;
 use App\Models\BalanceHold;
 use App\Services\Api\ClientCategoryClassifierService;
+use App\Services\Api\ModerationService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -225,6 +227,29 @@ class InboxProcessingWorker implements ShouldQueue
 
         // Удаляем inbox запись (после успешной классификации, §2.3).
         $inbox->delete();
+
+        // Авто-приём green-позиций по флагу api_clients.auto_approve_green.
+        // Если все позиции были green — submission будет финализирована автоматом
+        // через ModerationService::maybeFinalize().
+        $client = ApiClient::find($submission->api_client_id);
+        if ($client && $client->auto_approve_green) {
+            try {
+                $approved = app(ModerationService::class)->approveGreenBatch($submission);
+                if ($approved > 0) {
+                    Log::info('InboxProcessingWorker: auto-approved green items', [
+                        'submission_id' => $submission->id,
+                        'api_client_id' => $client->id,
+                        'approved' => $approved,
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                // Авто-приём — best-effort: не валим обработку inbox-строки.
+                Log::warning('InboxProcessingWorker: auto-approve failed', [
+                    'submission_id' => $submission->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
     }
 
     /**

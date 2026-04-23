@@ -13,11 +13,13 @@ class ApiClient extends Model
         'user_id',
         'is_active',
         'overdraft_percent',
+        'auto_approve_green',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
         'overdraft_percent' => 'decimal:2',
+        'auto_approve_green' => 'boolean',
     ];
 
     public function user(): BelongsTo

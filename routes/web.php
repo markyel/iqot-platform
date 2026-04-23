@@ -103,6 +103,7 @@ Route::middleware(['auth', 'verified'])->prefix('cabinet')->name('cabinet.')->gr
     Route::prefix('api-keys')->name('api-keys.')->group(function () {
         Route::get('/', [\App\Http\Controllers\Cabinet\ApiKeyController::class, 'index'])->name('index');
         Route::post('/', [\App\Http\Controllers\Cabinet\ApiKeyController::class, 'store'])->name('store');
+        Route::patch('/settings', [\App\Http\Controllers\Cabinet\ApiKeyController::class, 'updateSettings'])->name('update-settings');
         Route::delete('/{key}', [\App\Http\Controllers\Cabinet\ApiKeyController::class, 'destroy'])->name('destroy');
     });
 
