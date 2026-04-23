@@ -118,13 +118,32 @@
                                     @endif
                                 </td>
                                 <td>
-                                    @if($item->product_type_id)
-                                        pt: {{ $productTypes[$item->product_type_id]->name ?? ('#' . $item->product_type_id) }}<br>
-                                    @endif
-                                    @if($item->domain_id)
-                                        dom: {{ $domains[$item->domain_id]->name ?? ('#' . $item->domain_id) }}<br>
-                                    @endif
-                                    <small style="color: var(--gray-500);">{{ $item->classification_source ?: '—' }}</small>
+                                    <div style="font-size: 0.9em; line-height: 1.45;">
+                                        <strong>pt:</strong>
+                                        @if($item->product_type_id)
+                                            {{ $productTypes[$item->product_type_id]->name ?? ('#' . $item->product_type_id) }}
+                                            <code style="color: var(--gray-500);">#{{ $item->product_type_id }}</code>
+                                        @else
+                                            <span style="color: var(--red-600);">не определён</span>
+                                        @endif
+                                        <br>
+                                        <strong>dom:</strong>
+                                        @if($item->domain_id)
+                                            {{ $domains[$item->domain_id]->name ?? ('#' . $item->domain_id) }}
+                                            <code style="color: var(--gray-500);">#{{ $item->domain_id }}</code>
+                                        @else
+                                            <span style="color: var(--gray-500);">универсальный / не определён</span>
+                                        @endif
+                                    </div>
+                                    <div style="font-size: 0.8em; color: var(--gray-500); margin-top: 2px;">
+                                        {{ $item->classification_source ?: '—' }}
+                                        @if($item->type_confidence !== null)
+                                            · pt-conf: <strong>{{ number_format((float) $item->type_confidence, 2) }}</strong>
+                                        @endif
+                                        @if($item->domain_confidence !== null)
+                                            · dom-conf: <strong>{{ number_format((float) $item->domain_confidence, 2) }}</strong>
+                                        @endif
+                                    </div>
                                 </td>
                                 <td>
                                     @php $color = ['green' => 'var(--green-600)', 'yellow' => '#d97706', 'red' => 'var(--red-600)'][$item->trust_level] ?? 'var(--gray-500)'; @endphp
