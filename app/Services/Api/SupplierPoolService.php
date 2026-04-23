@@ -66,6 +66,11 @@ class SupplierPoolService
             }
         }
 
+        // Триггер промоушена (§7): если все позиции pool_ready — двигаем в reports.
+        if ($awaiting === 0 && $poolReady > 0) {
+            app(PromotionService::class)->promoteIfReady($submission);
+        }
+
         return [
             'pool_ready' => $poolReady,
             'awaiting_suppliers' => $awaiting,

@@ -31,3 +31,6 @@ Schedule::job(new \App\Jobs\Api\DiscoveryOrchestratorJob())->everyTenMinutes()->
 
 // Публичный API: перепроверка awaiting_suppliers — каждый час (§6.3).
 Schedule::job(new \App\Jobs\Api\RecheckAwaitingSuppliersJob())->hourly()->withoutOverlapping();
+
+// Публичный API: reconcile промоушена (heartbeat cross-DB) — каждые 5 минут (§6.5).
+Schedule::job(new \App\Jobs\Api\ReconcilePromotionJob())->everyFiveMinutes()->withoutOverlapping();

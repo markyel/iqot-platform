@@ -63,6 +63,15 @@ class RecheckAwaitingSuppliersJob implements ShouldQueue
         $result = $coverage->checkCoverage($item->domain_id, $item->product_type_id);
         if ($result['is_sufficient']) {
             $item->update(['item_status' => 'pool_ready']);
+            // Проверяем — возможно это была последняя awaiting_suppliers позиция submission,
+            // и теперь можно запускать промоушен.
+            $staging = RequestStaging::find($item->request_staging_id);
+            if ($staging) {
+                $submission = ApiSubmission::find($staging->api_submission_id);
+                if ($submission) {
+                    app(\App\Services\Api\PromotionService::class)->promoteIfReady($submission);
+                }
+            }
             return;
         }
 
