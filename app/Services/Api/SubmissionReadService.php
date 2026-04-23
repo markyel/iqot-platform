@@ -9,6 +9,7 @@ use App\Models\ExternalOffer;
 use App\Models\ExternalRequestItem;
 use App\Models\ProductType;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Агрегация данных submission из iqot + reports для GET-эндпоинтов (§11.3, §11.4, §11.9).
@@ -87,6 +88,10 @@ class SubmissionReadService
             ->get()
             ->groupBy('request_item_id');
 
+        // Предзагрузка поставщиков одним запросом чтобы избежать N+1.
+        $supplierIds = $offersByItem->flatten()->pluck('supplier_id')->filter()->unique()->all();
+        $suppliers = $this->loadSuppliersMap($supplierIds);
+
         $enriched = [];
         $anyReady = false;
         foreach ($reportsItems as $ri) {
@@ -116,8 +121,8 @@ class SubmissionReadService
                 'offers_count' => $offers->count(),
                 'minimum_threshold' => self::MINIMUM_OFFERS,
                 'status' => $this->publicItemStatusFromOffers($offers->count()),
-                'best_offer_by_price' => $offers->first() ? $this->offerToArray($offers->first()) : null,
-                'all_offers' => $offers->map(fn ($o) => $this->offerToArray($o))->all(),
+                'best_offer_by_price' => $offers->first() ? $this->offerToArray($offers->first(), $suppliers) : null,
+                'all_offers' => $offers->map(fn ($o) => $this->offerToArray($o, $suppliers))->all(),
             ];
         }
 
@@ -283,19 +288,53 @@ class SubmissionReadService
         return $raw;
     }
 
-    private function offerToArray(ExternalOffer $o): array
+    /**
+     * @param array<int, array<string,mixed>> $suppliersMap id => {id, name, email, phone}
+     */
+    private function offerToArray(ExternalOffer $o, array $suppliersMap = []): array
     {
+        $supplier = $suppliersMap[$o->supplier_id] ?? null;
+        $vatIncluded = (bool) $o->price_includes_vat;
+
         return [
             'supplier_id' => $o->supplier_id,
+            'supplier' => $supplier ?: ['id' => $o->supplier_id, 'name' => null, 'email' => null, 'phone' => null],
             'price_per_unit' => (float) $o->price_per_unit,
             'total_price' => (float) $o->total_price,
             'currency' => $o->currency,
-            'price_includes_vat' => (bool) $o->price_includes_vat,
+            'price_includes_vat' => $vatIncluded,
+            'vat_label' => $vatIncluded ? 'с НДС' : 'без НДС',
             'delivery_days' => $o->delivery_days,
             'payment_terms' => $o->payment_terms,
             'notes' => $o->notes,
             'received_at' => $o->response_received_at?->toIso8601String(),
         ];
+    }
+
+    /**
+     * Подгружает справочные данные поставщиков (id => {id, name, email, phone}).
+     *
+     * @param array<int> $supplierIds
+     * @return array<int, array{id:int, name:string|null, email:string|null, phone:string|null}>
+     */
+    private function loadSuppliersMap(array $supplierIds): array
+    {
+        if (empty($supplierIds)) {
+            return [];
+        }
+        $rows = DB::connection('reports')->table('suppliers')
+            ->whereIn('id', $supplierIds)
+            ->get(['id', 'name', 'email', 'phone']);
+        $map = [];
+        foreach ($rows as $r) {
+            $map[(int) $r->id] = [
+                'id' => (int) $r->id,
+                'name' => $r->name,
+                'email' => $r->email,
+                'phone' => $r->phone,
+            ];
+        }
+        return $map;
     }
 
     /**
