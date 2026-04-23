@@ -188,9 +188,17 @@
 @endpush
 
 @section('content')
+@php
+    // Поддержка двух источников: web-заявки (есть $request) и API-заявки (есть $apiSubmission).
+    $request = $request ?? null;
+    $apiSubmission = $apiSubmission ?? null;
+    $backUrl = $request
+        ? route('cabinet.my.requests.show', $request->id)
+        : ($apiSubmission ? route('cabinet.api-submissions.show', $apiSubmission->id) : route('cabinet.requests'));
+@endphp
 <div style="max-width: 1600px; margin: 0 auto;">
     <div style="margin-bottom: 2rem;">
-        <a href="{{ route('cabinet.my.requests.show', $request->id) }}" class="back-link">
+        <a href="{{ $backUrl }}" class="back-link">
             ← Назад к заявке
         </a>
         <div style="display: flex; justify-content: space-between; align-items: start; margin-top: 1rem;">
@@ -219,12 +227,14 @@
                 $user = Auth::user();
                 $tariff = $user->getActiveTariff();
                 $canGeneratePdf = $tariff && $tariff->tariffPlan->canGeneratePdfReports();
-                $pdfReport = \App\Models\Report::where('request_id', $request->id)
+                // PDF-генерация сейчас привязана к iqot.requests.id (web-flow).
+                // Для API-заявок PDF отключён до интеграции PDF-сервиса с ExternalRequest напрямую.
+                $pdfReport = $request ? \App\Models\Report::where('request_id', $request->id)
                     ->where('report_type', 'request')
                     ->orderBy('created_at', 'desc')
-                    ->first();
+                    ->first() : null;
             @endphp
-            @if($canGeneratePdf)
+            @if($canGeneratePdf && $request)
             <div style="display: flex; gap: 0.75rem; align-items: center;">
                 @if($pdfReport && $pdfReport->status === 'ready')
                     @if($pdfReport->pdf_expires_at && $pdfReport->pdf_expires_at->isPast())

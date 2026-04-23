@@ -274,16 +274,31 @@ class User extends Authenticatable implements FilamentUser
             return true;
         }
 
-        // Проверяем, принадлежит ли позиция заявке пользователя
-        if ($item->request) {
-            // Получаем номер заявки из external request
-            $requestNumber = $item->request->request_number;
+        if (!$item->request) {
+            return false;
+        }
 
-            // Проверяем, есть ли у пользователя заявка с таким номером
-            return $this->requests()
-                ->where('request_number', $requestNumber)
-                ->where('synced_to_main_db', true)
+        // Web-flow: позиция принадлежит заявке пользователя через synced web-request.
+        $isOwnWebRequest = $this->requests()
+            ->where('request_number', $item->request->request_number)
+            ->where('synced_to_main_db', true)
+            ->exists();
+        if ($isOwnWebRequest) {
+            return true;
+        }
+
+        // API-flow: позиция принадлежит reports.request, созданной через публичный API
+        // пользователя. Связка через api_submission_external_id → iqot.api_submissions →
+        // api_client.user_id.
+        $externalId = $item->request->api_submission_external_id ?? null;
+        if ($externalId) {
+            $isOwnApiSubmission = \App\Models\Api\ApiSubmission::query()
+                ->where('external_id', $externalId)
+                ->whereHas('client', fn ($q) => $q->where('user_id', $this->id))
                 ->exists();
+            if ($isOwnApiSubmission) {
+                return true;
+            }
         }
 
         return false;
