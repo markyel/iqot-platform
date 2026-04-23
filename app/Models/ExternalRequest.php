@@ -31,6 +31,9 @@ class ExternalRequest extends Model
         'customer_notes',
         'parent_request_id',
         'is_retry',
+        // Публичный API (Этап 1, миграция 100013):
+        'source',
+        'api_submission_external_id',
     ];
 
     protected $casts = [
