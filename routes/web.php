@@ -301,6 +301,13 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
         Route::post('/{submission}/items/{item}/reclassify', [\App\Http\Controllers\Manage\ApiSubmissionController::class, 'reclassifyItem'])->name('reclassify-item');
     });
 
+    // Подбор поставщиков (supplier discovery).
+    Route::prefix('supplier-discovery')->name('supplier-discovery.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Manage\SupplierDiscoveryController::class, 'index'])->name('index');
+        Route::get('/runs/{run}', [\App\Http\Controllers\Manage\SupplierDiscoveryController::class, 'show'])->name('show');
+        Route::post('/items/{item}/trigger', [\App\Http\Controllers\Manage\SupplierDiscoveryController::class, 'triggerForItem'])->name('trigger-item');
+    });
+
     // Биллинг
     Route::prefix('billing')->name('billing.')->group(function () {
         // Счета

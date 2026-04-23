@@ -23,7 +23,7 @@
                     @endif
                 </p>
             </div>
-            <div>
+            <div style="display: flex; gap: var(--space-3); align-items: start; flex-direction: column;">
                 @php
                     $statusLabel = \App\Models\ExternalRequestItem::getStatusLabels()[$item->status] ?? $item->status;
                 @endphp
@@ -34,9 +34,29 @@
                     'clarification_needed' => 'info',
                     default => 'neutral'
                 }">{{ $statusLabel }}</x-badge>
+
+                @if($item->product_type_id && (($item->offers_count ?? 0) == 0 || $item->status === 'no_offers'))
+                    <form method="POST" action="{{ route('admin.supplier-discovery.trigger-item', $item) }}" style="margin: 0;">
+                        @csrf
+                        <button type="submit" class="btn btn-sm" style="background: #2563eb; color: #fff; border: none; padding: 8px 14px; border-radius: 6px; font-weight: 600; cursor: pointer;"
+                                onclick="return confirm('Запустить сбор новых поставщиков для этой позиции? Займёт 5–15 минут.');">
+                            🔎 Запустить сбор поставщиков
+                        </button>
+                    </form>
+                @endif
             </div>
         </div>
     </div>
+
+    @if(session('success'))
+        <div class="alert alert-success" style="margin-bottom: var(--space-4);">{{ session('success') }}</div>
+    @endif
+    @if(session('warning'))
+        <div class="alert" style="margin-bottom: var(--space-4); background: #fef3c7; color: #92400e; padding: var(--space-3); border-radius: 6px;">{{ session('warning') }}</div>
+    @endif
+    @if(session('error'))
+        <div class="alert alert-danger" style="margin-bottom: var(--space-4);">{{ session('error') }}</div>
+    @endif
 
     <!-- Информация о позиции -->
     <div class="card" style="margin-bottom: var(--space-6);">
