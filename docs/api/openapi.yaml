@@ -1,0 +1,522 @@
+openapi: 3.1.0
+info:
+  title: IQOT Public API
+  version: '1.0.0'
+  description: |
+    Публичный API IQOT для создания заявок на закупку B2B-товаров.
+    Спецификация: см. `IQOT_API_Specification.md`.
+
+    ## Аутентификация
+    Bearer-токен в заголовке `Authorization: Bearer iqot_live_<...>`.
+    Ключ получается в ЛК `/cabinet/api-keys`. Формат: `iqot_live_` + 48 hex chars.
+
+    ## Идемпотентность
+    `POST /submissions` принимает заголовок `Idempotency-Key` (любая строка 1–128 chars).
+    Повтор с тем же ключом и идентичным телом возвращает тот же submission_id (200).
+    Повтор с тем же ключом и другим телом — 409 `idempotency_key_conflict`.
+    Если заголовок не прислан — сервер сгенерирует ключ сам (идемпотентность не работает).
+
+    ## Rate Limits
+    - `POST /submissions` — 10 rpm на ключ
+    - `GET /submissions/{id}` — 1 запрос в 15 секунд на `(ключ + id)`
+    - Всё вместе — 60 rpm на ключ
+
+    Ответ при превышении: `429 rate_limit_exceeded` + `Retry-After: <seconds>`.
+servers:
+  - url: https://iqot.ru/api/v1
+    description: Production
+  - url: https://iqot-platform.test/api/v1
+    description: Local (Herd)
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: Submissions
+    description: Создание, статус, отчёт, отмена заявок
+  - name: Account
+    description: Баланс
+  - name: Taxonomy
+    description: Справочники доменов и типов товаров
+  - name: Misc
+    description: Диагностика
+
+paths:
+  /ping:
+    get:
+      tags: [Misc]
+      summary: Диагностика ключа
+      responses:
+        '200':
+          description: Ключ валиден
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  api_client_id: { type: integer }
+                  user_id: { type: integer }
+                  server_time: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /submissions:
+    post:
+      tags: [Submissions]
+      summary: Создать submission
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSubmissionRequest'
+      responses:
+        '202':
+          description: Принято
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SubmissionAccepted' }
+        '200':
+          description: Replay — тот же Idempotency-Key с идентичным payload
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SubmissionAccepted' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '402':
+          description: Недостаточно средств
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorInsufficientBalance' }
+        '409':
+          description: Конфликт Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /submissions/{id}:
+    get:
+      tags: [Submissions]
+      summary: Статус submission
+      parameters:
+        - $ref: '#/components/parameters/SubmissionId'
+      responses:
+        '200':
+          description: Полный статус submission
+          headers:
+            X-Status-Changed-At:
+              schema: { type: string, format: date-time }
+            X-Next-Check-After:
+              schema: { type: string, format: date-time }
+              description: Рекомендуемое время следующего polling'а
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SubmissionStatus' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /submissions/{id}/items:
+    get:
+      tags: [Submissions]
+      summary: Только items submission
+      parameters:
+        - $ref: '#/components/parameters/SubmissionId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/SubmissionItem' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /submissions/{id}/report:
+    get:
+      tags: [Submissions]
+      summary: JSON-отчёт по КП
+      description: Доступен когда хотя бы одна позиция достигла минимума 3 offers.
+      parameters:
+        - $ref: '#/components/parameters/SubmissionId'
+      responses:
+        '200':
+          description: Отчёт готов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Report' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Отчёт ещё не готов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /submissions/{id}/cancel:
+    post:
+      tags: [Submissions]
+      summary: Отменить submission
+      parameters:
+        - $ref: '#/components/parameters/SubmissionId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, maxLength: 255 }
+      responses:
+        '200':
+          description: Отменено (или already_final)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  submission_id: { type: string }
+                  status: { type: string, enum: [cancelled, completed] }
+                  cancelled_at: { type: string, format: date-time, nullable: true }
+                  was_promoted: { type: boolean }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /account/balance:
+    get:
+      tags: [Account]
+      summary: Баланс и холды
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Balance' }
+
+  /taxonomy/domains:
+    get:
+      tags: [Taxonomy]
+      summary: Список доменов применения
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/TaxonomyNode' }
+
+  /taxonomy/product-types:
+    get:
+      tags: [Taxonomy]
+      summary: Список типов товаров (leaf)
+      parameters:
+        - in: query
+          name: domain_id
+          description: Фильтр типов, ассоциированных с доменом
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/TaxonomyNode' }
+                  filter:
+                    type: object
+                    nullable: true
+                  count: { type: integer }
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: iqot_live_<48hex>
+
+  parameters:
+    SubmissionId:
+      in: path
+      name: id
+      required: true
+      description: Публичный ID (`sub_<ulid>`) или ULID без префикса.
+      schema: { type: string, pattern: '^(sub_)?[0-9A-HJKMNP-TV-Z]{26}$' }
+    IdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      required: false
+      description: Клиентский ключ идемпотентности. Если не прислан — генерируется сервером.
+      schema: { type: string, minLength: 1, maxLength: 128 }
+
+  responses:
+    Unauthorized:
+      description: Неавторизован
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    BadRequest:
+      description: Некорректный запрос
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Не найдено
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    TooManyRequests:
+      description: Превышен rate limit
+      headers:
+        Retry-After:
+          schema: { type: integer }
+          description: Через сколько секунд можно повторять
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, request_id]
+          properties:
+            code:
+              type: string
+              enum:
+                - invalid_payload
+                - invalid_api_key
+                - key_revoked
+                - ip_not_whitelisted
+                - api_client_disabled
+                - api_access_denied
+                - insufficient_balance
+                - overdraft_exceeded
+                - sender_not_configured
+                - submission_not_found
+                - idempotency_key_conflict
+                - report_not_ready
+                - rate_limit_exceeded
+                - internal_error
+            message: { type: string }
+            request_id: { type: string, format: uuid }
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field: { type: string }
+                  message: { type: string }
+
+    ErrorInsufficientBalance:
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          properties:
+            error:
+              type: object
+              properties:
+                details:
+                  type: object
+                  properties:
+                    required_hold: { type: number }
+                    balance: { type: number }
+                    overdraft_percent: { type: number }
+
+    CreateSubmissionRequest:
+      type: object
+      required: [items]
+      properties:
+        client_ref: { type: string, maxLength: 128, nullable: true }
+        client_organization_id: { type: integer, minimum: 1, nullable: true }
+        deadline:
+          type: string
+          format: date-time
+          description: "7-60 дней от текущего момента. Default: +30 дней."
+          nullable: true
+        items:
+          type: array
+          minItems: 1
+          maxItems: 300
+          items: { $ref: '#/components/schemas/SubmissionItemInput' }
+
+    SubmissionItemInput:
+      type: object
+      required: [name, quantity, unit]
+      properties:
+        client_ref: { type: string, maxLength: 128, nullable: true }
+        name: { type: string, minLength: 1, maxLength: 500 }
+        article: { type: string, maxLength: 255, nullable: true }
+        brand: { type: string, maxLength: 255, nullable: true }
+        quantity: { type: number, exclusiveMinimum: 0 }
+        unit: { type: string, minLength: 1, maxLength: 32 }
+        description: { type: string, maxLength: 5000, nullable: true }
+        client_category:
+          type: object
+          nullable: true
+          required: [code]
+          properties:
+            code: { type: string, maxLength: 128 }
+            path:
+              type: array
+              maxItems: 10
+              items: { type: string, maxLength: 255 }
+            metadata: { type: object, additionalProperties: true }
+
+    SubmissionAccepted:
+      type: object
+      properties:
+        submission_id: { type: string, description: '"sub_<ulid>"' }
+        status: { type: string, enum: [accepted] }
+        stage: { type: string }
+        client_ref: { type: string, nullable: true }
+        items_count: { type: integer }
+        created_at: { type: string, format: date-time }
+        estimated_ready_at: { type: string, format: date-time }
+
+    SubmissionStatus:
+      type: object
+      properties:
+        submission_id: { type: string }
+        client_ref: { type: string, nullable: true }
+        client_organization_id: { type: integer, nullable: true }
+        status:
+          type: string
+          enum: [accepted, processing, ready, ready_minimum, completed, cancelled]
+        stage: { type: string }
+        created_at: { type: string, format: date-time }
+        status_changed_at: { type: string, format: date-time }
+        ready_at: { type: string, format: date-time, nullable: true }
+        deadline: { type: string, format: date-time, nullable: true }
+        counts:
+          type: object
+          properties:
+            total: { type: integer }
+            accepted: { type: integer }
+            rejected: { type: integer }
+            awaiting_suppliers: { type: integer }
+            dispatched: { type: integer }
+            with_offers_minimum: { type: integer }
+            completed: { type: integer }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/SubmissionItem' }
+        rejected_items:
+          type: array
+          items: { $ref: '#/components/schemas/RejectedItem' }
+
+    SubmissionItem:
+      type: object
+      properties:
+        item_id: { type: string }
+        client_ref: { type: string, nullable: true }
+        name: { type: string }
+        quantity: { type: number }
+        unit: { type: string }
+        status:
+          type: string
+          enum: [pending, accepted, awaiting_suppliers, dispatched, collecting, ready_minimum, completed, rejected]
+        classification:
+          type: object
+          properties:
+            product_type:
+              type: object
+              nullable: true
+              properties:
+                id: { type: integer }
+                slug: { type: string }
+                name: { type: string }
+            domain:
+              type: object
+              nullable: true
+              properties:
+                id: { type: integer }
+                slug: { type: string }
+                name: { type: string }
+        offers_count: { type: integer }
+        minimum_threshold: { type: integer, default: 3 }
+        report_available: { type: boolean }
+        collection_deadline: { type: string, format: date-time, nullable: true }
+
+    RejectedItem:
+      type: object
+      properties:
+        client_ref: { type: string, nullable: true }
+        name: { type: string }
+        reason:
+          type: string
+          enum: [b2c_consumer_goods, out_of_scope, insufficient_data, duplicate, no_suppliers_available, moderator_rejected, cancelled_by_client]
+        message: { type: string }
+        retryable: { type: boolean }
+
+    Report:
+      type: object
+      properties:
+        submission_id: { type: string }
+        client_ref: { type: string, nullable: true }
+        generated_at: { type: string, format: date-time }
+        status: { type: string }
+        deadline: { type: string, format: date-time, nullable: true }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              item_id: { type: string }
+              name: { type: string }
+              quantity: { type: number }
+              unit: { type: string }
+              classification: { $ref: '#/components/schemas/SubmissionItem/properties/classification' }
+              offers_count: { type: integer }
+              minimum_threshold: { type: integer }
+              status: { type: string }
+              best_offer_by_price: { $ref: '#/components/schemas/Offer' }
+              all_offers:
+                type: array
+                items: { $ref: '#/components/schemas/Offer' }
+
+    Offer:
+      type: object
+      properties:
+        supplier_id: { type: integer }
+        price_per_unit: { type: number }
+        total_price: { type: number }
+        currency: { type: string, default: RUB }
+        price_includes_vat: { type: boolean }
+        delivery_days: { type: integer, nullable: true }
+        payment_terms: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        received_at: { type: string, format: date-time, nullable: true }
+
+    Balance:
+      type: object
+      properties:
+        balance: { type: number }
+        currency: { type: string, default: RUB }
+        active_holds: { type: number }
+        overdraft_limit_percent: { type: number }
+        overdraft_limit_absolute: { type: number }
+        warning:
+          type: string
+          nullable: true
+          description: Напр. `overdraft_123.45_rub`
+
+    TaxonomyNode:
+      type: object
+      properties:
+        id: { type: integer }
+        slug: { type: string }
+        name: { type: string }
+        parent_id: { type: integer, nullable: true }
