@@ -285,6 +285,16 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
         Route::get('/product-types', [\App\Http\Controllers\Admin\TaxonomyModerationController::class, 'productTypes'])->name('product-types');
     });
 
+    // Модерация API-заявок (спека §5).
+    Route::prefix('api-submissions')->name('api-submissions.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Manage\ApiSubmissionController::class, 'index'])->name('index');
+        Route::get('/{submission}', [\App\Http\Controllers\Manage\ApiSubmissionController::class, 'show'])->name('show');
+        Route::post('/{submission}/approve-batch', [\App\Http\Controllers\Manage\ApiSubmissionController::class, 'approveBatchGreen'])->name('approve-batch');
+        Route::post('/{submission}/items/{item}/approve', [\App\Http\Controllers\Manage\ApiSubmissionController::class, 'approveItem'])->name('approve-item');
+        Route::post('/{submission}/items/{item}/reject', [\App\Http\Controllers\Manage\ApiSubmissionController::class, 'rejectItem'])->name('reject-item');
+        Route::post('/{submission}/items/{item}/reclassify', [\App\Http\Controllers\Manage\ApiSubmissionController::class, 'reclassifyItem'])->name('reclassify-item');
+    });
+
     // Биллинг
     Route::prefix('billing')->name('billing.')->group(function () {
         // Счета
