@@ -19,6 +19,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'api.key' => \App\Http\Middleware\VerifyApiKey::class,
             'api.auth' => \App\Http\Middleware\AuthenticateApiKey::class,
+            'api.throttle' => \App\Http\Middleware\ApiRateLimit::class,
+            'api.balance_warning' => \App\Http\Middleware\ApiBalanceWarning::class,
             'admin' => \App\Http\Middleware\EnsureUserIsAdmin::class,
         ]);
     })

@@ -34,3 +34,6 @@ Schedule::job(new \App\Jobs\Api\RecheckAwaitingSuppliersJob())->hourly()->withou
 
 // Публичный API: reconcile промоушена (heartbeat cross-DB) — каждые 5 минут (§6.5).
 Schedule::job(new \App\Jobs\Api\ReconcilePromotionJob())->everyFiveMinutes()->withoutOverlapping();
+
+// Публичный API: физическое удаление revoked ключей (>30 дней) — раз в сутки (§9.5).
+Schedule::job(new \App\Jobs\Api\CleanupRevokedApiKeysJob())->daily();

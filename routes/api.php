@@ -93,21 +93,32 @@ Route::prefix('v1')->name('v1.')->group(function () {
     Route::get('export', [CatalogExportController::class, 'export'])->name('export');
 });
 
-// Публичный IQOT API v1 для клиентов (спека §11). Аутентификация по Bearer API-ключу.
-Route::prefix('v1')->middleware('api.auth')->name('v1.client.')->group(function () {
-    // Диагностика ключа.
-    Route::get('ping', \App\Http\Controllers\Api\V1\PingController::class)->name('ping');
+// Публичный IQOT API v1 для клиентов (спека §11). Auth + total-bucket rate-limit (§12.2).
+Route::prefix('v1')
+    ->middleware(['api.auth', 'api.throttle:total,60/min', 'api.balance_warning'])
+    ->name('v1.client.')
+    ->group(function () {
+        // Диагностика ключа.
+        Route::get('ping', \App\Http\Controllers\Api\V1\PingController::class)->name('ping');
 
-    // Submissions.
-    Route::post('submissions', [\App\Http\Controllers\Api\V1\SubmissionController::class, 'store'])->name('submissions.store');
-    Route::get('submissions/{id}', [\App\Http\Controllers\Api\V1\SubmissionReadController::class, 'show'])->name('submissions.show');
-    Route::get('submissions/{id}/items', [\App\Http\Controllers\Api\V1\SubmissionReadController::class, 'items'])->name('submissions.items');
-    Route::get('submissions/{id}/report', [\App\Http\Controllers\Api\V1\SubmissionReadController::class, 'report'])->name('submissions.report');
+        // Submissions. POST — 10 rpm; GET/{id} — 1 per 15s.
+        Route::post('submissions', [\App\Http\Controllers\Api\V1\SubmissionController::class, 'store'])
+            ->middleware('api.throttle:post_submissions,10/min')
+            ->name('submissions.store');
+        Route::get('submissions/{id}', [\App\Http\Controllers\Api\V1\SubmissionReadController::class, 'show'])
+            ->middleware('api.throttle:get_submission,1/15s')
+            ->name('submissions.show');
+        Route::get('submissions/{id}/items', [\App\Http\Controllers\Api\V1\SubmissionReadController::class, 'items'])
+            ->name('submissions.items');
+        Route::get('submissions/{id}/report', [\App\Http\Controllers\Api\V1\SubmissionReadController::class, 'report'])
+            ->name('submissions.report');
+        Route::post('submissions/{id}/cancel', \App\Http\Controllers\Api\V1\SubmissionCancelController::class)
+            ->name('submissions.cancel');
 
-    // Account.
-    Route::get('account/balance', [\App\Http\Controllers\Api\V1\AccountController::class, 'balance'])->name('account.balance');
+        // Account.
+        Route::get('account/balance', [\App\Http\Controllers\Api\V1\AccountController::class, 'balance'])->name('account.balance');
 
-    // Taxonomy (справочники).
-    Route::get('taxonomy/domains', [\App\Http\Controllers\Api\V1\TaxonomyController::class, 'domains'])->name('taxonomy.domains');
-    Route::get('taxonomy/product-types', [\App\Http\Controllers\Api\V1\TaxonomyController::class, 'productTypes'])->name('taxonomy.product-types');
-});
+        // Taxonomy.
+        Route::get('taxonomy/domains', [\App\Http\Controllers\Api\V1\TaxonomyController::class, 'domains'])->name('taxonomy.domains');
+        Route::get('taxonomy/product-types', [\App\Http\Controllers\Api\V1\TaxonomyController::class, 'productTypes'])->name('taxonomy.product-types');
+    });
