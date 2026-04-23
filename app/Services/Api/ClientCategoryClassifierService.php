@@ -41,7 +41,7 @@ class ClientCategoryClassifierService
     {
         // Если нет client_category — сразу full AI без маппинга (§4.1 п.5).
         if ($clientCategoryId === null) {
-            return $this->fullAiFallback('no_category');
+            return $this->fullAiClassify($item, null);
         }
 
         $candidates = ClientCategoryCandidate::query()
@@ -52,8 +52,8 @@ class ClientCategoryClassifierService
             ->get();
 
         if ($candidates->isEmpty()) {
-            // §4.1 п.4: кандидатов нет — full AI, потом модерация.
-            return $this->fullAiFallback('no_candidates');
+            // §4.1 п.4: кандидатов нет — полный AI-проход + создание ai_suggested candidate.
+            return $this->fullAiClassify($item, $clientCategoryId);
         }
 
         $manualCandidates = $candidates->where('source', 'manual');
@@ -93,7 +93,7 @@ class ClientCategoryClassifierService
         }
 
         // §4.1 п.4/фоллбэк: полный AI.
-        return $this->fullAiFallback('fallback');
+        return $this->fullAiClassify($item, $clientCategoryId);
     }
 
     /**
@@ -180,14 +180,228 @@ class ClientCategoryClassifierService
     }
 
     /**
-     * Full AI-проход по позиции (§4.3). Architect-mode off: новые product_types
-     * не создаём. Если модель вернула неизвестный id — product_type_id=NULL,
-     * needs_review=1, trust=red.
+     * Full AI-проход по позиции (§4.3).
      *
-     * В MVP пока упрощённая версия: не передаём полный каталог
-     * (2115 product_types), а отдаём позицию модератору как новую.
+     * Pipeline:
+     *   1. Prefilter product_types в reports: SQL по name/slug/keywords + токенам
+     *      из имени/бренда/артикула позиции. Возвращаем до 50 кандидатов.
+     *   2. Загружаем активные domains (их немного, ~100).
+     *   3. AI (gpt-4o) выбирает product_type_id + domain_id + confidence.
+     *   4. Hallucination guard: если id не из предложенного списка → null/red.
+     *   5. Если confidence >= 0.75 и есть client_category — создаём ai_suggested
+     *      candidate, чтобы следующие submission'ы шли через mini_classifier.
+     *
+     * Если AI не сконфигурирован или упал — возвращаем raw-fallback
+     * (product_type=null, trust=red, needs_review=1 — на модерацию).
      */
-    private function fullAiFallback(string $reason): array
+    private function fullAiClassify(array $item, ?int $clientCategoryId): array
+    {
+        if (!$this->ai->isConfigured()) {
+            return $this->rawFallback('ai_not_configured');
+        }
+
+        try {
+            $productTypes = $this->prefilterProductTypes($item);
+            if ($productTypes->isEmpty()) {
+                return $this->rawFallback('no_candidates_prefilter');
+            }
+
+            $domains = ApplicationDomain::query()
+                ->where('is_active', 1)
+                ->where('status', 'active')
+                ->orderBy('name')
+                ->get(['id', 'slug', 'name']);
+
+            $category = $clientCategoryId ? ClientCategory::query()->find($clientCategoryId) : null;
+
+            $result = $this->callFullAi($item, $category, $productTypes, $domains);
+
+            // Hallucination guard: AI должен вернуть id из предложенного списка.
+            $allowedPtIds = $productTypes->pluck('id')->all();
+            $allowedDomainIds = array_merge([null, 0], $domains->pluck('id')->all());
+
+            $ptId = $result['product_type_id'] ?? null;
+            $domainId = $result['domain_id'] ?? null;
+            $confidence = (float) ($result['confidence'] ?? 0);
+
+            if (!in_array($ptId, $allowedPtIds, true)) {
+                $ptId = null;
+                $confidence = 0;
+            }
+            if ($domainId !== null && !in_array((int) $domainId, $allowedDomainIds, true)) {
+                $domainId = null;
+            }
+
+            if ($ptId === null) {
+                return $this->rawFallback('ai_no_valid_match');
+            }
+
+            // Trust-level политика для full_ai §5.1: confidence≥0.9 → yellow, иначе red.
+            $trust = $confidence >= 0.9 ? 'yellow' : 'red';
+            $needsReview = $trust !== 'green'; // full_ai всегда нуждается в ревью изначально
+
+            // §4.1 п.4: если confidence приемлемый — создаём ai_suggested candidate
+            // для этой client_category, чтобы ускорить будущие submissions.
+            if ($clientCategoryId !== null && $confidence >= 0.75) {
+                $this->createAiSuggestedCandidate(
+                    $clientCategoryId,
+                    (int) $ptId,
+                    $domainId !== null ? (int) $domainId : null,
+                    $confidence
+                );
+            }
+
+            return [
+                'product_type_id' => (int) $ptId,
+                'domain_id' => $domainId !== null ? (int) $domainId : null,
+                'type_confidence' => $confidence,
+                'domain_confidence' => $domainId !== null ? $confidence : null,
+                'classification_source' => 'full_ai',
+                'needs_review' => $needsReview,
+                'trust_level' => $trust,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('ClientCategoryClassifier: full AI failed', [
+                'error' => $e->getMessage(),
+                'item_name' => $item['name'] ?? null,
+            ]);
+            return $this->rawFallback('ai_exception');
+        }
+    }
+
+    /**
+     * Prefilter: SQL-поиск product_types по токенам из позиции.
+     *
+     * @return \Illuminate\Support\Collection<int, \App\Models\ProductType>
+     */
+    private function prefilterProductTypes(array $item): \Illuminate\Support\Collection
+    {
+        $terms = $this->extractSearchTerms($item);
+        if (empty($terms)) {
+            // Нет полезных токенов — возвращаем пустой набор (модератор получит позицию как есть).
+            return collect();
+        }
+
+        $query = ProductType::query()
+            ->where('is_active', 1)
+            ->where('status', 'active')
+            ->where('is_leaf', 1);
+
+        $query->where(function ($q) use ($terms) {
+            foreach ($terms as $t) {
+                $like = '%' . $t . '%';
+                $q->orWhere('name', 'LIKE', $like)
+                    ->orWhere('slug', 'LIKE', $like)
+                    ->orWhereRaw(
+                        "JSON_SEARCH(LOWER(CAST(keywords AS CHAR)), 'one', ?) IS NOT NULL",
+                        ['%' . mb_strtolower($t) . '%']
+                    );
+            }
+        });
+
+        return $query->limit(50)->get(['id', 'slug', 'name', 'keywords']);
+    }
+
+    /**
+     * Извлечение токенов из name/article/brand. Фильтруем слишком короткие и служебные.
+     *
+     * @return array<string>
+     */
+    private function extractSearchTerms(array $item): array
+    {
+        $raw = trim(
+            (string) ($item['name'] ?? '') . ' ' .
+            (string) ($item['brand'] ?? '') . ' ' .
+            (string) ($item['article'] ?? '')
+        );
+        if ($raw === '') {
+            return [];
+        }
+        // Разбиваем по non-letter-digit символам.
+        $tokens = preg_split('/[^\p{L}\p{N}]+/u', $raw) ?: [];
+        $clean = [];
+        foreach ($tokens as $t) {
+            $t = trim($t);
+            if (mb_strlen($t) < 3) {
+                continue; // слишком короткое
+            }
+            $clean[mb_strtolower($t)] = true; // уникальность
+        }
+        return array_keys($clean);
+    }
+
+    /**
+     * Вызов AI (gpt-4o) для полной классификации.
+     *
+     * @return array<string,mixed> {product_type_id, domain_id, confidence, reasoning}
+     */
+    private function callFullAi(
+        array $item,
+        ?ClientCategory $category,
+        \Illuminate\Support\Collection $productTypes,
+        \Illuminate\Support\Collection $domains,
+    ): array {
+        $ptList = $productTypes->map(fn ($pt) => sprintf('  id=%d  name="%s"  slug=%s', $pt->id, $pt->name, $pt->slug))->implode("\n");
+        $domainList = $domains->map(fn ($d) => sprintf('  id=%d  name="%s"  slug=%s', $d->id, $d->name, $d->slug))->implode("\n");
+
+        $systemPrompt = 'Ты — классификатор B2B-запчастей и оборудования. '
+            . 'Тебе дана позиция из заявки и список возможных product_types + domains. '
+            . 'Выбери ОДИН product_type_id, который лучше всего соответствует позиции, '
+            . 'и подходящий domain_id (или null если позиция универсальна). '
+            . 'Используй ТОЛЬКО id из списков — не придумывай свои. '
+            . 'Ответ строго JSON: '
+            . '{"product_type_id": int|null, "domain_id": int|null, "confidence": float (0..1), "reasoning": string}. '
+            . 'Если ни один product_type не подходит — product_type_id=null, confidence=0.';
+
+        $userPrompt = "Позиция:\n"
+            . '  name: ' . ($item['name'] ?? '') . "\n"
+            . '  brand: ' . ($item['brand'] ?? '—') . "\n"
+            . '  article: ' . ($item['article'] ?? '—') . "\n"
+            . '  description: ' . ($item['description'] ?? '—') . "\n"
+            . '  quantity: ' . ($item['quantity'] ?? '—') . ' ' . ($item['unit'] ?? '') . "\n"
+            . ($category ? '  client_category: ' . $category->full_path . "\n" : '')
+            . "\nДоступные product_types:\n" . $ptList
+            . "\n\nДоступные domains:\n" . $domainList;
+
+        return $this->ai->jsonCompletion(
+            $this->ai->modelFull(),
+            $systemPrompt,
+            $userPrompt,
+            600
+        );
+    }
+
+    private function createAiSuggestedCandidate(int $clientCategoryId, int $productTypeId, ?int $domainId, float $confidence): void
+    {
+        try {
+            ClientCategoryCandidate::query()->updateOrCreate(
+                [
+                    'client_category_id' => $clientCategoryId,
+                    'product_type_id' => $productTypeId,
+                    'domain_id' => $domainId,
+                ],
+                [
+                    'priority' => 2,
+                    'confidence' => round($confidence, 2),
+                    'source' => 'ai_suggested',
+                    'is_active' => true,
+                    'hit_count' => 1,
+                    'last_hit_at' => now(),
+                ]
+            );
+        } catch (\Throwable $e) {
+            Log::warning('ClientCategoryClassifier: failed to create ai_suggested candidate', [
+                'error' => $e->getMessage(),
+                'client_category_id' => $clientCategoryId,
+                'product_type_id' => $productTypeId,
+            ]);
+        }
+    }
+
+    /**
+     * Сырой fallback — AI упал/не настроен/не нашёл совпадение. Модератор разберёт.
+     */
+    private function rawFallback(string $reason): array
     {
         return [
             'product_type_id' => null,
@@ -197,7 +411,7 @@ class ClientCategoryClassifierService
             'classification_source' => 'full_ai',
             'needs_review' => true,
             'trust_level' => 'red',
-            '_fallback_reason' => $reason, // для отладки, контроллер/воркер не пишет в БД
+            '_fallback_reason' => $reason,
         ];
     }
 
