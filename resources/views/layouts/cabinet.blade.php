@@ -390,6 +390,11 @@
                             <span class="sidebar-item-text">API-заявки</span>
                             <span class="sidebar-item-tooltip">API-заявки</span>
                         </a>
+                        <a href="{{ route('admin.api-clients.index') }}" class="sidebar-item {{ request()->routeIs('admin.api-clients*') ? 'active' : '' }}">
+                            <i data-lucide="key-round" class="sidebar-item-icon"></i>
+                            <span class="sidebar-item-text">API-клиенты</span>
+                            <span class="sidebar-item-tooltip">API-клиенты</span>
+                        </a>
                         <a href="{{ route('admin.supplier-discovery.index') }}" class="sidebar-item {{ request()->routeIs('admin.supplier-discovery*') ? 'active' : '' }}">
                             <i data-lucide="search" class="sidebar-item-icon"></i>
                             <span class="sidebar-item-text">Подбор поставщиков</span>

@@ -98,26 +98,6 @@ class ApiKeyController extends Controller
                 . ApiKeyService::REVOKED_GRACE_DAYS . ' дней.');
     }
 
-    /**
-     * Сохранить настройки API-клиента (auto_approve_green и т.п.).
-     */
-    public function updateSettings(Request $request): RedirectResponse
-    {
-        $user = Auth::user();
-        if (!$this->userAccessService->hasApiAccess($user->id)) {
-            return back()->with('error', 'Доступ к API не включён в вашем тарифе.');
-        }
-
-        $client = $this->resolveClient($user->id, createIfMissing: true);
-
-        $client->update([
-            'auto_approve_green' => $request->boolean('auto_approve_green'),
-        ]);
-
-        return redirect()->route('cabinet.api-keys.index')
-            ->with('success', 'Настройки сохранены.');
-    }
-
     private function resolveClient(int $userId, bool $createIfMissing = false): ?ApiClient
     {
         $client = ApiClient::query()->where('user_id', $userId)->first();

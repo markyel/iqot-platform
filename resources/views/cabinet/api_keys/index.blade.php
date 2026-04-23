@@ -52,38 +52,6 @@
         </div>
     @endif
 
-    @if($client)
-        <div class="card" style="margin-bottom: var(--space-6);">
-            <div class="card-header">
-                <h2 class="card-title">Настройки клиента</h2>
-            </div>
-            <div class="card-body">
-                <form method="POST" action="{{ route('cabinet.api-keys.update-settings') }}">
-                    @csrf
-                    @method('PATCH')
-                    <label style="display: flex; gap: var(--space-3); align-items: flex-start; cursor: pointer;">
-                        <input type="checkbox"
-                               name="auto_approve_green"
-                               value="1"
-                               {{ $client->auto_approve_green ? 'checked' : '' }}
-                               style="margin-top: 4px;">
-                        <span>
-                            <strong>Авто-приём уверенно классифицированных позиций (green)</strong>
-                            <div style="font-size: 0.875rem; color: var(--gray-600); margin-top: var(--space-1);">
-                                Позиции, для которых классификатор вернул <code>trust=green</code> (manual candidate
-                                или ai_suggested с hit_count ≥ 20), сразу принимаются без ручной модерации.
-                                Yellow и red продолжают идти на модерацию как обычно.
-                            </div>
-                        </span>
-                    </label>
-                    <div style="margin-top: var(--space-4);">
-                        <button type="submit" class="btn btn-primary">Сохранить</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    @endif
-
     <div class="card" style="margin-bottom: var(--space-6);">
         <div class="card-header">
             <h2 class="card-title">Создать новый ключ</h2>

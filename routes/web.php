@@ -103,7 +103,6 @@ Route::middleware(['auth', 'verified'])->prefix('cabinet')->name('cabinet.')->gr
     Route::prefix('api-keys')->name('api-keys.')->group(function () {
         Route::get('/', [\App\Http\Controllers\Cabinet\ApiKeyController::class, 'index'])->name('index');
         Route::post('/', [\App\Http\Controllers\Cabinet\ApiKeyController::class, 'store'])->name('store');
-        Route::patch('/settings', [\App\Http\Controllers\Cabinet\ApiKeyController::class, 'updateSettings'])->name('update-settings');
         Route::delete('/{key}', [\App\Http\Controllers\Cabinet\ApiKeyController::class, 'destroy'])->name('destroy');
     });
 
@@ -290,6 +289,12 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
         Route::get('/', [\App\Http\Controllers\Admin\TaxonomyModerationController::class, 'index'])->name('index');
         Route::get('/domains', [\App\Http\Controllers\Admin\TaxonomyModerationController::class, 'domains'])->name('domains');
         Route::get('/product-types', [\App\Http\Controllers\Admin\TaxonomyModerationController::class, 'productTypes'])->name('product-types');
+    });
+
+    // Управление API-клиентами (включение, авто-приём green и т.п.).
+    Route::prefix('api-clients')->name('api-clients.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Manage\ApiClientController::class, 'index'])->name('index');
+        Route::patch('/{client}', [\App\Http\Controllers\Manage\ApiClientController::class, 'update'])->name('update');
     });
 
     // Модерация API-заявок (спека §5).
