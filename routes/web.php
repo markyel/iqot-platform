@@ -98,6 +98,22 @@ Route::middleware(['auth', 'verified'])->prefix('cabinet')->name('cabinet.')->gr
         Route::get('/{id}', [\App\Http\Controllers\Cabinet\InvoiceController::class, 'show'])->name('show');
         Route::get('/{id}/download', [\App\Http\Controllers\Cabinet\InvoiceController::class, 'download'])->name('download');
     });
+
+    // API-ключи пользователя (публичный API IQOT, спека §9.2).
+    Route::prefix('api-keys')->name('api-keys.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Cabinet\ApiKeyController::class, 'index'])->name('index');
+        Route::post('/', [\App\Http\Controllers\Cabinet\ApiKeyController::class, 'store'])->name('store');
+        Route::delete('/{key}', [\App\Http\Controllers\Cabinet\ApiKeyController::class, 'destroy'])->name('destroy');
+    });
+
+    // Senders пользователя (multi-sender, спека §9.3).
+    Route::prefix('senders')->name('senders.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Cabinet\SenderController::class, 'index'])->name('index');
+        Route::post('/', [\App\Http\Controllers\Cabinet\SenderController::class, 'store'])->name('store');
+        Route::put('/{sender}', [\App\Http\Controllers\Cabinet\SenderController::class, 'update'])->name('update');
+        Route::post('/{sender}/default', [\App\Http\Controllers\Cabinet\SenderController::class, 'makeDefault'])->name('default');
+        Route::delete('/{sender}', [\App\Http\Controllers\Cabinet\SenderController::class, 'destroy'])->name('destroy');
+    });
 });
 
 // Тестовая страница проверки прав (удалить после отладки)

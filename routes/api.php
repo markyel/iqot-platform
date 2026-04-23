@@ -92,3 +92,9 @@ Route::prefix('v1')->name('v1.')->group(function () {
     // Полный экспорт
     Route::get('export', [CatalogExportController::class, 'export'])->name('export');
 });
+
+// Публичный IQOT API v1 для клиентов (спека §11). Аутентификация по Bearer API-ключу.
+Route::prefix('v1')->middleware('api.auth')->name('v1.client.')->group(function () {
+    // Диагностика ключа.
+    Route::get('ping', \App\Http\Controllers\Api\V1\PingController::class)->name('ping');
+});
