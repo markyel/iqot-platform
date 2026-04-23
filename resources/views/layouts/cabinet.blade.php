@@ -385,6 +385,11 @@
                             <span class="sidebar-item-text">Управление заявками</span>
                             <span class="sidebar-item-tooltip">Управление заявками</span>
                         </a>
+                        <a href="{{ route('admin.api-submissions.index') }}" class="sidebar-item {{ request()->routeIs('admin.api-submissions*') ? 'active' : '' }}">
+                            <i data-lucide="cloud-cog" class="sidebar-item-icon"></i>
+                            <span class="sidebar-item-text">API-заявки</span>
+                            <span class="sidebar-item-tooltip">API-заявки</span>
+                        </a>
                         <a href="{{ route('admin.questions.index') }}" class="sidebar-item {{ request()->routeIs('admin.questions.index') ? 'active' : '' }}">
                             <i data-lucide="message-circle-question" class="sidebar-item-icon"></i>
                             <span class="sidebar-item-text">Вопросы от поставщиков</span>

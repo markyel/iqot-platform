@@ -133,44 +133,56 @@
                                 <td>{{ $item->item_status }}</td>
                                 <td>
                                     @if($item->item_status === 'classified')
-                                        <form method="POST" action="{{ route('admin.api-submissions.approve-item', [$submission, $item]) }}" style="display: inline; margin: 0;">
-                                            @csrf
-                                            <button type="submit" class="btn btn-sm btn-primary">Approve</button>
-                                        </form>
-
-                                        <details style="display: inline-block; margin-left: var(--space-2);">
-                                            <summary style="cursor: pointer; display: inline-block;">
-                                                <span class="btn btn-sm btn-danger" style="display: inline-block;">Reject…</span>
-                                            </summary>
-                                            <form method="POST" action="{{ route('admin.api-submissions.reject-item', [$submission, $item]) }}"
-                                                  style="margin-top: var(--space-2); padding: var(--space-3); background: var(--gray-50); border-radius: 4px;">
+                                        <div class="api-actions">
+                                            <form method="POST" action="{{ route('admin.api-submissions.approve-item', [$submission, $item]) }}" class="api-actions__form">
                                                 @csrf
-                                                <select name="reason" required style="margin-bottom: var(--space-2);">
-                                                    @foreach($rejectReasons as $code => [$label, $retryable])
-                                                        <option value="{{ $code }}">{{ $code }} — {{ $label }}</option>
-                                                    @endforeach
-                                                </select>
-                                                <input type="text" name="message" placeholder="Комментарий (опционально)" maxlength="2000" style="width: 100%; margin-bottom: var(--space-2);">
-                                                <button type="submit" class="btn btn-sm btn-danger">Reject</button>
+                                                <button type="submit" class="btn btn-sm btn-primary">Approve</button>
                                             </form>
-                                        </details>
 
-                                        <details style="display: inline-block; margin-left: var(--space-2);">
-                                            <summary style="cursor: pointer; display: inline-block;">
-                                                <span class="btn btn-sm" style="display: inline-block;">Reclassify…</span>
-                                            </summary>
-                                            <form method="POST" action="{{ route('admin.api-submissions.reclassify-item', [$submission, $item]) }}"
-                                                  style="margin-top: var(--space-2); padding: var(--space-3); background: var(--gray-50); border-radius: 4px;">
-                                                @csrf
-                                                <label style="display: block;">product_type_id:
-                                                    <input type="number" name="product_type_id" min="1" value="{{ $item->product_type_id }}" style="width: 100px;">
-                                                </label>
-                                                <label style="display: block; margin-top: var(--space-2);">domain_id (пусто = NULL):
-                                                    <input type="number" name="domain_id" min="1" value="{{ $item->domain_id }}" style="width: 100px;">
-                                                </label>
-                                                <button type="submit" class="btn btn-sm" style="margin-top: var(--space-2);">Apply</button>
-                                            </form>
-                                        </details>
+                                            <details class="api-actions__details">
+                                                <summary class="btn btn-sm btn-danger">Reject…</summary>
+                                                <form method="POST"
+                                                      action="{{ route('admin.api-submissions.reject-item', [$submission, $item]) }}"
+                                                      class="api-actions__popup">
+                                                    @csrf
+                                                    <label class="api-actions__label">Причина</label>
+                                                    <select name="reason" required class="api-actions__input">
+                                                        @foreach($rejectReasons as $code => [$label, $retryable])
+                                                            <option value="{{ $code }}">{{ $code }} — {{ $label }}</option>
+                                                        @endforeach
+                                                    </select>
+                                                    <label class="api-actions__label">Комментарий (опционально)</label>
+                                                    <input type="text" name="message" maxlength="2000" class="api-actions__input">
+                                                    <button type="submit" class="btn btn-sm btn-danger">Reject</button>
+                                                </form>
+                                            </details>
+
+                                            <details class="api-actions__details">
+                                                <summary class="btn btn-sm">Reclassify…</summary>
+                                                <form method="POST"
+                                                      action="{{ route('admin.api-submissions.reclassify-item', [$submission, $item]) }}"
+                                                      class="api-actions__popup">
+                                                    @csrf
+                                                    <label class="api-actions__label">product_type_id</label>
+                                                    <input type="number" name="product_type_id" min="1"
+                                                           value="{{ $item->product_type_id }}"
+                                                           class="api-actions__input"
+                                                           placeholder="например, 1101 — Подшипники">
+                                                    <label class="api-actions__label">domain_id (пусто = NULL)</label>
+                                                    <input type="number" name="domain_id" min="1"
+                                                           value="{{ $item->domain_id }}"
+                                                           class="api-actions__input"
+                                                           placeholder="например, 1 — Лифты">
+                                                    <small class="api-actions__hint">
+                                                        Справочник:
+                                                        <a href="{{ route('admin.taxonomy.product-types') }}" target="_blank" rel="noopener">product types</a>
+                                                        ·
+                                                        <a href="{{ route('admin.taxonomy.domains') }}" target="_blank" rel="noopener">domains</a>
+                                                    </small>
+                                                    <button type="submit" class="btn btn-sm">Apply</button>
+                                                </form>
+                                            </details>
+                                        </div>
                                     @else
                                         <span style="color: var(--gray-500);">—</span>
                                     @endif
@@ -183,4 +195,68 @@
         </div>
     </div>
 </div>
+
+@push('styles')
+<style>
+.api-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: flex-start;
+}
+.api-actions__form { margin: 0; }
+
+.api-actions__details {
+    position: relative;
+    display: inline-block;
+}
+/* <summary> превращаем в саму кнопку — без вложенного span */
+.api-actions__details > summary {
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+}
+.api-actions__details > summary::-webkit-details-marker { display: none; }
+.api-actions__details > summary::marker { content: ''; }
+
+/* Popup с формой — абсолютно позиционирован, не ломает строку таблицы */
+.api-actions__popup {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 20;
+    min-width: 280px;
+    margin: 0;
+    padding: 12px;
+    background: #fff;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.api-actions__label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #4b5563;
+}
+.api-actions__input {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-size: 14px;
+}
+.api-actions__popup button[type="submit"] {
+    align-self: flex-start;
+}
+.api-actions__hint {
+    font-size: 12px;
+    color: #6b7280;
+}
+.api-actions__hint a { color: #2563eb; text-decoration: underline; }
+</style>
+@endpush
 @endsection
