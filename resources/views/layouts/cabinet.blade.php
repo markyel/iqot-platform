@@ -359,7 +359,7 @@
                         <span class="sidebar-item-tooltip">Мониторинг позиций</span>
                     </a>
                     @if(app(\App\Services\Api\UserAccessService::class)->hasApiAccess(auth()->id()))
-                        <a href="{{ route('cabinet.api-keys.index') }}" class="sidebar-item {{ request()->routeIs('cabinet.api-keys*') || request()->routeIs('cabinet.senders*') ? 'active' : '' }}">
+                        <a href="{{ route('cabinet.api-submissions.index') }}" class="sidebar-item {{ request()->routeIs('cabinet.api-keys*') || request()->routeIs('cabinet.senders*') || request()->routeIs('cabinet.api-submissions*') ? 'active' : '' }}">
                             <i data-lucide="key-round" class="sidebar-item-icon"></i>
                             <span class="sidebar-item-text">API</span>
                             <span class="sidebar-item-tooltip">API</span>

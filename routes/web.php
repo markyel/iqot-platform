@@ -106,6 +106,12 @@ Route::middleware(['auth', 'verified'])->prefix('cabinet')->name('cabinet.')->gr
         Route::delete('/{key}', [\App\Http\Controllers\Cabinet\ApiKeyController::class, 'destroy'])->name('destroy');
     });
 
+    // API-заявки пользователя (список + детали).
+    Route::prefix('api-submissions')->name('api-submissions.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Cabinet\ApiSubmissionController::class, 'index'])->name('index');
+        Route::get('/{submission}', [\App\Http\Controllers\Cabinet\ApiSubmissionController::class, 'show'])->name('show');
+    });
+
     // Senders пользователя (multi-sender, спека §9.3).
     Route::prefix('senders')->name('senders.')->group(function () {
         Route::get('/', [\App\Http\Controllers\Cabinet\SenderController::class, 'index'])->name('index');

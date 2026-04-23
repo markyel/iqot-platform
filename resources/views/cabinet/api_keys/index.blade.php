@@ -5,6 +5,12 @@
 @section('content')
 <x-page-header title="API-ключи" description="Управление ключами доступа к публичному IQOT API" />
 
+<div style="margin-bottom: var(--space-4); display: flex; gap: var(--space-3);">
+    <a href="{{ route('cabinet.api-keys.index') }}" class="btn btn-sm btn-primary">Ключи</a>
+    <a href="{{ route('cabinet.senders.index') }}" class="btn btn-sm">Отправители</a>
+    <a href="{{ route('cabinet.api-submissions.index') }}" class="btn btn-sm">Заявки</a>
+</div>
+
 <div style="max-width: 900px;">
     @if(session('success'))
         <div class="alert alert-success" style="margin-bottom: var(--space-4);">{{ session('success') }}</div>
