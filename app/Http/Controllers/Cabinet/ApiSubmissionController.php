@@ -99,6 +99,8 @@ class ApiSubmissionController extends Controller
         $domains = collect();
         $offerCounts = [];
 
+        $offersByItem = collect();
+
         if ($submission->internal_request_id) {
             $items = ExternalRequestItem::query()
                 ->where('request_id', $submission->internal_request_id)
@@ -106,13 +108,17 @@ class ApiSubmissionController extends Controller
                 ->get();
             $productTypes = ProductType::whereIn('id', $items->pluck('product_type_id')->filter())->get()->keyBy('id');
             $domains = ApplicationDomain::whereIn('id', $items->pluck('domain_id')->filter())->get()->keyBy('id');
-            $offerCounts = ExternalOffer::query()
+
+            // Полные данные оферов для отчёта — с супплайером, ценой, сроком, условиями.
+            $offers = ExternalOffer::query()
+                ->with('supplier:id,name,email,phone,website')
                 ->whereIn('request_item_id', $items->pluck('id'))
                 ->whereIn('status', ['received', 'processed'])
-                ->selectRaw('request_item_id, COUNT(*) as c')
-                ->groupBy('request_item_id')
-                ->pluck('c', 'request_item_id')
-                ->all();
+                ->whereNotNull('price_per_unit')
+                ->orderByRaw('CASE WHEN currency = "RUB" THEN price_per_unit ELSE price_per_unit * 100 END')
+                ->get();
+            $offersByItem = $offers->groupBy('request_item_id');
+            $offerCounts = $offersByItem->map->count()->all();
         } else {
             $items = $submission->staging?->items ?? collect();
             $productTypes = ProductType::whereIn('id', $items->pluck('product_type_id')->filter())->get()->keyBy('id');
@@ -126,6 +132,7 @@ class ApiSubmissionController extends Controller
             'productTypes' => $productTypes,
             'domains' => $domains,
             'offerCounts' => $offerCounts,
+            'offersByItem' => $offersByItem,
         ]);
     }
 }

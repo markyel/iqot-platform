@@ -311,9 +311,12 @@ class UserRequestController extends Controller
     /**
      * Список заявок пользователя
      */
-    public function index()
+    public function index(\Illuminate\Http\Request $httpRequest)
     {
-        $requests = Auth::user()->requests()
+        $user = Auth::user();
+        $sourceFilter = $httpRequest->query('source', 'all'); // all | web | api
+
+        $requests = $user->requests()
             ->with(['items', 'balanceHold.charges'])
             ->orderByDesc('created_at')
             ->paginate(20);
@@ -330,7 +333,29 @@ class UserRequestController extends Controller
                 ->keyBy('id');
         }
 
-        return view('cabinet.requests.index', compact('requests', 'externalRequests'));
+        // API-заявки пользователя (через api_client).
+        $apiSubmissions = collect();
+        $apiCounts = 0;
+        $apiClient = \App\Models\Api\ApiClient::query()->where('user_id', $user->id)->first();
+        if ($apiClient) {
+            $apiSubmissions = \App\Models\Api\ApiSubmission::query()
+                ->where('api_client_id', $apiClient->id)
+                ->orderByDesc('id')
+                ->limit(50)
+                ->get();
+            $apiCounts = $apiSubmissions->count();
+        }
+
+        $webCounts = $requests->total();
+
+        return view('cabinet.requests.index', compact(
+            'requests',
+            'externalRequests',
+            'apiSubmissions',
+            'sourceFilter',
+            'webCounts',
+            'apiCounts'
+        ));
     }
 
     /**

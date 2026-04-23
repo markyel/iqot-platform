@@ -18,6 +18,81 @@
     </x-slot>
 </x-page-header>
 
+@if(($apiCounts ?? 0) > 0)
+    <div style="margin-bottom: var(--space-4); display: flex; gap: var(--space-2); align-items: center;">
+        <span style="color: var(--gray-600); font-size: 0.9rem;">Источник:</span>
+        <a href="{{ route('cabinet.requests') }}"
+           class="btn btn-sm {{ ($sourceFilter ?? 'all') === 'all' ? 'btn-primary' : '' }}">
+            Все ({{ ($webCounts ?? 0) + ($apiCounts ?? 0) }})
+        </a>
+        <a href="{{ route('cabinet.requests', ['source' => 'web']) }}"
+           class="btn btn-sm {{ ($sourceFilter ?? '') === 'web' ? 'btn-primary' : '' }}">
+            Ручные ({{ $webCounts ?? 0 }})
+        </a>
+        <a href="{{ route('cabinet.requests', ['source' => 'api']) }}"
+           class="btn btn-sm {{ ($sourceFilter ?? '') === 'api' ? 'btn-primary' : '' }}">
+            API ({{ $apiCounts ?? 0 }})
+        </a>
+    </div>
+
+    @if(($sourceFilter ?? 'all') !== 'web' && $apiSubmissions->isNotEmpty())
+        <div class="card" style="margin-bottom: var(--space-6);">
+            <div class="card-header">
+                <h2 class="card-title" style="display: flex; align-items: center; gap: var(--space-2);">
+                    <i data-lucide="cloud-cog" style="width: 18px; height: 18px;"></i>
+                    API-заявки
+                </h2>
+            </div>
+            <div class="card-body">
+                <table class="table" style="width: 100%;">
+                    <thead>
+                        <tr>
+                            <th>Submission</th>
+                            <th>Client ref</th>
+                            <th>Status</th>
+                            <th>Позиции</th>
+                            <th>Создана</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($apiSubmissions as $s)
+                            <tr>
+                                <td>
+                                    <code>sub_{{ $s->external_id }}</code>
+                                    <span class="badge" style="background: #dbeafe; color: #1e40af; padding: 2px 6px; border-radius: 3px; font-size: 11px; margin-left: 4px;">API</span>
+                                </td>
+                                <td>{{ $s->client_ref ?: '—' }}</td>
+                                <td>
+                                    <strong>{{ $s->status }}</strong>
+                                    <div style="font-size: 0.8em; color: var(--gray-500);">{{ $s->stage }}</div>
+                                </td>
+                                <td>
+                                    {{ $s->items_total }}
+                                    @if($s->items_rejected > 0)
+                                        <div style="font-size: 0.8em; color: var(--red-600);">откл.: {{ $s->items_rejected }}</div>
+                                    @endif
+                                </td>
+                                <td>{{ $s->created_at?->format('Y-m-d H:i') }}</td>
+                                <td>
+                                    <a href="{{ route('cabinet.api-submissions.show', $s) }}" class="btn btn-sm">Открыть</a>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    @endif
+@endif
+
+@if(($sourceFilter ?? 'all') === 'api')
+    {{-- В режиме 'api' прячем ручные заявки (но оставляем пустое состояние если нет API) --}}
+    @php $hideWebList = true; @endphp
+@else
+    @php $hideWebList = false; @endphp
+@endif
+
 <!-- Фильтры -->
 <div class="card" style="margin-bottom: var(--space-6);">
     <div class="card-body">
@@ -59,8 +134,11 @@
     </div>
 </div>
 
-<!-- Список заявок -->
-@if($requests->count() > 0)
+<!-- Список заявок (ручные) -->
+@if(!($hideWebList ?? false) && $requests->count() > 0)
+    @if(($sourceFilter ?? 'all') === 'all' && ($apiCounts ?? 0) > 0)
+        <h2 style="font-size: 1.1rem; margin: var(--space-4) 0 var(--space-3);">Ручные заявки</h2>
+    @endif
     <div style="display: grid; gap: var(--space-4); margin-bottom: var(--space-6);">
         @foreach($requests as $request)
         @php
