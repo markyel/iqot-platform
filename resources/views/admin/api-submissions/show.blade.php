@@ -163,18 +163,24 @@
                                                       action="{{ route('admin.api-submissions.reclassify-item', [$submission, $item]) }}"
                                                       class="api-actions__popup">
                                                     @csrf
-                                                    <label class="api-actions__label">product_type_id</label>
-                                                    <input type="number" name="product_type_id" min="1"
+                                                    <label class="api-actions__label">Тип товара</label>
+                                                    <input type="text"
+                                                           name="product_type_id"
+                                                           list="api-product-types-list"
                                                            value="{{ $item->product_type_id }}"
                                                            class="api-actions__input"
-                                                           placeholder="например, 1101 — Подшипники">
-                                                    <label class="api-actions__label">domain_id (пусто = NULL)</label>
-                                                    <input type="number" name="domain_id" min="1"
+                                                           autocomplete="off"
+                                                           placeholder="начните вводить…">
+                                                    <label class="api-actions__label">Область применения (пусто = универсальный)</label>
+                                                    <input type="text"
+                                                           name="domain_id"
+                                                           list="api-domains-list"
                                                            value="{{ $item->domain_id }}"
                                                            class="api-actions__input"
-                                                           placeholder="например, 1 — Лифты">
+                                                           autocomplete="off"
+                                                           placeholder="например, Лифты">
                                                     <small class="api-actions__hint">
-                                                        Справочник:
+                                                        При вводе появится подсказка. Для справки —
                                                         <a href="{{ route('admin.taxonomy.product-types') }}" target="_blank" rel="noopener">product types</a>
                                                         ·
                                                         <a href="{{ route('admin.taxonomy.domains') }}" target="_blank" rel="noopener">domains</a>
@@ -195,6 +201,17 @@
         </div>
     </div>
 </div>
+
+<datalist id="api-product-types-list">
+    @foreach($productTypesAll as $pt)
+        <option value="{{ $pt->id }}" label="{{ $pt->name }} · {{ $pt->slug }}"></option>
+    @endforeach
+</datalist>
+<datalist id="api-domains-list">
+    @foreach($domainsAll as $d)
+        <option value="{{ $d->id }}" label="{{ $d->name }} · {{ $d->slug }}"></option>
+    @endforeach
+</datalist>
 
 @push('styles')
 <style>
@@ -257,6 +274,14 @@
     color: #6b7280;
 }
 .api-actions__hint a { color: #2563eb; text-decoration: underline; }
+
+/* Popup абсолютно позиционирован внутри <td> — предотвращаем клиппинг. */
+.card, .card-body { overflow: visible !important; }
+table td { position: relative; }
+.api-actions__details[open] { z-index: 50; }
+.api-actions__popup input,
+.api-actions__popup select,
+.api-actions__popup textarea { font: inherit; }
 </style>
 @endpush
 @endsection

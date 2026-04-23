@@ -59,11 +59,27 @@ class ApiSubmissionController extends Controller
         $productTypes = ProductType::whereIn('id', $productTypeIds)->get()->keyBy('id');
         $domains = ApplicationDomain::whereIn('id', $domainIds)->get()->keyBy('id');
 
+        // Справочники для datalist в reclassify-форме: активные leaf product_types + все активные domains.
+        $productTypesAll = ProductType::query()
+            ->where('is_active', 1)
+            ->where('status', 'active')
+            ->where('is_leaf', 1)
+            ->orderBy('name')
+            ->get(['id', 'slug', 'name']);
+
+        $domainsAll = ApplicationDomain::query()
+            ->where('is_active', 1)
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get(['id', 'slug', 'name']);
+
         return view('admin.api-submissions.show', [
             'submission' => $submission,
             'items' => $items,
             'productTypes' => $productTypes,
             'domains' => $domains,
+            'productTypesAll' => $productTypesAll,
+            'domainsAll' => $domainsAll,
             'rejectReasons' => ModerationService::REJECT_REASONS,
         ]);
     }
