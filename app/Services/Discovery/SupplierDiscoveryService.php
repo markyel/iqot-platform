@@ -88,12 +88,14 @@ class SupplierDiscoveryService
             $normDomain = $siteDomain ? mb_strtolower(preg_replace('/^www\./i', '', (string) $siteDomain)) : null;
             $existingSupplierId = $normDomain ? ($existingByDomain[$normDomain] ?? null) : null;
 
-            // 3. Fetch страницы
-            $pageText = $this->parser->fetch($r['url']);
-            if ($pageText === null || mb_strlen($pageText) < 200) {
+            // 3. Fetch страницы (с извлечением ссылок-кандидатов на «Контакты»).
+            $fetched = $this->parser->fetchWithContactLinks($r['url']);
+            if ($fetched === null || mb_strlen($fetched['text']) < 200) {
                 $scanned++;
                 continue;
             }
+            $pageText = $fetched['text'];
+            $contactLinks = $fetched['contact_links'];
 
             // 4+5. AI — экстрактор + валидатор в одном промпте.
             try {
@@ -108,6 +110,12 @@ class SupplierDiscoveryService
             if (!$info['is_supplier'] || !$info['confidence'] || $info['confidence'] < 0.6) {
                 continue;
             }
+
+            // Если email не найден и есть ссылки на страницу контактов — догружаем и переспрашиваем.
+            if (empty($info['email']) && !empty($contactLinks)) {
+                $info = $this->enrichWithContactPage($productType, $domain, $r, $pageText, $contactLinks, $info);
+            }
+
             if (empty($info['email']) && empty($info['phone'])) {
                 continue;
             }
@@ -275,6 +283,71 @@ class SupplierDiscoveryService
             'categories' => is_array($result['categories'] ?? null) ? array_slice($result['categories'], 0, 5) : [],
             'reason' => $this->s($result['reason'] ?? null, 500) ?? '',
         ];
+    }
+
+    /**
+     * Если первая попытка извлечения не дала email — тянем страницы-кандидаты
+     * «Контакты» (до 2), склеиваем текст с главной и повторяем AI-экстракцию.
+     * Возвращает обновлённый $info (email/phone/website могут быть дополнены).
+     *
+     * @param array<string> $contactLinks
+     */
+    private function enrichWithContactPage(
+        ProductType $pt,
+        ?ApplicationDomain $domain,
+        array $searchResult,
+        string $mainText,
+        array $contactLinks,
+        array $info,
+    ): array {
+        $extraTexts = [];
+        foreach (array_slice($contactLinks, 0, 2) as $link) {
+            $txt = $this->parser->fetch($link);
+            if ($txt !== null && mb_strlen($txt) >= 80) {
+                $extraTexts[] = "=== Страница: {$link} ===\n" . $txt;
+            }
+        }
+        if (empty($extraTexts)) {
+            return $info;
+        }
+
+        // Ограничим объём, чтобы промпт не раздулся: 6000 главная + до 5000 контакты.
+        $mainTrimmed = mb_substr($mainText, 0, 6000, 'UTF-8');
+        $contactsJoined = mb_substr(implode("\n\n", $extraTexts), 0, 5000, 'UTF-8');
+        $combined = $mainTrimmed . "\n\n" . $contactsJoined;
+
+        try {
+            $enriched = $this->extractAndValidate($pt, $domain, $searchResult, $combined);
+        } catch (\Throwable $e) {
+            Log::info('SupplierDiscovery: contact page extract failed', [
+                'url' => $searchResult['url'],
+                'error' => $e->getMessage(),
+            ]);
+            return $info;
+        }
+
+        // Обновим только пустые поля — не перезатираем то что уже нашли.
+        $merged = $info;
+        foreach (['email', 'phone', 'website', 'name'] as $f) {
+            if (empty($merged[$f]) && !empty($enriched[$f])) {
+                $merged[$f] = $enriched[$f];
+            }
+        }
+        // confidence не уменьшаем, is_supplier сохраняем true.
+        if (!empty($enriched['confidence']) && $enriched['confidence'] > ($merged['confidence'] ?? 0)) {
+            $merged['confidence'] = $enriched['confidence'];
+        }
+        if (!empty($enriched['categories']) && empty($merged['categories'])) {
+            $merged['categories'] = $enriched['categories'];
+        }
+        if (!empty($merged['email'])) {
+            Log::info('SupplierDiscovery: email found on contact page', [
+                'base_url' => $searchResult['url'],
+                'contact_links' => array_slice($contactLinks, 0, 2),
+                'email' => $merged['email'],
+            ]);
+        }
+        return $merged;
     }
 
     /**
