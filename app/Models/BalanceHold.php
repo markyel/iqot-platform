@@ -11,6 +11,9 @@ class BalanceHold extends Model
     protected $fillable = [
         'user_id',
         'request_id',
+        'request_item_id',
+        'api_submission_id',
+        'request_items_staging_id',
         'amount',
         'status',
         'description',

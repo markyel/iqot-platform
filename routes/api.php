@@ -97,4 +97,10 @@ Route::prefix('v1')->name('v1.')->group(function () {
 Route::prefix('v1')->middleware('api.auth')->name('v1.client.')->group(function () {
     // Диагностика ключа.
     Route::get('ping', \App\Http\Controllers\Api\V1\PingController::class)->name('ping');
+
+    // Submissions.
+    Route::post('submissions', [\App\Http\Controllers\Api\V1\SubmissionController::class, 'store'])->name('submissions.store');
+
+    // Account.
+    Route::get('account/balance', [\App\Http\Controllers\Api\V1\AccountController::class, 'balance'])->name('account.balance');
 });
