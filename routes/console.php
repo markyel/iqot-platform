@@ -25,3 +25,9 @@ Schedule::command('catalog:sync')->hourly();
 
 // Публичный API: обработка inbox (классификация) — каждые 5 минут.
 Schedule::command('api:inbox:process')->everyFiveMinutes()->withoutOverlapping();
+
+// Публичный API: оркестратор Discovery поставщиков — каждые 10 минут (§7).
+Schedule::job(new \App\Jobs\Api\DiscoveryOrchestratorJob())->everyTenMinutes()->withoutOverlapping();
+
+// Публичный API: перепроверка awaiting_suppliers — каждый час (§6.3).
+Schedule::job(new \App\Jobs\Api\RecheckAwaitingSuppliersJob())->hourly()->withoutOverlapping();

@@ -198,6 +198,14 @@ class ModerationService
             }
         });
 
+        // Пул-пайплайн (§6.2): для accepted позиций проверяем coverage и
+        // при необходимости запускаем Discovery. Вне транзакции — т.к. пишет
+        // в reports (cross-DB) и стартует jobs.
+        $submission->refresh();
+        if ($submission->items_accepted > 0) {
+            app(SupplierPoolService::class)->applyToSubmission($submission);
+        }
+
         return true;
     }
 
