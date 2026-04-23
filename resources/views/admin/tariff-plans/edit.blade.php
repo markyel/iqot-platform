@@ -243,6 +243,24 @@
                     </label>
                     <small class="form-hint">Разрешить пользователям генерировать PDF версии отчетов по заявкам</small>
                 </div>
+
+                @php
+                    $planFeatures = is_array($tariffPlan->features) ? $tariffPlan->features : (array) (json_decode($tariffPlan->features ?? '', true) ?: []);
+                    $apiAccessCurrent = (bool) ($planFeatures['api_access'] ?? false);
+                @endphp
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input
+                            type="checkbox"
+                            name="api_access"
+                            class="checkbox"
+                            value="1"
+                            {{ old('api_access', $apiAccessCurrent) ? 'checked' : '' }}
+                        >
+                        <span>Доступ к публичному API</span>
+                    </label>
+                    <small class="form-hint">Разрешить пользователям создавать API-ключи и использовать /api/v1/* endpoints</small>
+                </div>
             </div>
         </div>
 

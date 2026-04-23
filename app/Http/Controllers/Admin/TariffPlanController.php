@@ -50,6 +50,9 @@ class TariffPlanController extends Controller
         $validated['is_active'] = $request->has('is_active');
         $validated['pdf_reports_enabled'] = $request->has('pdf_reports_enabled');
 
+        // Публичный API доступ (флаг в JSON features.api_access).
+        $validated['features'] = ['api_access' => $request->boolean('api_access')];
+
         TariffPlan::create($validated);
 
         return redirect()
@@ -88,6 +91,14 @@ class TariffPlanController extends Controller
 
         $validated['is_active'] = $request->has('is_active');
         $validated['pdf_reports_enabled'] = $request->has('pdf_reports_enabled');
+
+        // Публичный API доступ: мерж в существующий JSON features.
+        $existingFeatures = $tariffPlan->features ?? [];
+        if (is_string($existingFeatures)) {
+            $existingFeatures = json_decode($existingFeatures, true) ?: [];
+        }
+        $existingFeatures['api_access'] = $request->boolean('api_access');
+        $validated['features'] = $existingFeatures;
 
         $tariffPlan->update($validated);
 

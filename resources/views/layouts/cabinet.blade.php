@@ -358,6 +358,13 @@
                         <span class="sidebar-item-text">Мониторинг позиций</span>
                         <span class="sidebar-item-tooltip">Мониторинг позиций</span>
                     </a>
+                    @if(app(\App\Services\Api\UserAccessService::class)->hasApiAccess(auth()->id()))
+                        <a href="{{ route('cabinet.api-keys.index') }}" class="sidebar-item {{ request()->routeIs('cabinet.api-keys*') || request()->routeIs('cabinet.senders*') ? 'active' : '' }}">
+                            <i data-lucide="key-round" class="sidebar-item-icon"></i>
+                            <span class="sidebar-item-text">API</span>
+                            <span class="sidebar-item-tooltip">API</span>
+                        </a>
+                    @endif
                     <a href="{{ route('cabinet.tariff.index') }}" class="sidebar-item {{ request()->routeIs('cabinet.tariff*') ? 'active' : '' }}">
                         <i data-lucide="credit-card" class="sidebar-item-icon"></i>
                         <span class="sidebar-item-text">Мой тариф</span>

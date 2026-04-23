@@ -234,6 +234,20 @@
                     </label>
                     <small class="form-hint">Разрешить пользователям генерировать PDF версии отчетов по заявкам</small>
                 </div>
+
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input
+                            type="checkbox"
+                            name="api_access"
+                            class="checkbox"
+                            value="1"
+                            {{ old('api_access') ? 'checked' : '' }}
+                        >
+                        <span>Доступ к публичному API</span>
+                    </label>
+                    <small class="form-hint">Разрешить пользователям создавать API-ключи и использовать /api/v1/* endpoints</small>
+                </div>
             </div>
         </div>
 
