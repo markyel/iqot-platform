@@ -71,7 +71,8 @@ class CabinetController extends Controller
     public function requests(HttpRequest $request): View
     {
         $user = auth()->user();
-        
+        $sourceFilter = $request->query('source', 'all'); // all | web | api
+
         $query = $user->requests()->with(['items']);
 
         // Фильтр по статусу
@@ -89,7 +90,40 @@ class CabinetController extends Controller
 
         $requests = $query->latest()->paginate(15);
 
-        return view('cabinet.requests.index', compact('requests'));
+        // Загружаем синхронизированные externalRequests (если есть).
+        $externalRequests = [];
+        $syncedRequestIds = $requests->filter(fn ($r) => $r->synced_to_main_db && $r->main_db_request_id)
+            ->pluck('main_db_request_id')
+            ->toArray();
+        if (!empty($syncedRequestIds)) {
+            $externalRequests = \App\Models\ExternalRequest::whereIn('id', $syncedRequestIds)
+                ->get()
+                ->keyBy('id');
+        }
+
+        // API-заявки пользователя (через api_client).
+        $apiSubmissions = collect();
+        $apiCounts = 0;
+        $apiClient = \App\Models\Api\ApiClient::query()->where('user_id', $user->id)->first();
+        if ($apiClient) {
+            $apiSubmissions = \App\Models\Api\ApiSubmission::query()
+                ->where('api_client_id', $apiClient->id)
+                ->orderByDesc('id')
+                ->limit(50)
+                ->get();
+            $apiCounts = $apiSubmissions->count();
+        }
+
+        $webCounts = $requests->total();
+
+        return view('cabinet.requests.index', compact(
+            'requests',
+            'externalRequests',
+            'apiSubmissions',
+            'sourceFilter',
+            'webCounts',
+            'apiCounts'
+        ));
     }
 
     /**
