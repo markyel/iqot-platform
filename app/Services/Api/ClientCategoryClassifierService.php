@@ -202,8 +202,23 @@ class ClientCategoryClassifierService
 
         try {
             $productTypes = $this->prefilterProductTypes($item);
-            if ($productTypes->isEmpty()) {
-                return $this->rawFallback('no_candidates_prefilter');
+            $prefilterEmpty = $productTypes->isEmpty();
+            if ($prefilterEmpty) {
+                // Не нашли по токенам — всё равно зовём AI, передаём полный список
+                // активных листьев. Их ~200, для промпта нормально. AI либо выберет
+                // что-то осмысленное, либо хотя бы проставит domain.
+                $productTypes = ProductType::query()
+                    ->where('is_active', 1)
+                    ->where('status', 'active')
+                    ->where('is_leaf', 1)
+                    ->orderBy('name')
+                    ->limit(250)
+                    ->get(['id', 'slug', 'name', 'keywords']);
+
+                if ($productTypes->isEmpty()) {
+                    // В таксономии вообще ничего нет — совсем крайний случай.
+                    return $this->rawFallback('no_candidates_prefilter');
+                }
             }
 
             $domains = ApplicationDomain::query()
@@ -233,6 +248,25 @@ class ClientCategoryClassifierService
             }
 
             if ($ptId === null) {
+                // Даже если product_type не удалось определить, domain может быть
+                // полезен — сохраняем его и отправляем позицию на ручную модерацию.
+                if ($domainId !== null) {
+                    Log::info('ClientCategoryClassifier: domain-only fallback', [
+                        'item_name' => $item['name'] ?? null,
+                        'domain_id' => $domainId,
+                        'prefilter_empty' => $prefilterEmpty,
+                    ]);
+                    return [
+                        'product_type_id' => null,
+                        'domain_id' => (int) $domainId,
+                        'type_confidence' => 0.0,
+                        'domain_confidence' => $confidence > 0 ? $confidence : null,
+                        'classification_source' => 'full_ai',
+                        'needs_review' => true,
+                        'trust_level' => 'red',
+                        '_fallback_reason' => 'pt_null_domain_only',
+                    ];
+                }
                 return $this->rawFallback('ai_no_valid_match');
             }
 
