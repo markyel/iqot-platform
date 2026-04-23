@@ -74,17 +74,19 @@ class SupplierDiscoveryService
         }
         $results = array_slice(array_values($byDomain), 0, self::MAX_PAGES_PER_ITERATION);
 
-        // Отсеять уже существующих поставщиков по домену/website.
-        $existingDomains = $this->loadExistingSupplierDomains(array_map(fn ($r) => $r['domain'] ?: parse_url($r['url'], PHP_URL_HOST), $results));
+        // Построим индекс существующих поставщиков по домену (website + email host).
+        $existingByDomain = $this->loadExistingSupplierMap(
+            array_map(fn ($r) => $r['domain'] ?: parse_url($r['url'], PHP_URL_HOST), $results)
+        );
 
         $scanned = 0;
         $saved = 0;
+        $extended = 0;
 
         foreach ($results as $r) {
             $siteDomain = $r['domain'] ?: parse_url($r['url'], PHP_URL_HOST);
-            if ($siteDomain && isset($existingDomains[mb_strtolower($siteDomain)])) {
-                continue;
-            }
+            $normDomain = $siteDomain ? mb_strtolower(preg_replace('/^www\./i', '', (string) $siteDomain)) : null;
+            $existingSupplierId = $normDomain ? ($existingByDomain[$normDomain] ?? null) : null;
 
             // 3. Fetch страницы
             $pageText = $this->parser->fetch($r['url']);
@@ -110,12 +112,39 @@ class SupplierDiscoveryService
                 continue;
             }
 
-            // 6. INSERT supplier + pivot.
+            // Дополнительная попытка матча по email/phone если по домену не нашли.
+            if ($existingSupplierId === null) {
+                $existingSupplierId = $this->findExistingSupplierByContacts($info['email'], $info['phone']);
+            }
+
+            if ($existingSupplierId !== null) {
+                // Существующий поставщик — расширяем scope, не создаём дубль.
+                if ($this->extendExistingSupplier($existingSupplierId, $info, $productTypeId, $domainId)) {
+                    $extended++;
+                }
+                continue;
+            }
+
+            // 6. INSERT нового supplier + pivot.
             $this->persistSupplier($info, $productTypeId, $domainId, $siteDomain, $r['url']);
             $saved++;
         }
 
-        return ['new_suppliers' => $saved, 'urls_scanned' => $scanned, 'queries' => $queries];
+        Log::info('SupplierDiscovery: iteration done', [
+            'iteration' => $iteration,
+            'product_type_id' => $productTypeId,
+            'domain_id' => $domainId,
+            'urls_scanned' => $scanned,
+            'new_suppliers' => $saved,
+            'existing_extended' => $extended,
+        ]);
+
+        return [
+            'new_suppliers' => $saved,
+            'urls_scanned' => $scanned,
+            'queries' => $queries,
+            'existing_extended' => $extended,
+        ];
     }
 
     /**
@@ -249,10 +278,12 @@ class SupplierDiscoveryService
     }
 
     /**
+     * Map существующих поставщиков: normalized_domain → supplier_id.
+     *
      * @param array<string> $candidateDomains
-     * @return array<string, true>
+     * @return array<string, int>
      */
-    private function loadExistingSupplierDomains(array $candidateDomains): array
+    private function loadExistingSupplierMap(array $candidateDomains): array
     {
         $normalized = [];
         foreach ($candidateDomains as $d) {
@@ -269,27 +300,125 @@ class SupplierDiscoveryService
         }
 
         $existing = DB::connection('reports')->table('suppliers')
-            ->whereNotNull('website')
             ->where(function ($q) use ($normalized) {
                 foreach (array_keys($normalized) as $d) {
                     $q->orWhere('website', 'LIKE', '%' . $d . '%');
                     $q->orWhere('email', 'LIKE', '%@' . $d);
                 }
             })
-            ->select('website', 'email')
+            ->select('id', 'website', 'email')
             ->get();
 
         $map = [];
         foreach ($existing as $row) {
             if ($row->website) {
                 $host = parse_url($row->website, PHP_URL_HOST) ?: $row->website;
-                $map[mb_strtolower(preg_replace('/^www\./i', '', (string) $host))] = true;
+                $key = mb_strtolower(preg_replace('/^www\./i', '', (string) $host));
+                if ($key) {
+                    $map[$key] = (int) $row->id;
+                }
             }
             if ($row->email && preg_match('/@([\w.-]+)$/', (string) $row->email, $m)) {
-                $map[mb_strtolower($m[1])] = true;
+                $map[mb_strtolower($m[1])] = (int) $row->id;
             }
         }
         return $map;
+    }
+
+    /**
+     * Попытка найти поставщика по контактам (email целиком или нормализованному phone).
+     */
+    private function findExistingSupplierByContacts(?string $email, ?string $phone): ?int
+    {
+        $q = DB::connection('reports')->table('suppliers');
+        $applied = false;
+
+        if ($email) {
+            $q->where('email', mb_strtolower($email));
+            $applied = true;
+        } elseif ($phone) {
+            $digits = preg_replace('/\D+/', '', $phone);
+            if ($digits && mb_strlen($digits) >= 10) {
+                // Берём последние 10 цифр (российские номера).
+                $tail = mb_substr($digits, -10);
+                $q->where(DB::raw("REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '')"), 'LIKE', '%' . $tail);
+                $applied = true;
+            }
+        }
+
+        if (!$applied) {
+            return null;
+        }
+        $row = $q->select('id')->first();
+        return $row ? (int) $row->id : null;
+    }
+
+    /**
+     * Добавляет связи supplier_product_types и supplier_domains для существующего
+     * поставщика. Возвращает true если хотя бы одна связь была добавлена/обновлена.
+     */
+    private function extendExistingSupplier(int $supplierId, array $info, int $productTypeId, ?int $domainId): bool
+    {
+        $now = now();
+        $changed = false;
+
+        // supplier_product_types (supplier_id + product_type_id — composite PK).
+        $hasPt = DB::connection('reports')->table('supplier_product_types')
+            ->where('supplier_id', $supplierId)
+            ->where('product_type_id', $productTypeId)
+            ->exists();
+        if (!$hasPt) {
+            DB::connection('reports')->table('supplier_product_types')->insert([
+                'supplier_id' => $supplierId,
+                'product_type_id' => $productTypeId,
+                'is_included' => 1,
+                'source' => 'ai_inferred',
+                'confidence' => (float) $info['confidence'],
+                'is_manual' => 0,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+            $changed = true;
+        }
+
+        if ($domainId) {
+            $hasDom = DB::connection('reports')->table('supplier_domains')
+                ->where('supplier_id', $supplierId)
+                ->where('domain_id', $domainId)
+                ->exists();
+            if (!$hasDom) {
+                DB::connection('reports')->table('supplier_domains')->insert([
+                    'supplier_id' => $supplierId,
+                    'domain_id' => $domainId,
+                    'is_included' => 1,
+                    'source' => 'ai_inferred',
+                    'confidence' => (float) $info['confidence'],
+                    'is_manual' => 0,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]);
+                $changed = true;
+            }
+        }
+
+        if ($changed) {
+            // Если расширили scope — обновим profile_updated_at; confidence поднимаем
+            // только если новое значение выше.
+            $supplier = DB::connection('reports')->table('suppliers')
+                ->where('id', $supplierId)
+                ->select('profile_confidence')
+                ->first();
+            $newConfidence = max((float) ($supplier->profile_confidence ?? 0), (float) $info['confidence']);
+            DB::connection('reports')->table('suppliers')
+                ->where('id', $supplierId)
+                ->update([
+                    'profile_confidence' => $newConfidence,
+                    'profile_updated_at' => $now,
+                    'updated_at' => $now,
+                ]);
+        }
+
+        return $changed;
     }
 
     private function persistSupplier(array $info, int $productTypeId, ?int $domainId, string $siteDomain, string $url): void
