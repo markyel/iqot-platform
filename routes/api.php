@@ -100,7 +100,14 @@ Route::prefix('v1')->middleware('api.auth')->name('v1.client.')->group(function 
 
     // Submissions.
     Route::post('submissions', [\App\Http\Controllers\Api\V1\SubmissionController::class, 'store'])->name('submissions.store');
+    Route::get('submissions/{id}', [\App\Http\Controllers\Api\V1\SubmissionReadController::class, 'show'])->name('submissions.show');
+    Route::get('submissions/{id}/items', [\App\Http\Controllers\Api\V1\SubmissionReadController::class, 'items'])->name('submissions.items');
+    Route::get('submissions/{id}/report', [\App\Http\Controllers\Api\V1\SubmissionReadController::class, 'report'])->name('submissions.report');
 
     // Account.
     Route::get('account/balance', [\App\Http\Controllers\Api\V1\AccountController::class, 'balance'])->name('account.balance');
+
+    // Taxonomy (справочники).
+    Route::get('taxonomy/domains', [\App\Http\Controllers\Api\V1\TaxonomyController::class, 'domains'])->name('taxonomy.domains');
+    Route::get('taxonomy/product-types', [\App\Http\Controllers\Api\V1\TaxonomyController::class, 'productTypes'])->name('taxonomy.product-types');
 });
