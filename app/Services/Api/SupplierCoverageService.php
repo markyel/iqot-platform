@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\DB;
 class SupplierCoverageService
 {
     public const DEFAULT_PROFILE_CONFIDENCE_MIN = 0.3;
-    public const DEFAULT_THRESHOLD = 8;
+    public const DEFAULT_THRESHOLD = 20;
 
     /**
      * @param int|null $domainId null допустим — product_type универсальный.
