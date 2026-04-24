@@ -2,9 +2,10 @@
 
 namespace App\Observers;
 
+use App\Models\Api\RequestItemStaging;
+use App\Models\BalanceHold;
 use App\Models\ExternalRequestItem;
 use App\Models\Request;
-use App\Models\BalanceHold;
 use Illuminate\Support\Facades\Log;
 
 class ExternalRequestItemObserver
@@ -21,7 +22,8 @@ class ExternalRequestItemObserver
     }
 
     /**
-     * Проверить и списать средства если позиция получила 3+ предложений
+     * Проверить и списать средства если позиция получила 3+ предложений.
+     * Unified для web-flow и API-flow — их отличает только способ получения hold.
      */
     private function checkAndChargeForItem(ExternalRequestItem $item): void
     {
@@ -37,46 +39,90 @@ class ExternalRequestItemObserver
             return;
         }
 
-        // Находим соответствующую заявку в БД reports
-        $externalRequest = $item->request;
-        if (!$externalRequest || !$externalRequest->request_number) {
-            Log::warning("ExternalRequestItemObserver: Не найден request_number для external_request_id={$externalRequest->id}");
+        // Резолвим hold — либо через web-flow (Request), либо через API-flow (RequestItemStaging).
+        [$hold, $descriptionSuffix] = $this->resolveHoldAndLabel($item);
+        if (!$hold) {
+            return; // сообщения уже залогированы
+        }
+
+        if ($hold->status !== 'held') {
+            Log::info("ExternalRequestItemObserver: Нет активной заморозки для hold_id={$hold->id} (status={$hold->status})");
             return;
         }
 
-        // Находим заявку в основной БД по request_number
-        $request = Request::where('request_number', $externalRequest->request_number)->first();
-        if (!$request) {
-            Log::warning("ExternalRequestItemObserver: Не найдена заявка в основной БД с request_number={$externalRequest->request_number}");
+        // Тариф плательщика (владельца hold).
+        $user = $hold->user;
+        if (!$user) {
+            Log::warning("ExternalRequestItemObserver: у hold_id={$hold->id} не найден user");
             return;
         }
-
-        // Находим заморозку средств
-        $balanceHold = $request->balanceHold;
-        if (!$balanceHold || $balanceHold->status !== 'held') {
-            Log::info("ExternalRequestItemObserver: Нет активной заморозки для request_id={$request->id}, request_number={$request->request_number}");
-            return;
-        }
-
-        // Получаем активный тариф пользователя для расчета стоимости
-        $user = $request->user;
         $tariff = $user->getActiveTariff();
-
         if (!$tariff) {
-            Log::warning("ExternalRequestItemObserver: У пользователя user_id={$user->id} нет активного тарифа");
+            Log::warning("ExternalRequestItemObserver: у user_id={$user->id} нет активного тарифа");
             return;
         }
 
-        // Рассчитываем стоимость одной позиции
         $itemCost = $tariff->tariffPlan->getItemCost($user);
 
-        // Списываем средства за эту позицию
-        $balanceHold->chargeForItem(
+        $hold->chargeForItem(
             $item->id,
             $itemCost,
-            "Списание за выполненную позицию #{$item->position_number} в заявке {$request->request_number}"
+            "Списание за выполненную позицию #{$item->position_number} в {$descriptionSuffix}"
         );
 
-        Log::info("ExternalRequestItemObserver: Списано {$itemCost} ₽ за позицию external_request_item_id={$item->id}, request={$request->request_number}");
+        Log::info("ExternalRequestItemObserver: списано {$itemCost} ₽ за позицию external_request_item_id={$item->id}, {$descriptionSuffix}");
+    }
+
+    /**
+     * Находит balance hold для позиции и формирует человеко-читаемый суффикс описания.
+     *
+     * @return array{0: BalanceHold|null, 1: string}
+     */
+    private function resolveHoldAndLabel(ExternalRequestItem $item): array
+    {
+        // 1) Web-flow: есть пара iqot.requests по request_number → Request::balanceHold.
+        $externalRequest = $item->request;
+        if ($externalRequest && $externalRequest->request_number) {
+            $request = Request::where('request_number', $externalRequest->request_number)->first();
+            if ($request) {
+                $hold = $request->balanceHold;
+                if ($hold) {
+                    return [$hold, "заявке {$request->request_number}"];
+                }
+                Log::info("ExternalRequestItemObserver: web-flow, но hold не найден для request_id={$request->id}");
+                // Продолжаем в API-ветку — возможно заявка промоутнута из API.
+            }
+        }
+
+        // 2) API-flow: RequestItemStaging.promoted_request_item_id = external_item.id → staging.balance_hold_id.
+        $staging = RequestItemStaging::where('promoted_request_item_id', $item->id)->first();
+        if ($staging && $staging->balance_hold_id) {
+            $hold = BalanceHold::find($staging->balance_hold_id);
+            if ($hold) {
+                // Попробуем достать client_ref для красивого описания.
+                $subLabel = $this->apiSubmissionLabel($hold);
+                return [$hold, "API-заявке {$subLabel}"];
+            }
+            Log::warning("ExternalRequestItemObserver: API-flow, staging_id={$staging->id} указывает на hold_id={$staging->balance_hold_id}, но BalanceHold не найден");
+        }
+
+        Log::info("ExternalRequestItemObserver: не удалось резолвить hold для external_request_item_id={$item->id}");
+        return [null, ''];
+    }
+
+    private function apiSubmissionLabel(BalanceHold $hold): string
+    {
+        if (empty($hold->api_submission_id)) {
+            return '#' . $hold->id;
+        }
+        $sub = \App\Models\Api\ApiSubmission::find($hold->api_submission_id);
+        if (!$sub) {
+            return '#' . $hold->api_submission_id;
+        }
+        $parts = ['sub_' . $sub->external_id];
+        if ($sub->client_ref) {
+            $parts[] = 'ref=' . $sub->client_ref;
+        }
+        return implode(' ', $parts);
     }
 }
