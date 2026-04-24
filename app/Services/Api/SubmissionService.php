@@ -144,6 +144,17 @@ class SubmissionService
                     ]);
                 }
 
+                // Расход тарифных позиций — симметрично web-flow (UserRequestController):
+                // увеличиваем items_used на полное число позиций submission. Rejected
+                // позиции в модерации всё равно считаются потраченной попыткой (как в web).
+                $activeTariff = UserTariff::query()
+                    ->where('user_id', $client->user_id)
+                    ->where('is_active', true)
+                    ->first();
+                if ($activeTariff) {
+                    $activeTariff->useItems(count($payload['items']));
+                }
+
                 return $submission;
             });
         } catch (\Throwable $e) {
