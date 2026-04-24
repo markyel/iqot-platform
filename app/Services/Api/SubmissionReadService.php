@@ -21,7 +21,19 @@ use Illuminate\Support\Facades\DB;
  */
 class SubmissionReadService
 {
+    /**
+     * Минимальное число offers, после которого срабатывает charge
+     * (ExternalRequestItemObserver) и позиция получает публичный статус
+     * ready_minimum. Это порог ФИНАНСОВОЙ ГОТОВНОСТИ.
+     */
     public const MINIMUM_OFFERS = 3;
+
+    /**
+     * Минимальное число offers, чтобы отчёт стал доступен клиенту.
+     * Ниже MINIMUM_OFFERS: позиция всё ещё со статусом collecting,
+     * но клиент уже видит пришедшие предложения и может с ними работать.
+     */
+    public const REPORT_MIN_OFFERS = 1;
 
     /**
      * Основной объект для GET /submissions/{id} (§11.3).
@@ -99,7 +111,7 @@ class SubmissionReadService
                 ->filter(fn (ExternalOffer $o) => in_array($o->status, ['received', 'processed'], true))
                 ->sortBy('price_per_unit')
                 ->values();
-            if ($offers->count() >= self::MINIMUM_OFFERS) {
+            if ($offers->count() >= self::REPORT_MIN_OFFERS) {
                 $anyReady = true;
             }
             $productType = $ri->product_type_id
@@ -192,7 +204,7 @@ class SubmissionReadService
                 ],
                 'offers_count' => $offersCount,
                 'minimum_threshold' => self::MINIMUM_OFFERS,
-                'report_available' => $offersCount >= self::MINIMUM_OFFERS,
+                'report_available' => $offersCount >= self::REPORT_MIN_OFFERS,
                 'collection_deadline' => $submission->deadline_at?->toIso8601String(),
             ];
         });
@@ -227,7 +239,7 @@ class SubmissionReadService
                 ],
                 'offers_count' => $offersCount,
                 'minimum_threshold' => self::MINIMUM_OFFERS,
-                'report_available' => $offersCount >= self::MINIMUM_OFFERS,
+                'report_available' => $offersCount >= self::REPORT_MIN_OFFERS,
                 'collection_deadline' => $submission->deadline_at?->toIso8601String(),
             ];
         });
