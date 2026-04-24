@@ -270,9 +270,22 @@ class ClientCategoryClassifierService
                 return $this->rawFallback('ai_no_valid_match');
             }
 
-            // Trust-level политика для full_ai §5.1: confidence≥0.9 → yellow, иначе red.
-            $trust = $confidence >= 0.9 ? 'yellow' : 'red';
-            $needsReview = $trust !== 'green'; // full_ai всегда нуждается в ревью изначально
+            // Trust-level политика для full_ai:
+            //   ≥ 0.95 → green (AI очень уверен → можно сразу в работу при
+            //            включённом auto_approve_green у клиента);
+            //   ≥ 0.90 → yellow (уверен, но нужен ручной review);
+            //   < 0.90 → red.
+            // Порог 0.95 — намеренно высокий: full_ai без истории в mini-классификаторе
+            // не получит green при колебаниях между кандидатами. Если порог окажется
+            // жёстким, его легко понизить/вынести в конфиг.
+            if ($confidence >= 0.95) {
+                $trust = 'green';
+            } elseif ($confidence >= 0.9) {
+                $trust = 'yellow';
+            } else {
+                $trust = 'red';
+            }
+            $needsReview = $trust !== 'green';
 
             // §4.1 п.4: если confidence приемлемый — создаём ai_suggested candidate
             // для этой client_category, чтобы ускорить будущие submissions.
