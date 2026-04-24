@@ -18,14 +18,47 @@ class ApiSubmissionController extends Controller
     {
     }
 
-    public function index(): View
+    public function index(Request $request): View
     {
-        $submissions = ApiSubmission::query()
+        // Стадии, означающие «требует действий модератора».
+        $pendingStages = ['inbox_buffered', 'classifying', 'awaiting_moderation', 'in_moderation'];
+
+        $filter = $request->query('filter', 'pending');
+        if (!in_array($filter, ['pending', 'ready', 'cancelled', 'all'], true)) {
+            $filter = 'pending';
+        }
+
+        // Счётчики для вкладок (по всем submission с staging).
+        $base = ApiSubmission::query()->whereHas('staging');
+        $counts = [
+            'pending' => (clone $base)->whereIn('stage', $pendingStages)
+                ->where('status', '!=', 'cancelled')->count(),
+            'ready' => (clone $base)->where('status', 'ready')->count(),
+            'cancelled' => (clone $base)->where('status', 'cancelled')->count(),
+            'all' => (clone $base)->count(),
+        ];
+
+        $query = ApiSubmission::query()
             ->with(['client.user', 'staging.items'])
             ->whereHas('staging')
-            ->orderByDesc('updated_at')
-            ->limit(200)
-            ->get();
+            ->orderByDesc('updated_at');
+
+        switch ($filter) {
+            case 'pending':
+                $query->whereIn('stage', $pendingStages)->where('status', '!=', 'cancelled');
+                break;
+            case 'ready':
+                $query->where('status', 'ready');
+                break;
+            case 'cancelled':
+                $query->where('status', 'cancelled');
+                break;
+            case 'all':
+                // без доп. фильтров
+                break;
+        }
+
+        $submissions = $query->limit(200)->get();
 
         // Подсчёт бейджей по trust_level для каждого submission.
         $badges = [];
@@ -44,6 +77,8 @@ class ApiSubmissionController extends Controller
         return view('admin.api-submissions.index', [
             'submissions' => $submissions,
             'badges' => $badges,
+            'filter' => $filter,
+            'counts' => $counts,
         ]);
     }
 

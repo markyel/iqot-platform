@@ -10,10 +10,37 @@
         <div class="alert alert-success" style="margin-bottom: var(--space-4);">{{ session('success') }}</div>
     @endif
 
+    @php
+        $tabs = [
+            'pending' => ['Требует действий', 'var(--red-600)'],
+            'ready' => ['Ready', 'var(--green-600)'],
+            'cancelled' => ['Cancelled', 'var(--gray-500)'],
+            'all' => ['Все', 'var(--gray-700)'],
+        ];
+    @endphp
+    <div style="display: flex; gap: var(--space-2); margin-bottom: var(--space-4); flex-wrap: wrap;">
+        @foreach($tabs as $key => [$label, $color])
+            @php $isActive = $filter === $key; @endphp
+            <a href="{{ route('admin.api-submissions.index', ['filter' => $key]) }}"
+               class="btn {{ $isActive ? 'btn-primary' : '' }} btn-sm"
+               style="{{ $isActive ? '' : 'background: var(--gray-100); color: var(--gray-800); border: 1px solid var(--gray-300);' }}">
+                {{ $label }}
+                <span style="margin-left: 4px; opacity: 0.7;">({{ $counts[$key] ?? 0 }})</span>
+            </a>
+        @endforeach
+    </div>
+
     <div class="card">
         <div class="card-body">
             @if($submissions->isEmpty())
-                <p style="color: var(--gray-600);">Пока нет submission'ов в модерации.</p>
+                <p style="color: var(--gray-600);">
+                    @switch($filter)
+                        @case('pending') Нет заявок, требующих действий. @break
+                        @case('ready') Нет готовых заявок. @break
+                        @case('cancelled') Нет отменённых заявок. @break
+                        @default Пока нет submission'ов.
+                    @endswitch
+                </p>
             @else
                 <table class="table" style="width: 100%;">
                     <thead>

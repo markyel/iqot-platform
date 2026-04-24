@@ -180,8 +180,15 @@ class ModerationService
                 ->where('item_status', 'accepted')
                 ->count();
 
+            // stage после финализации:
+            //   all-rejected     — rejected_all
+            //   all-accepted     — moderated (пойдёт в pool через applyToSubmission)
+            //   mixed            — moderated
+            $newStage = $acceptedCount > 0 ? 'moderated' : 'rejected_all';
+
             $submission->update([
                 'status' => 'ready',
+                'stage' => $newStage,
                 'status_changed_at' => now(),
                 'ready_at' => now(),
                 'items_accepted' => $acceptedCount,
