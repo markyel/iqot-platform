@@ -28,11 +28,15 @@ class ApiSubmissionController extends Controller
             $filter = 'pending';
         }
 
+        // Терминальные статусы — submission уже не ждёт модератора,
+        // даже если у него «завис» старый stage (до фикса maybeFinalize).
+        $terminalStatuses = ['ready', 'completed', 'cancelled'];
+
         // Счётчики для вкладок (по всем submission с staging).
         $base = ApiSubmission::query()->whereHas('staging');
         $counts = [
             'pending' => (clone $base)->whereIn('stage', $pendingStages)
-                ->where('status', '!=', 'cancelled')->count(),
+                ->whereNotIn('status', $terminalStatuses)->count(),
             'ready' => (clone $base)->where('status', 'ready')->count(),
             'cancelled' => (clone $base)->where('status', 'cancelled')->count(),
             'all' => (clone $base)->count(),
@@ -45,7 +49,8 @@ class ApiSubmissionController extends Controller
 
         switch ($filter) {
             case 'pending':
-                $query->whereIn('stage', $pendingStages)->where('status', '!=', 'cancelled');
+                $query->whereIn('stage', $pendingStages)
+                    ->whereNotIn('status', $terminalStatuses);
                 break;
             case 'ready':
                 $query->where('status', 'ready');
