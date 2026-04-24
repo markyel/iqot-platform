@@ -96,11 +96,13 @@ class TariffController extends Controller
             ->get();
 
         foreach ($holds as $hold) {
+            $refLabel = $this->holdRefLabel($hold);
+
             // Заморозка средств
             $transactions->push([
                 'created_at' => $hold->created_at,
                 'type' => 'hold',
-                'description' => 'Заморозка средств на обработку заявки #' . ($hold->request->request_number ?? $hold->request_id),
+                'description' => 'Заморозка средств на обработку ' . $refLabel,
                 'amount' => $hold->amount,
                 'balance_after' => null,
             ]);
@@ -122,7 +124,7 @@ class TariffController extends Controller
                 $transactions->push([
                     'created_at' => $hold->charged_at,
                     'type' => 'charge',
-                    'description' => 'Списание за обработку заявки #' . ($hold->request->request_number ?? $hold->request_id),
+                    'description' => 'Списание за обработку ' . $refLabel,
                     'amount' => $hold->amount,
                     'balance_after' => null,
                 ]);
@@ -133,7 +135,7 @@ class TariffController extends Controller
                 $transactions->push([
                     'created_at' => $hold->released_at,
                     'type' => 'release',
-                    'description' => 'Возврат средств за отмененную/невыполненную заявку #' . ($hold->request->request_number ?? $hold->request_id),
+                    'description' => 'Возврат средств за отменённую/невыполненную ' . $refLabel,
                     'amount' => $hold->amount,
                     'balance_after' => null,
                 ]);
@@ -403,5 +405,27 @@ class TariffController extends Controller
         });
 
         return back()->with('success', "Промокод успешно активирован! На ваш баланс зачислено {$promoCode->amount} ₽");
+    }
+
+    /**
+     * Человеко-читаемая ссылка на объект, к которому относится hold.
+     *   web → «заявки #REQ-…»
+     *   api → «API-заявки sub_… (ref=…)»
+     */
+    private function holdRefLabel(BalanceHold $hold): string
+    {
+        if (!empty($hold->api_submission_id)) {
+            $sub = \App\Models\Api\ApiSubmission::find($hold->api_submission_id);
+            if (!$sub) {
+                return 'API-заявки #' . $hold->api_submission_id;
+            }
+            $parts = ['API-заявки sub_' . $sub->external_id];
+            if ($sub->client_ref) {
+                $parts[] = 'ref=' . $sub->client_ref;
+            }
+            return implode(' ', $parts);
+        }
+
+        return 'заявки #' . ($hold->request->request_number ?? $hold->request_id);
     }
 }

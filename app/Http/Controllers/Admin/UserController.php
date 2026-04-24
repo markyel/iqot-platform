@@ -101,13 +101,17 @@ class UserController extends Controller
             ->get();
 
         foreach ($holds as $hold) {
+            $isApi = !empty($hold->api_submission_id);
+            $refLabel = $this->holdRefLabel($hold); // «заявки #REQ-…» или «API-submission sub_XXXX (ref=…)»
+
             // Заморозка средств
             $transactions->push([
                 'created_at' => $hold->created_at,
                 'type' => 'hold',
-                'description' => 'Заморозка средств на обработку заявки #' . ($hold->request->request_number ?? $hold->request_id),
+                'description' => 'Заморозка средств на обработку ' . $refLabel,
                 'amount' => $hold->amount,
                 'balance_after' => null,
+                'source' => $isApi ? 'api' : 'web',
             ]);
 
             // Списания по позициям (новая логика)
@@ -119,6 +123,7 @@ class UserController extends Controller
                     'description' => $charge->description,
                     'amount' => $charge->amount,
                     'balance_after' => null,
+                    'source' => $isApi ? 'api' : 'web',
                 ]);
             }
 
@@ -127,9 +132,10 @@ class UserController extends Controller
                 $transactions->push([
                     'created_at' => $hold->charged_at,
                     'type' => 'charge',
-                    'description' => 'Списание за обработку заявки #' . ($hold->request->request_number ?? $hold->request_id),
+                    'description' => 'Списание за обработку ' . $refLabel,
                     'amount' => $hold->amount,
                     'balance_after' => null,
+                    'source' => $isApi ? 'api' : 'web',
                 ]);
             }
 
@@ -138,9 +144,10 @@ class UserController extends Controller
                 $transactions->push([
                     'created_at' => $hold->released_at,
                     'type' => 'release',
-                    'description' => 'Возврат средств за отмененную/невыполненную заявку #' . ($hold->request->request_number ?? $hold->request_id),
+                    'description' => 'Возврат средств за отменённую/невыполненную ' . $refLabel,
                     'amount' => $hold->amount,
                     'balance_after' => null,
+                    'source' => $isApi ? 'api' : 'web',
                 ]);
             }
         }
@@ -247,6 +254,28 @@ class UserController extends Controller
 
         // Преобразуем обратно в коллекцию
         return collect($transactions);
+    }
+
+    /**
+     * Человеко-читаемая ссылка на объект, к которому относится hold.
+     *  - Для web: «заявки #REQ-…»
+     *  - Для API: «API-заявки sub_… (ref=…)»
+     */
+    private function holdRefLabel(\App\Models\BalanceHold $hold): string
+    {
+        if (!empty($hold->api_submission_id)) {
+            $sub = \App\Models\Api\ApiSubmission::find($hold->api_submission_id);
+            if (!$sub) {
+                return 'API-заявки #' . $hold->api_submission_id;
+            }
+            $parts = ['API-заявки sub_' . $sub->external_id];
+            if ($sub->client_ref) {
+                $parts[] = 'ref=' . $sub->client_ref;
+            }
+            return implode(' ', $parts);
+        }
+
+        return 'заявки #' . ($hold->request->request_number ?? $hold->request_id);
     }
 
     /**
