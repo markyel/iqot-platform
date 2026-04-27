@@ -400,30 +400,61 @@ class SupplierDiscoveryService
 
     /**
      * Попытка найти поставщика по контактам (email целиком или нормализованному phone).
+     *
+     * Phone: совместимость с MySQL <8.0 / MariaDB <10.0.5 (нет REGEXP_REPLACE) —
+     * грубо отфильтровываем кандидатов LIKE по самым информативным цифрам,
+     * затем нормализуем и сравниваем хвост в PHP.
      */
     private function findExistingSupplierByContacts(?string $email, ?string $phone): ?int
     {
-        $q = DB::connection('reports')->table('suppliers');
-        $applied = false;
-
         if ($email) {
-            $q->where('email', mb_strtolower($email));
-            $applied = true;
-        } elseif ($phone) {
-            $digits = preg_replace('/\D+/', '', $phone);
-            if ($digits && mb_strlen($digits) >= 10) {
-                // Берём последние 10 цифр (российские номера).
-                $tail = mb_substr($digits, -10);
-                $q->where(DB::raw("REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '')"), 'LIKE', '%' . $tail);
-                $applied = true;
-            }
+            $row = DB::connection('reports')->table('suppliers')
+                ->where('email', mb_strtolower($email))
+                ->select('id')
+                ->first();
+            return $row ? (int) $row->id : null;
         }
 
-        if (!$applied) {
+        if (!$phone) {
             return null;
         }
-        $row = $q->select('id')->first();
-        return $row ? (int) $row->id : null;
+        $digits = preg_replace('/\D+/', '', $phone);
+        if (!$digits || mb_strlen($digits) < 10) {
+            return null;
+        }
+        // Хвост 10 цифр — стабильная часть российского номера.
+        $tail = mb_substr($digits, -10);
+        // Берём последние 7 цифр как «маркер» для грубого LIKE-префильтра:
+        // достаточно специфично, чтобы вернуть ≤ десятка кандидатов.
+        $marker = mb_substr($tail, -7);
+
+        // LIKE с %{marker}% устойчив к разделителям внутри хвоста, но не если
+        // сам marker разделён (напр. 495-87 в "495-87-66"). Поэтому добавим
+        // дополнительный матч по последним 4 цифрам — слабый, но пропустит
+        // и такие случаи.
+        $shortTail = mb_substr($tail, -4);
+
+        $candidates = DB::connection('reports')->table('suppliers')
+            ->whereNotNull('phone')
+            ->where(function ($q) use ($marker, $shortTail) {
+                $q->where('phone', 'LIKE', '%' . $marker . '%')
+                  ->orWhere('phone', 'LIKE', '%' . $shortTail);
+            })
+            ->select('id', 'phone')
+            ->limit(50)
+            ->get();
+
+        foreach ($candidates as $cand) {
+            $candDigits = preg_replace('/\D+/', '', (string) $cand->phone);
+            if (!$candDigits) {
+                continue;
+            }
+            $candTail = mb_substr($candDigits, -10);
+            if ($candTail === $tail) {
+                return (int) $cand->id;
+            }
+        }
+        return null;
     }
 
     /**
