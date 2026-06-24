@@ -177,6 +177,7 @@ class BulkSenderImporter
                 'kpp' => $fields['kpp'] ?? ($ai['kpp'] ?? null),
                 'legal_address' => $fields['address'] ?? ($ai['legal_address'] ?? null),
                 'actual_address' => $fields['address'] ?? ($ai['actual_address'] ?? null),
+                'contact_person' => $fields['fullname'] ?? $fields['name'] ?? ($ai['sender_full_name'] ?? null),
                 'phone' => $ai['company_phone'] ?? null,
                 'email' => $ai['company_email'] ?? $email,
                 'director_name' => $ai['director_name'] ?? null,
