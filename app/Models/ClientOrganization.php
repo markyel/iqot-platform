@@ -13,6 +13,7 @@ class ClientOrganization extends Model
         'name',
         'inn',
         'kpp',
+        'ogrn',
         'legal_address',
         'actual_address',
         'contact_person',

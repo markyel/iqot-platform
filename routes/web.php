@@ -216,6 +216,7 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
     // Групповое добавление отправителей рассылки (reports.senders)
     Route::get('/senders/import', [\App\Http\Controllers\Admin\SenderImportController::class, 'create'])->name('senders.import.create');
     Route::post('/senders/import', [\App\Http\Controllers\Admin\SenderImportController::class, 'store'])->name('senders.import.store');
+    Route::post('/senders/import/wizard', [\App\Http\Controllers\Admin\SenderImportController::class, 'wizard'])->name('senders.import.wizard');
 
     // Диагностика
     Route::get('/diagnostics', [\App\Http\Controllers\Admin\DiagnosticsController::class, 'index'])->name('diagnostics.index');

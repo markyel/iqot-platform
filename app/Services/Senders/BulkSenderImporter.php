@@ -97,7 +97,18 @@ class BulkSenderImporter
      */
     public function import(string $raw): array
     {
-        $blocks = $this->parseBlocks($raw);
+        return $this->importBlocks($this->parseBlocks($raw));
+    }
+
+    /**
+     * Импортировать уже разобранные блоки полей. Используется и ручной формой
+     * (после parseBlocks), и помощником (блоки собираются из Excel + учёток).
+     *
+     * @param array<int,array<string,mixed>> $blocks
+     * @return array{rows: array<int,array<string,mixed>>, created: int, skipped: int, failed: int}
+     */
+    public function importBlocks(array $blocks): array
+    {
         $this->loadTemplateIds();
 
         $rows = [];
@@ -175,12 +186,13 @@ class BulkSenderImporter
                 'name' => $fields['company'] ?? ($ai['company_name'] ?? null),
                 'inn' => $fields['inn'] ?? ($ai['inn'] ?? null),
                 'kpp' => $fields['kpp'] ?? ($ai['kpp'] ?? null),
+                'ogrn' => $fields['ogrn'] ?? ($ai['ogrn'] ?? null),
                 'legal_address' => $fields['address'] ?? ($ai['legal_address'] ?? null),
                 'actual_address' => $fields['address'] ?? ($ai['actual_address'] ?? null),
                 'contact_person' => $fields['fullname'] ?? $fields['name'] ?? ($ai['sender_full_name'] ?? null),
-                'phone' => $ai['company_phone'] ?? null,
+                'phone' => $fields['company_phone'] ?? ($ai['company_phone'] ?? null),
                 'email' => $ai['company_email'] ?? $email,
-                'director_name' => $ai['director_name'] ?? null,
+                'director_name' => $fields['director'] ?? ($ai['director_name'] ?? null),
             ]);
 
             // 5. Вставка отправителя.
