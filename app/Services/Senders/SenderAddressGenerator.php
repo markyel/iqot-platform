@@ -31,6 +31,16 @@ class SenderAddressGenerator
         'elena', 'olga', 'natalia', 'irina', 'anna', 'maria', 'tatiana', 'ekaterina',
     ];
 
+    /** Фамилии для синтеза логина, когда у организации нет ФИО директора. */
+    private const SURNAMES = [
+        'ivanov', 'petrov', 'sidorov', 'smirnov', 'kuznetsov', 'popov', 'sokolov',
+        'lebedev', 'kozlov', 'novikov', 'morozov', 'volkov', 'alekseev', 'fedorov',
+        'mikhaylov', 'belov', 'tarasov', 'belyaev', 'komarov', 'orlov', 'kiselev',
+        'makarov', 'andreev', 'kovalev', 'ilyin', 'gusev', 'titov', 'kuzmin',
+        'kudryavtsev', 'baranov', 'gerasimov', 'bogdanov', 'osipov', 'sergeev',
+        'grigorev', 'romanov', 'borisov', 'zhukov', 'frolov', 'nikitin',
+    ];
+
     /** Карта транслитерации (ГОСТ-подобная, упрощённая). */
     private const TRANSLIT = [
         'а' => 'a', 'б' => 'b', 'в' => 'v', 'г' => 'g', 'д' => 'd', 'е' => 'e', 'ё' => 'e',
@@ -164,13 +174,19 @@ class SenderAddressGenerator
         $surnameT = $surname !== null ? $this->translit($surname) : '';
         $firstT = $first !== null ? $this->translit($first) : '';
 
-        if ($surnameT !== '') {
-            $candidates[] = $surnameT;
-            $fn = $firstT !== '' ? $firstT : self::FIRST_NAMES[array_rand(self::FIRST_NAMES)];
-            $candidates[] = $fn[0] . '.' . $surnameT;
-            $candidates[] = $fn . '.' . $surnameT;
-            $candidates[] = $surnameT . '.' . $fn[0];
+        // Если ФИО директора нет (в выгрузке ExportBase почти всегда так) —
+        // синтезируем фамилию из пула, чтобы именные адреса тоже попадали в микс.
+        if ($surnameT === '') {
+            $surnameT = self::SURNAMES[array_rand(self::SURNAMES)];
         }
+        if ($firstT === '') {
+            $firstT = self::FIRST_NAMES[array_rand(self::FIRST_NAMES)];
+        }
+
+        $candidates[] = $surnameT;
+        $candidates[] = $firstT[0] . '.' . $surnameT;
+        $candidates[] = $firstT . '.' . $surnameT;
+        $candidates[] = $surnameT . '.' . $firstT[0];
 
         $slug = $this->companySlug($org['name'] ?? $org['full_name'] ?? '');
         if ($slug !== '') {
