@@ -93,7 +93,8 @@
                 <div>
                     <strong>Как это работает</strong>
                     <p style="margin-top: var(--space-1); margin-bottom: 0;">
-                        Вставьте список учёток построчно в формате <code>email password</code> и укажите
+                        Вставьте список учёток построчно в формате <code>email password</code> или
+                        <code>email:password</code> и укажите
                         общие <code>SMTP</code>/<code>IMAP</code> на всю пачку. Загрузите выгрузку организаций
                         ExportBase (<code>.xlsx</code>). Для каждой учётки берётся следующая
                         <strong>неиспользованная</strong> организация из файла (ИНН которой ещё нет в базе),
@@ -118,7 +119,7 @@
                     @csrf
 
                     <div class="form-group">
-                        <label class="form-label" for="credentials">Учётки (email password построчно)</label>
+                        <label class="form-label" for="credentials">Учётки (email password или email:password построчно)</label>
                         <textarea
                             id="credentials"
                             name="credentials"

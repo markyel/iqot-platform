@@ -104,7 +104,10 @@ class SenderWizardImporter
     }
 
     /**
-     * Разобрать список «email password» построчно.
+     * Разобрать список учёток построчно. Разделителем email и пароля считается
+     * первый пробел ИЛИ двоеточие (email двоеточий не содержит), поэтому
+     * поддерживаются оба формата: «email password» и «email:password».
+     * Остаток строки — пароль (может содержать пробелы и двоеточия).
      *
      * @return array<int,array{0:string,1:string}>
      */
@@ -117,9 +120,16 @@ class SenderWizardImporter
                 continue;
             }
 
-            $parts = preg_split('/\s+/', $line, 2) ?: [];
-            $email = trim($parts[0] ?? '');
-            $password = isset($parts[1]) ? trim($parts[1]) : '';
+            if (preg_match('/^(\S+?)\s*[:\s]\s*(.*)$/', $line, $m)) {
+                $email = trim($m[1]);
+                $password = trim($m[2]);
+            } else {
+                // Разделитель не найден — вся строка как email, пароль пуст
+                // (далее упадёт на проверке обязательных полей).
+                $email = $line;
+                $password = '';
+            }
+
             if ($email === '') {
                 continue;
             }
