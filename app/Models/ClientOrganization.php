@@ -35,6 +35,8 @@ class ClientOrganization extends Model
      */
     public static function findOrCreateForImport(array $attributes): self
     {
+        $attributes = static::sanitizeImportAttributes($attributes);
+
         $inn = trim((string) ($attributes['inn'] ?? ''));
         $name = trim((string) ($attributes['name'] ?? ''));
 
@@ -54,6 +56,55 @@ class ClientOrganization extends Model
             ['is_active' => true],
             array_filter($attributes, static fn ($v) => $v !== null && $v !== '')
         ));
+    }
+
+    /**
+     * Защитная нормализация реквизитов перед вставкой. Данные из Excel/AI бывают
+     * кривыми (в колонку реквизита заезжает телефон/адрес), а ИНН/КПП/ОГРН и
+     * строковые поля ограничены по длине — без чистки insert падает (1406).
+     *
+     * @param array<string,mixed> $attributes
+     * @return array<string,mixed>
+     */
+    private static function sanitizeImportAttributes(array $attributes): array
+    {
+        // Числовые реквизиты: только цифры и строго ожидаемая длина, иначе null.
+        $attributes['inn'] = static::digitsOfLength($attributes['inn'] ?? null, [10, 12]);
+        $attributes['kpp'] = static::digitsOfLength($attributes['kpp'] ?? null, [9]);
+        $attributes['ogrn'] = static::digitsOfLength($attributes['ogrn'] ?? null, [13, 15]);
+
+        // Строковые поля обрезаем под длину колонок (legal/actual_address — TEXT).
+        $limits = [
+            'name' => 500,
+            'contact_person' => 255,
+            'phone' => 50,
+            'email' => 255,
+            'director_name' => 255,
+        ];
+        foreach ($limits as $field => $max) {
+            if (isset($attributes[$field]) && is_string($attributes[$field])) {
+                $attributes[$field] = mb_substr(trim($attributes[$field]), 0, $max);
+            }
+        }
+
+        return $attributes;
+    }
+
+    /**
+     * Вернуть только цифры значения, если их количество входит в $lengths,
+     * иначе null (значение признаётся невалидным реквизитом).
+     *
+     * @param int[] $lengths
+     */
+    private static function digitsOfLength(mixed $value, array $lengths): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $digits = preg_replace('/\D+/', '', (string) $value) ?? '';
+
+        return in_array(strlen($digits), $lengths, true) ? $digits : null;
     }
 
     /**
