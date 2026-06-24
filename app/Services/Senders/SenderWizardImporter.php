@@ -2,8 +2,6 @@
 
 namespace App\Services\Senders;
 
-use App\Models\ClientOrganization;
-
 /**
  * Помощник создания отправителей.
  *
@@ -20,7 +18,7 @@ class SenderWizardImporter
 {
     public function __construct(
         private readonly BulkSenderImporter $bulk,
-        private readonly OrganizationExcelParser $parser,
+        private readonly OrganizationPool $pool,
     ) {
     }
 
@@ -36,7 +34,7 @@ class SenderWizardImporter
         ?string $imapEnc = null,
     ): array {
         $pairs = $this->parseCredentials($credentials);
-        $pool = $this->buildUnusedPool($excelPath);
+        $pool = $this->pool->unused($excelPath);
 
         // План: каждая учётка → либо готовый блок, либо ошибка ещё до вставки.
         $planned = [];
@@ -138,36 +136,6 @@ class SenderWizardImporter
         }
 
         return $pairs;
-    }
-
-    /**
-     * Организации из файла, ИНН которых ещё нет в client_organizations.
-     * Дубликаты ИНН внутри файла отбрасываются. Порядок сохраняется.
-     *
-     * @return array<int,array<string,string|null>>
-     */
-    private function buildUnusedPool(string $excelPath): array
-    {
-        $orgs = $this->parser->parse($excelPath);
-
-        $existing = ClientOrganization::query()
-            ->whereNotNull('inn')
-            ->pluck('inn')
-            ->map(static fn ($inn) => (string) $inn)
-            ->flip();
-
-        $seen = [];
-        $pool = [];
-        foreach ($orgs as $org) {
-            $inn = (string) ($org['inn'] ?? '');
-            if ($inn === '' || $existing->has($inn) || isset($seen[$inn])) {
-                continue;
-            }
-            $seen[$inn] = true;
-            $pool[] = $org;
-        }
-
-        return $pool;
     }
 
     /**

@@ -217,6 +217,8 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
     Route::get('/senders/import', [\App\Http\Controllers\Admin\SenderImportController::class, 'create'])->name('senders.import.create');
     Route::post('/senders/import', [\App\Http\Controllers\Admin\SenderImportController::class, 'store'])->name('senders.import.store');
     Route::post('/senders/import/wizard', [\App\Http\Controllers\Admin\SenderImportController::class, 'wizard'])->name('senders.import.wizard');
+    Route::post('/senders/import/generate', [\App\Http\Controllers\Admin\SenderImportController::class, 'generate'])->name('senders.import.generate');
+    Route::post('/senders/import/generate/add', [\App\Http\Controllers\Admin\SenderImportController::class, 'generateStore'])->name('senders.import.generate.add');
 
     // Диагностика
     Route::get('/diagnostics', [\App\Http\Controllers\Admin\DiagnosticsController::class, 'index'])->name('diagnostics.index');
