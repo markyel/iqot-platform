@@ -3,11 +3,16 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\ImportSenderBlockJob;
 use App\Models\Reports\Sender;
 use App\Services\Senders\BulkSenderImporter;
 use App\Services\Senders\SenderAddressGenerator;
 use App\Services\Senders\SenderWizardImporter;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 /**
@@ -112,10 +117,11 @@ class SenderImportController extends Controller
     }
 
     /**
-     * Генератор адресов, шаг 2: добавить отмеченные галочками адреса в систему,
-     * затем показать список email/паролей с группировкой по домену.
+     * Генератор адресов, шаг 2: отмеченные галочками адреса уходят в фоновый
+     * батч задач (на каждый адрес — вызов AI), запрос сразу редиректит на
+     * страницу статуса. Так массовое добавление не упирается в таймаут прокси.
      */
-    public function generateStore(Request $request, BulkSenderImporter $importer): View
+    public function generateStore(Request $request): RedirectResponse
     {
         $validated = $request->validate([
             'blocks' => 'required|array',
@@ -126,7 +132,7 @@ class SenderImportController extends Controller
         ]);
 
         $blocks = [];
-        $byKey = [];
+        $credentials = [];
         foreach ($validated['selected'] as $key) {
             $raw = $request->input('blocks.' . $key);
             $data = is_string($raw) ? json_decode($raw, true) : null;
@@ -134,7 +140,7 @@ class SenderImportController extends Controller
                 continue;
             }
 
-            $block = array_filter([
+            $blocks[] = array_filter([
                 'email' => $data['email'],
                 'password' => $data['password'] ?? '',
                 'user' => $data['email'],
@@ -149,33 +155,120 @@ class SenderImportController extends Controller
                 'director' => $data['director'] ?? null,
             ], static fn ($v) => $v !== null && $v !== '');
 
-            $blocks[] = $block;
-            $byKey[mb_strtolower($data['email'])] = $data['password'] ?? '';
-        }
-
-        $summary = $importer->importBlocks($blocks);
-
-        // Список «email — пароль» с группировкой по домену только для созданных.
-        $credentialsByDomain = [];
-        foreach ($summary['rows'] as $row) {
-            if (($row['status'] ?? '') !== 'created') {
-                continue;
-            }
-            $email = (string) ($row['email'] ?? '');
-            $domain = strstr($email, '@') ? ltrim(strstr($email, '@'), '@') : '—';
-            $credentialsByDomain[$domain][] = [
-                'email' => $email,
-                'password' => $byKey[mb_strtolower($email)] ?? '',
+            $credentials[] = [
+                'email' => (string) $data['email'],
+                'password' => (string) ($data['password'] ?? ''),
             ];
         }
-        ksort($credentialsByDomain);
+
+        if ($blocks === []) {
+            return redirect()
+                ->route('admin.senders.import.create')
+                ->with('error', 'Не удалось разобрать выбранные адреса.');
+        }
+
+        $runId = (string) Str::uuid();
+
+        // Учётки (email/пароль) известны сразу — кладём их в кэш для страницы
+        // статуса, чтобы админ мог завести ящики, не дожидаясь конца импорта.
+        $credentialsByDomain = $this->groupByDomain($credentials);
+
+        Cache::put("senders_gen:{$runId}:meta", [
+            'total' => count($blocks),
+            'credentialsByDomain' => $credentialsByDomain,
+        ], now()->addDay());
+
+        $jobs = [];
+        foreach ($blocks as $i => $block) {
+            $jobs[] = new ImportSenderBlockJob($runId, $i, $block);
+        }
+
+        $batch = Bus::batch($jobs)
+            ->name("senders-gen:{$runId}")
+            ->allowFailures()
+            ->dispatch();
+
+        Cache::put("senders_gen:{$runId}:batch", $batch->id, now()->addDay());
+
+        return redirect()->route('admin.senders.import.generate.status', ['run' => $runId]);
+    }
+
+    /**
+     * Страница статуса фонового импорта: прогресс (создано/пропущено/ошибки) и
+     * список учёток для заведения ящиков. Обновляется опросом до завершения.
+     */
+    public function generateStatus(Request $request): View
+    {
+        $runId = (string) $request->query('run', '');
+        $meta = Cache::get("senders_gen:{$runId}:meta");
+
+        if (!is_array($meta)) {
+            return view('admin.senders.create', [
+                'totalSenders' => $this->safeCount(),
+                'activeTab' => 'generator',
+                'genStatusMissing' => true,
+            ]);
+        }
+
+        $total = (int) ($meta['total'] ?? 0);
+
+        $created = 0;
+        $skipped = 0;
+        $failed = 0;
+        $rows = [];
+        for ($i = 0; $i < $total; $i++) {
+            $row = Cache::get("senders_gen:{$runId}:row:{$i}");
+            if (!is_array($row)) {
+                continue;
+            }
+            $rows[] = $row;
+            match ($row['status'] ?? '') {
+                'created' => $created++,
+                'skipped' => $skipped++,
+                default => $failed++,
+            };
+        }
+
+        $processed = count($rows);
+
+        $batchId = Cache::get("senders_gen:{$runId}:batch");
+        $batch = $batchId ? Bus::findBatch($batchId) : null;
+        $finished = $batch ? $batch->finished() : ($processed >= $total);
 
         return view('admin.senders.create', [
             'totalSenders' => $this->safeCount(),
-            'summary' => $summary,
-            'credentialsByDomain' => $credentialsByDomain,
             'activeTab' => 'generator',
+            'credentialsByDomain' => $meta['credentialsByDomain'] ?? [],
+            'genStatus' => [
+                'run' => $runId,
+                'total' => $total,
+                'processed' => $processed,
+                'created' => $created,
+                'skipped' => $skipped,
+                'failed' => $failed,
+                'finished' => $finished,
+                'rows' => $rows,
+            ],
         ]);
+    }
+
+    /**
+     * Сгруппировать учётки по домену для вывода списком.
+     *
+     * @param array<int,array{email:string,password:string}> $credentials
+     * @return array<string,array<int,array{email:string,password:string}>>
+     */
+    private function groupByDomain(array $credentials): array
+    {
+        $byDomain = [];
+        foreach ($credentials as $cred) {
+            $email = $cred['email'];
+            $domain = strstr($email, '@') ? ltrim(strstr($email, '@'), '@') : '—';
+            $byDomain[$domain][] = $cred;
+        }
+        ksort($byDomain);
+
+        return $byDomain;
     }
 
     private function safeCount(): ?int

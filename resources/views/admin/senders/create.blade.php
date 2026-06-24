@@ -221,11 +221,95 @@
                         пароль и назначит домен по кругу. В превью отметьте галочками, какие адреса завести —
                         они добавятся в систему (ФИО-контакт и стиль письма допишет AI), а внизу появится
                         список <code>email&nbsp;пароль</code> по доменам, чтобы вы создали ящики на хостинге.
-                        SMTP/IMAP — <code>beget</code> по умолчанию.
+                        SMTP/IMAP — <code>beget</code> по умолчанию. Добавление идёт в фоне —
+                        страница статуса покажет прогресс и список ящиков.
                     </p>
                 </div>
             </div>
         </div>
+
+        @isset($genStatusMissing)
+            <div class="alert alert-warning" style="margin-bottom: var(--space-6);">
+                Сессия фонового импорта не найдена или истекла. Сгенерируйте адреса заново.
+            </div>
+        @endisset
+
+        @isset($genStatus)
+            @php
+                $gs = $genStatus;
+                $pending = max(0, $gs['total'] - $gs['processed']);
+                $pct = $gs['total'] > 0 ? (int) round($gs['processed'] / $gs['total'] * 100) : 100;
+            @endphp
+            <div class="card" style="margin-bottom: var(--space-6);" data-gen-status data-finished="{{ $gs['finished'] ? '1' : '0' }}">
+                <div class="card-header">
+                    <h2 style="margin: 0; font-size: var(--text-lg); font-weight: 600; display: flex; align-items: center; gap: var(--space-2);">
+                        <i data-lucide="{{ $gs['finished'] ? 'check-circle-2' : 'loader' }}" class="icon-md"></i>
+                        {{ $gs['finished'] ? 'Импорт завершён' : 'Идёт добавление в фоне…' }}
+                    </h2>
+                </div>
+                <div class="card-body">
+                    <div style="display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-4);">
+                        <span class="badge" style="background: var(--success-bg, #e6f4ea); color: var(--success, #1e7e34); padding: 0.4rem 0.8rem; border-radius: 6px;">
+                            Создано: {{ $gs['created'] }}
+                        </span>
+                        <span class="badge" style="background: var(--surface-secondary); color: var(--text-secondary); padding: 0.4rem 0.8rem; border-radius: 6px;">
+                            Пропущено: {{ $gs['skipped'] }}
+                        </span>
+                        <span class="badge" style="background: var(--danger-bg, #fde8e8); color: var(--danger, #b02a37); padding: 0.4rem 0.8rem; border-radius: 6px;">
+                            Ошибок: {{ $gs['failed'] }}
+                        </span>
+                        <span class="badge" style="background: var(--surface-secondary); color: var(--text-secondary); padding: 0.4rem 0.8rem; border-radius: 6px;">
+                            В очереди: {{ $pending }}
+                        </span>
+                    </div>
+
+                    <div style="background: var(--surface-secondary, #eee); border-radius: 6px; height: 10px; overflow: hidden;">
+                        <div style="width: {{ $pct }}%; height: 100%; background: var(--accent, #2563eb); transition: width .3s;"></div>
+                    </div>
+                    <p style="margin: var(--space-2) 0 0; color: var(--text-secondary);">
+                        {{ $gs['processed'] }} из {{ $gs['total'] }} ({{ $pct }}%).
+                        @unless($gs['finished'])
+                            Обновляется автоматически…
+                        @endunless
+                    </p>
+
+                    @if(count($gs['rows']) > 0)
+                        <div style="overflow-x: auto; margin-top: var(--space-4);">
+                            <table class="table" style="width: 100%; border-collapse: collapse;">
+                                <thead>
+                                    <tr style="text-align: left; border-bottom: 1px solid var(--border);">
+                                        <th style="padding: 0.5rem;">Статус</th>
+                                        <th style="padding: 0.5rem;">Email</th>
+                                        <th style="padding: 0.5rem;">Сообщение</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach($gs['rows'] as $row)
+                                        @php
+                                            $color = match($row['status'] ?? '') {
+                                                'created' => '#1e7e34',
+                                                'skipped' => 'var(--text-secondary)',
+                                                default => '#b02a37',
+                                            };
+                                            $label = match($row['status'] ?? '') {
+                                                'created' => '✓ Создан',
+                                                'skipped' => '— Пропущен',
+                                                default => '✗ Ошибка',
+                                            };
+                                        @endphp
+                                        <tr style="border-bottom: 1px solid var(--border-light, #eee);">
+                                            <td style="padding: 0.5rem; color: {{ $color }}; font-weight: 600; white-space: nowrap;">{{ $label }}</td>
+                                            <td style="padding: 0.5rem; font-family: monospace;">{{ $row['email'] ?: '—' }}</td>
+                                            <td style="padding: 0.5rem; color: var(--text-secondary);">{{ $row['message'] ?? '' }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    @endif
+                </div>
+            </div>
+        @endisset
 
         <div class="card">
             <div class="card-header">
@@ -457,6 +541,12 @@
         rows().forEach(r => r.addEventListener('change', () => {
             all.checked = [...rows()].every(x => x.checked);
         }));
+    })();
+
+    (function () {
+        const status = document.querySelector('[data-gen-status]');
+        if (!status || status.dataset.finished === '1') return;
+        setTimeout(() => window.location.reload(), 3000);
     })();
 </script>
 @endpush
