@@ -196,11 +196,14 @@ class BulkSenderImporter
             ]);
 
             // 5. Вставка отправителя.
-            $sender = DB::connection('reports')->transaction(function () use ($fields, $email, $smtpServer, $smtpPort, $imapServer, $imapPort, $org, $ai) {
+            $phone = $fields['phone'] ?? ($ai['phone'] ?? null);
+
+            $sender = DB::connection('reports')->transaction(function () use ($fields, $email, $phone, $smtpServer, $smtpPort, $imapServer, $imapPort, $org, $ai) {
                 return Sender::create([
                     'sender_name' => $fields['name'] ?? ($ai['sender_name'] ?? 'Отдел закупок'),
                     'sender_full_name' => $fields['fullname'] ?? ($ai['sender_full_name'] ?? 'Не указано'),
-                    'phone' => $fields['phone'] ?? ($ai['phone'] ?? null),
+                    'phone' => $phone,
+                    'phone_normalized' => $this->normalizePhone($phone),
                     'email' => $email,
                     'smtp_server' => $smtpServer,
                     'smtp_port' => $smtpPort,
@@ -332,6 +335,26 @@ sender_name, sender_full_name, phone, email_style, email_greeting,
 company_name, inn, kpp, legal_address, actual_address, director_name, company_phone, company_email.
 Все значения на русском языке.
 PROMPT;
+    }
+
+    /**
+     * Нормализовать телефон в индексируемый вид (как в n8n): оставляем только
+     * цифры (и запятые-разделители для нескольких номеров), обрезаем до 20
+     * символов под varchar(20). Пустое/только-разделители → null.
+     */
+    private function normalizePhone(?string $phone): ?string
+    {
+        if ($phone === null || trim($phone) === '') {
+            return null;
+        }
+
+        $normalized = preg_replace('/[^\d,]+/', '', $phone) ?? '';
+        $normalized = trim($normalized, ',');
+        if ($normalized === '') {
+            return null;
+        }
+
+        return mb_substr($normalized, 0, 20);
     }
 
     /**

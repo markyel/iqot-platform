@@ -20,6 +20,7 @@ class Sender extends Model
         'sender_name',
         'sender_full_name',
         'phone',
+        'phone_normalized',
         'email',
         'smtp_server',
         'smtp_port',
