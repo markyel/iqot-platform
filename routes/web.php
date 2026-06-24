@@ -213,6 +213,10 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
     Route::post('/campaigns/{campaign}/retry', [\App\Http\Controllers\Admin\CampaignController::class, 'retry'])->name('campaigns.retry');
     Route::delete('/campaigns/{campaign}', [\App\Http\Controllers\Admin\CampaignController::class, 'destroy'])->name('campaigns.destroy');
 
+    // Групповое добавление отправителей рассылки (reports.senders)
+    Route::get('/senders/import', [\App\Http\Controllers\Admin\SenderImportController::class, 'create'])->name('senders.import.create');
+    Route::post('/senders/import', [\App\Http\Controllers\Admin\SenderImportController::class, 'store'])->name('senders.import.store');
+
     // Диагностика
     Route::get('/diagnostics', [\App\Http\Controllers\Admin\DiagnosticsController::class, 'index'])->name('diagnostics.index');
     Route::post('/diagnostics/test-parse', [\App\Http\Controllers\Admin\DiagnosticsController::class, 'testParse'])->name('diagnostics.test-parse');

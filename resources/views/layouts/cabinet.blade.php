@@ -462,6 +462,12 @@
                             <span class="sidebar-item-tooltip">Рассылки</span>
                         </a>
 
+                        <a href="{{ route('admin.senders.import.create') }}" class="sidebar-item {{ request()->routeIs('admin.senders.import*') ? 'active' : '' }}">
+                            <i data-lucide="at-sign" class="sidebar-item-icon"></i>
+                            <span class="sidebar-item-text">Отправители</span>
+                            <span class="sidebar-item-tooltip">Отправители</span>
+                        </a>
+
                         <a href="{{ route('admin.billing.settings.index') }}" class="sidebar-item {{ request()->routeIs('admin.billing.settings*') ? 'active' : '' }}">
                             <i data-lucide="settings" class="sidebar-item-icon"></i>
                             <span class="sidebar-item-text">Настройки биллинга</span>
