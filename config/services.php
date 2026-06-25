@@ -53,6 +53,13 @@ return [
         'enabled' => env('EMAILS_DISPATCH_ENABLED', false),
     ],
 
+    // Приём почты (замена n8n «Receive and Route Emails v3»). По умолчанию выключен —
+    // включается флагом после сверки и отключения n8n-воркфлоу.
+    'email_receive' => [
+        'enabled' => env('EMAILS_RECEIVE_ENABLED', false),
+        'per_mailbox_limit' => (int) env('EMAILS_RECEIVE_LIMIT', 20),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Telegram Bot

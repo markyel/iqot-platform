@@ -35,6 +35,13 @@ Schedule::command('emails:dispatch-pending')
     ->timezone('Europe/Riga')
     ->withoutOverlapping();
 
+// Приём почты: диспетчер опроса IMAP активных ящиков (замена n8n «Receive and
+// Route Emails v3»). Ответы приходят в любое время — без рабочего окна. Защита
+// от наложения: withoutOverlapping + Cache::lock на ящик внутри job.
+Schedule::command('emails:receive-dispatch')
+    ->everyFiveMinutes()
+    ->withoutOverlapping();
+
 // Публичный API: оркестратор Discovery поставщиков — каждые 10 минут (§7).
 Schedule::job(new \App\Jobs\Api\DiscoveryOrchestratorJob())->everyTenMinutes()->withoutOverlapping();
 
