@@ -41,7 +41,29 @@
 - `inn`/`kpp`/`ogrn` — только цифры со строгой проверкой длины (10/12, 9, 13/15), иначе `null` (кривой телефон/адрес в колонке реквизита не валит insert).
 - строковые поля обрезаются под лимит колонок.
 
+## Рассылка: перенос из n8n в Laravel (заменяет воркфлоу «Send Emails v2»)
+БД та же — соединение `reports`, таблицы `email_queue`, `email_batches`, `senders`, `request_items`, `request_item_attachments`.
+
+Поток: планировщик → `emails:dispatch-pending` → claim (`status='sending'`) → `SendQueuedEmailJob` (по письму) → `QueuedEmailSender` (Symfony Mailer по SMTP отправителя, ssl/465).
+- `App\Console\Commands\DispatchPendingEmails` (`emails:dispatch-pending {--limit=150} {--force}`): реклейм застрявших `sending` старше 30 мин → `pending`; выборка кандидатов (как n8n Get Pending Emails: pending/error, `scheduled_at<=now`, отправитель `is_active` и не заблокирован); claim + dispatch с накопительной задержкой по `send_delay_seconds` каждого отправителя.
+- `App\Jobs\SendQueuedEmailJob` (timeout=120, **tries=1** — ретраи вручную через `email_queue.retry_count`/`scheduled_at`): на ошибке `+1 retry`, перенос `+5 мин`; при ratelimit — блок отправителя на 30 мин, деактивация при 3-й блокировке за сутки (логика n8n Update Error).
+- `App\Services\Senders\QueuedEmailSender`: вложения из `request_item_attachments.file_data` (BLOB) по `email_batches.request_items` (JSON-массив id).
+- Расписание (`routes/console.php`): `->everyFiveMinutes()->weekdays()->between('8:00','20:00')->timezone('Europe/Riga')->withoutOverlapping()`.
+- **Флаг-предохранитель** `EMAILS_DISPATCH_ENABLED` (`config/services.php → services.email_dispatch.enabled`): без него команда молчит, ручной прогон — `--force`.
+- Админ-статистика: `/manage/emails/stats` (`EmailQueueStatsController` → `admin.emails.stats`), пункт сайдбара «Очередь рассылки».
+
+### Состояние перехода (25.06.2026)
+- Коммит `5135c26`. n8n-воркфлоу «Send Emails v2» **отключён** пользователем; его последний прогон до отключения дослал свою пачку (~42 письма, MAX sent_at 12:26:54 МСК) и встал.
+- Тест `--force --limit=1` дважды → письма ушли (id 98491 info@pkm2007.ru, 98492 sales@istlisft.ru, sender 66).
+- `EMAILS_DISPATCH_ENABLED=true` в `.env` прода (строка 67), `config:clear`. Планировщик подтверждён (`schedule:list`, крон `* * * * * artisan schedule:run`). Боевая рассылка пошла под Laravel (дренаж здоровый, ошибок/блокировок нет).
+
+### ⚠️ Рассинхрон таймзон (известно, на отправку не влияет)
+- `config('app.timezone')='UTC'`, а reports-БД `@@time_zone=SYSTEM`=МСК(+3). n8n писал `sent_at`/`scheduled_at` в МСК (12:xx), Laravel пишет в UTC (09:xx) — метки на 3ч «раньше».
+- Сейчас функционально безвредно: все pending имеют `scheduled_at` в реальном прошлом (`stuck_by_tz_skew=0`). Влияет только на отчётность по времени и сравнение разнотаймзонных меток в таблице. Если появятся письма с `scheduled_at` «на будущее по МСК» — диспетчер увидит их на 3ч позже; тогда сравнивать через `NOW()` БД, а не `now()` приложения.
+- При диагностике sent/updated по reports-БД учитывать: Laravel-строки ищи в UTC-окне (~09:xx), n8n-строки — в МСК (~12:xx).
+
 ## История работы (июнь 2026)
+- `5135c26` — перенос рассылки из n8n в Laravel + статистика очереди (диспетчер, джоба, Symfony Mailer, флаг-предохранитель).
 - `296227e` — вкладка «Генератор» адресов + раздел/отдел в ФИО.
 - `5b2dcf5` — именные логины (фамилия/имя.фамилия) при пустом ФИО директора (ExportBase не отдаёт ФИО → синтез из пула SURNAMES в `SenderAddressGenerator`).
 - `61862e2` — фоновый импорт генератора (фикс 504).
