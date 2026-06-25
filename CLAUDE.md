@@ -69,7 +69,40 @@
 - **Forward-only:** разовую правку «сдвинутых на −3ч» Laravel-строк за 25.06 (id≥98491) НЕ делали — на рассылку не влияет, только косметика отчётов за тот день.
 - ⚠️ **Остаточный рассинхрон ЧАСОВ (не таймзона):** app-сервер опережает сервер reports-БД на ~3–5 мин (NTP-дрейф между хостами). `sent_at` (app-часы) может быть «в будущем» относительно `NOW()` БД на эти минуты. На паузу не влияет (она на `NOW(3)` самой БД). Эффект: новое письмо со `scheduled_at=now()` может ждать первой отправки до ~5 мин; мелкие сдвиги в отчётах у границы суток. Лечится синхронизацией NTP на хостах.
 
+## Приём почты: перенос из n8n в Laravel (заменяет воркфлоу «Receive and Route Emails v3»)
+n8n-воркфлоу авто-отключился из-за повторяющихся падений. Перенесён нативно (зеркало рассылки: ушли от внешнего микросервиса `45.146.167.20:8000/receive` к чистому PHP). БД та же — `reports`.
+
+Поток: планировщик → `emails:receive-dispatch` → по job на активный ящик с IMAP-кредами в очередь `receive` → `ReceiveSenderEmailsJob` (опрос ящика) → `IncomingEmailRouter::route()` (по письму).
+
+### IMAP без ext-imap (коммиты a939a77, 67152b4)
+- **`webklex/php-imap`** (`^6.2`, чистый PHP — на проде НЕТ `ext-imap`, но есть openssl/mbstring/fileinfo/iconv).
+- `App\Services\Senders\ImapMailboxReader`: строит клиент из IMAP-полей `Sender` (`imap_server/imap_port/imap_user/imap_password/imap_encryption`), INBOX, выборка UNSEEN (`leaveUnread()` — НЕ вешает `\Seen` при чтении), маппинг в `App\Support\Mail\ParsedEmail` (DTO). Пометку `\Seen` ставит вызывающий код через `markSeen($uid)` **только после успешной обработки** — упавшее письмо перечитается.
+  - **Декод заголовков:** без `ext-imap` дефолтный webklex-декодер `'utf-8'` НЕ разворачивает MIME encoded-word (`=?utf-8?B?…?=`) — тема оставалась закодированной. Принудительно ставим `decoding.options.header => 'iconv'` в `ClientManager` (`iconv_mime_decode`).
+  - **Тело:** у многих писем `text/plain` пустой, контент в `text/html` (≈9 КБ) — пишем оба поля, `supplier_response_preview` = `strip_tags(bodyText ?: bodyHtml)`.
+  - **Даты:** `received_at` = `Date`-заголовок письма как есть (часто МСК), `last_activity`/`created_at` = `now()` (UTC). Расхождение ~3ч — это разные источники времени, не баг.
+- `App\Services\Senders\IncomingEmailRouter::route($senderId, ParsedEmail): string` (исход: `duplicate|replied|conversation|unidentified|skipped`), всё через query builder `DB::connection('reports')`:
+  1. Дедуп по `email_messages.message_id`.
+  2. `matchBatch`: `email_batches.tracking_token` (status in queued/sending/sent/completed, `created_at >= -60d`, токен ≥5 симв.) подстрокой в `subject + bodyText[:3000] + bodyHtml[:3000]`.
+  3. `matchQueue`: полный `email_queue.token` подстрокой → `[queueId, supplierId]`. Нет supplier → `findSupplierByEmail(from)` по `suppliers.email`.
+  4. Привязано → беседа (`email_conversations` найти/создать + `email_messages` `direction='incoming'`), `queueId` → `email_queue.status='replied'` + `replied_at`/`supplier_response_*`. Не привязано → `unidentified_emails` (reason `no_token`/`no_supplier`).
+  5. Вложения → `Storage::disk('public')` (`email-attachments/{msg|unident}/{id}/{idx}_{имя}`), относительный путь в `file_path`; строки в `email_attachments`/`unidentified_email_attachments`.
+- **Воркеры**: systemd-шаблон `iqot-receive-worker@.service` (`queue:work database --queue=receive --tries=1 --timeout=180 --sleep=2`), 2 инстанса `@1,@2` — отдельный пул, чтобы медленный IMAP не голодил отправку.
+- **Защита от наложения**: расписание `->everyFiveMinutes()->withoutOverlapping()` + `Cache::lock("receive:sender:{id}", 170)` на ящик внутри job (глобальный `workflow_locks` не нужен).
+- **Флаг-предохранитель** `EMAILS_RECEIVE_ENABLED` (`services.email_receive.enabled`): без него `emails:receive-dispatch` молчит, ручной прогон — `--force`. Лимит писем за тик — `EMAILS_RECEIVE_LIMIT` (дефолт 20).
+
+### Пофикшенные баги n8n (в порту)
+- `Create Conversation` писал `status='active'` — такого значения НЕТ в enum (`waiting/partial/complete/...`) → падало при strict. Порт: `status='waiting'`.
+- Тот же INSERT не задавал `items_total` (NOT NULL без дефолта) → падало. Порт: `items_total = email_batches.items_count`.
+- Ветка `Save to Spam1` в графе была отключена (мёртвая) → спам не реализуем, всё непривязанное идёт в `unidentified_emails`.
+- AI-классификация — НЕ здесь (колонки `ai_*` пустые, отдельный downstream).
+
+### Состояние перехода (25.06.2026)
+- Коммиты `a939a77` (порт), `67152b4` (iconv-декод заголовков). Таблицы приёма уже были в `reports` — миграций НЕ потребовалось.
+- E2E на живых данных: ящик `sender_id=1` (imap.beget.com), 2 реальных ответа поставщика по токену `LS-reed+switch109-SI20` → `replied`, `email_messages` (incoming) вставлены, `email_queue 93565 → replied` с preview, вложение `0_DG12MOA-...pdf` легло на диск (`email_attachments` EXISTS), повторный прогон → `duplicate`. Декод темы и кириллицы — ок.
+- Воркеры `iqot-receive-worker@{1,2}` — `enabled --now` (простаивают, пока флаг выключен). `schedule:list` показывает `emails:receive-dispatch`. **`EMAILS_RECEIVE_ENABLED` пока выключен** — включить после финальной сверки и окончательного отключения n8n-воркфлоу.
+
 ## История работы (июнь 2026)
+- `a939a77`/`67152b4` — приём почты на webklex (нативный IMAP, маршрутизация в беседы/unidentified, вложения на диск, iconv-декод заголовков без ext-imap).
 - `9e6ffb3` — миллисекундный замок интервала (`TIMESTAMP(3)`/`NOW(3)`): строгая пауза ≥ delay без секундного off-by-one.
 - `ec30583` — многопоточная рассылка: round-robin диспетчер, атомарный `reserveSlot`, очередь `emails` + 8 systemd-воркеров, `everyMinute`.
 - `5135c26` — перенос рассылки из n8n в Laravel + статистика очереди (диспетчер, джоба, Symfony Mailer, флаг-предохранитель).
