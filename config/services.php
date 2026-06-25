@@ -74,6 +74,32 @@ return [
         'per_mailbox_limit' => (int) env('EMAILS_RECEIVE_LIMIT', 20),
     ],
 
+    // AI-анализ ответов поставщиков (замена n8n «Process Email Conversations»).
+    // Берёт необработанные входящие письма, прогоняет тело + вложения (КП) через AI,
+    // извлекает офферы/вопросы и пишет в request_item_responses / *_multi_responses /
+    // supplier_questions, обновляет статус беседы. По умолчанию ВЫКЛЮЧЕН — включать
+    // только ПОСЛЕ отключения n8n-воркфлоу (вставки multi/questions не идемпотентны,
+    // параллельная работа двух систем плодит дубли).
+    'email_analysis' => [
+        'enabled' => (bool) env('EMAILS_ANALYZE_ENABLED', false),
+        // Отдельный ключ модели (промпт большой → берём полноценную модель, не mini).
+        'model' => env('EMAILS_ANALYSIS_MODEL', 'gpt-4o'),
+        // Таймаут запроса к AI: промпт+документы большие, дефолтных 30с мало.
+        'timeout' => (int) env('EMAILS_ANALYSIS_TIMEOUT', 120),
+        // Потолок токенов ответа (офферов/вопросов может быть много).
+        'max_tokens' => (int) env('EMAILS_ANALYSIS_MAX_TOKENS', 4096),
+        // Сколько писем за тик ставим в очередь анализа.
+        'batch_limit' => (int) env('EMAILS_ANALYZE_BATCH_LIMIT', 50),
+        // Лимит текста вложений в промпте (начало+конец, если длиннее).
+        'doc_max_chars' => (int) env('EMAILS_ANALYZE_DOC_MAX_CHARS', 30000),
+        // 2-шаговый веб-сёрфинг вместо Tavily: если AI вернул fetch_urls и цен нет —
+        // грузим страницы и делаем второй прогон AI с их содержимым.
+        'fetch_urls' => (bool) env('EMAILS_ANALYZE_FETCH_URLS', true),
+        'fetch_max' => (int) env('EMAILS_ANALYZE_FETCH_MAX', 3),       // макс. ссылок за письмо
+        'fetch_chars' => (int) env('EMAILS_ANALYZE_FETCH_CHARS', 8000), // лимит текста со страницы
+        'fetch_timeout' => (int) env('EMAILS_ANALYZE_FETCH_TIMEOUT', 15),
+    ],
+
     // Переходный период: дублирование вложений входящих писем в Google Drive, чтобы
     // downstream-воркфлоу n8n «Process Email Conversations» (читает Drive-URL из
     // email_attachments.file_path) продолжал работать. По умолчанию выключено —

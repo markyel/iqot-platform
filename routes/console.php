@@ -42,6 +42,13 @@ Schedule::command('emails:receive-dispatch')
     ->everyFiveMinutes()
     ->withoutOverlapping();
 
+// AI-анализ ответов поставщиков (замена n8n «Process Email Conversations», раз в
+// 30 мин). По умолчанию молчит, пока флаг EMAILS_ANALYZE_ENABLED=false —
+// включать ТОЛЬКО после отключения n8n-воркфлоу (multi/questions не идемпотентны).
+Schedule::command('emails:analyze-replies')
+    ->everyThirtyMinutes()
+    ->withoutOverlapping();
+
 // Публичный API: оркестратор Discovery поставщиков — каждые 10 минут (§7).
 Schedule::job(new \App\Jobs\Api\DiscoveryOrchestratorJob())->everyTenMinutes()->withoutOverlapping();
 
