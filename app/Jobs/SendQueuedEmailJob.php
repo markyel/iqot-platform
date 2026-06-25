@@ -12,24 +12,43 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
  * Отправка одного письма из reports.email_queue (замена цикла n8n «Send Emails»).
  *
- * Ретраи ведём вручную через email_queue.retry_count/scheduled_at (tries=1),
- * чтобы воспроизвести логику n8n: ошибка → +1 попытка, перенос на +5 мин,
- * при ratelimit — блокировка отправителя на 30 мин (и деактивация при серии).
+ * Многопоточная рассылка: разные ящики шлются параллельно (своя очередь `emails`,
+ * пул воркеров), а внутри одного ящика паузу гарантирует атомарный «замок интервала»
+ * в БД (см. reserveSlot()) — два письма одного отправителя не уйдут чаще
+ * send_delay_seconds и не уйдут одновременно при любом числе воркеров.
+ *
+ * Ретраи ведём вручную через email_queue.retry_count/scheduled_at; переносы
+ * по паузе — через release(), поэтому ограничение времени задаём retryUntil()
+ * (30 мин), а не tries.
  */
 class SendQueuedEmailJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $timeout = 120;
-    public int $tries = 1;
+
+    // tries=0 → лимит попыток отключён, время жизни ограничивает retryUntil().
+    // Нужно для release() по паузе: переносы не должны исчерпывать попытки.
+    public int $tries = 0;
 
     public function __construct(private readonly int $emailQueueId)
     {
+        $this->onQueue('emails');
+    }
+
+    /**
+     * Письмо живёт в очереди не дольше 30 мин (совпадает с реклеймом «застрявших»
+     * в диспетчере). За это время пауза-переносы успевают отработать.
+     */
+    public function retryUntil(): \DateTimeInterface
+    {
+        return now()->addMinutes(30);
     }
 
     public function handle(QueuedEmailSender $sender): void
@@ -56,6 +75,14 @@ class SendQueuedEmailJob implements ShouldQueue
             return;
         }
 
+        // Жёсткая пауза на ящик: атомарно «занимаем слот». Если рано — переносим
+        // письмо на send_delay_seconds, статус остаётся 'sending' (claim не теряем).
+        $delay = max(1, (int) ($senderModel->send_delay_seconds ?: 2));
+        if (!$this->reserveSlot($senderModel->id, $delay)) {
+            $this->release($delay);
+            return;
+        }
+
         try {
             $sender->send($email);
 
@@ -70,6 +97,29 @@ class SendQueuedEmailJob implements ShouldQueue
         } catch (\Throwable $e) {
             $this->handleFailure($email, $senderModel, $e->getMessage());
         }
+    }
+
+    /**
+     * Атомарный замок интервала отправки для ящика.
+     *
+     * Один UPDATE: занимаем слот только если прошло >= $delay секунд с прошлой
+     * отправки (или её ещё не было). affected=1 → слот наш, можно слать;
+     * affected=0 → другой воркер уже занял слот / пауза не вышла → ждём.
+     *
+     * Время пишем и сравниваем через NOW() самой БД (reports), чтобы не зависеть
+     * от рассинхрона таймзоны приложения (UTC) и БД (МСК).
+     */
+    private function reserveSlot(int $senderId, int $delay): bool
+    {
+        $affected = DB::connection('reports')->table('senders')
+            ->where('id', $senderId)
+            ->where(function ($q) use ($delay) {
+                $q->whereNull('last_send_at')
+                    ->orWhereRaw('last_send_at <= (NOW() - INTERVAL ? SECOND)', [$delay]);
+            })
+            ->update(['last_send_at' => DB::connection('reports')->raw('NOW()')]);
+
+        return $affected > 0;
     }
 
     private function bumpSenderCounter(Sender $sender): void

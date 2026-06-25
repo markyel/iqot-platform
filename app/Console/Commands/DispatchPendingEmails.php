@@ -5,22 +5,28 @@ namespace App\Console\Commands;
 use App\Jobs\SendQueuedEmailJob;
 use App\Models\Reports\EmailQueue;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Диспетчер рассылки — замена крон-триггера n8n «Send Emails v2».
  *
- * Выбирает pending/error письма от незаблокированных отправителей и ставит
- * каждое отдельной джобой SendQueuedEmailJob с накопительной задержкой
- * по каждому отправителю (соблюдение send_delay_seconds вместо n8n Wait).
+ * Многопоточность: раздаёт письма ЧЕСТНО по всем готовым ящикам (round-robin),
+ * чтобы они слались параллельно (своя очередь `emails`, пул воркеров). На один
+ * ящик за тик берётся не больше, чем он успеет отправить до следующего тика
+ * (потолок = окно_тика / send_delay_seconds), с лёгким пред-разносом delay —
+ * чтобы жёсткий «замок интервала» в SendQueuedEmailJob почти не срабатывал.
  *
  * «Claim» через status='sending': взятое в работу письмо не подхватывается
  * повторно; зависшие (упавший воркер) реклеймятся обратно в pending через 30 мин.
  */
 class DispatchPendingEmails extends Command
 {
-    protected $signature = 'emails:dispatch-pending {--limit=150} {--force : Запустить даже при выключенном флаге EMAILS_DISPATCH_ENABLED}';
+    protected $signature = 'emails:dispatch-pending
+        {--limit=3000 : Общий потолок писем за тик (предохранитель)}
+        {--tick=60 : Окно тика в секундах — под него считается потолок на ящик}
+        {--force : Запустить даже при выключенном флаге EMAILS_DISPATCH_ENABLED}';
 
-    protected $description = 'Поставить pending/error письма из reports.email_queue в очередь на отправку';
+    protected $description = 'Поставить pending/error письма из reports.email_queue в очередь на отправку (многопоточно, с паузой на ящик)';
 
     public function handle(): int
     {
@@ -40,59 +46,89 @@ class DispatchPendingEmails extends Command
         }
 
         $limit = max(1, (int) $this->option('limit'));
+        $tick = max(5, (int) $this->option('tick'));
 
-        // 2) Выборка кандидатов (логика n8n Get Pending Emails).
-        $candidates = EmailQueue::query()
-            ->from('email_queue as eq')
-            ->join('senders as s', 'eq.sender_id', '=', 's.id')
+        // 2) Готовые ящики: активные, не заблокированные, у которых есть письма к отправке.
+        $senders = DB::connection('reports')->table('senders as s')
+            ->join('email_queue as eq', 'eq.sender_id', '=', 's.id')
+            ->where('s.is_active', 1)
+            ->where(function ($q) {
+                $q->whereNull('s.blocked_until')->orWhereRaw('s.blocked_until <= NOW()');
+            })
             ->where(function ($q) {
                 $q->where(function ($q) {
-                    $q->where('eq.status', 'pending')
-                        ->where('eq.scheduled_at', '<=', now());
+                    $q->where('eq.status', 'pending')->whereRaw('eq.scheduled_at <= NOW()');
                 })->orWhere(function ($q) {
                     $q->where('eq.status', 'error')
                         ->whereColumn('eq.retry_count', '<', 'eq.max_retries')
-                        ->where('eq.scheduled_at', '<=', now());
+                        ->whereRaw('eq.scheduled_at <= NOW()');
                 });
             })
-            ->where(function ($q) {
-                $q->whereNull('s.blocked_until')->orWhere('s.blocked_until', '<=', now());
-            })
-            ->where('s.is_active', 1)
-            ->orderByRaw("CASE WHEN eq.status = 'pending' THEN 0 ELSE 1 END")
-            ->orderByDesc('eq.priority')
-            ->orderBy('eq.scheduled_at')
-            ->limit($limit)
-            ->get(['eq.id', 'eq.sender_id', 's.send_delay_seconds']);
+            ->groupBy('s.id', 's.send_delay_seconds')
+            ->get(['s.id', 's.send_delay_seconds']);
 
-        if ($candidates->isEmpty()) {
+        if ($senders->isEmpty()) {
             $this->info('No pending emails.');
             return self::SUCCESS;
         }
 
-        // 3) Claim + dispatch с задержкой, накапливаемой отдельно по отправителю.
-        $delayBySender = [];
+        // 3) Round-robin по ящикам: на каждый берём perSenderCap писем, ставим
+        //    с накопительной задержкой по этому ящику (0, delay, 2·delay, …).
         $dispatched = 0;
+        $totalCapHit = 0;
 
-        foreach ($candidates as $row) {
-            $claimed = EmailQueue::where('id', $row->id)
-                ->whereIn('status', ['pending', 'error'])
-                ->update(['status' => 'sending', 'updated_at' => now()]);
-
-            if (!$claimed) {
-                continue; // письмо уже забрал другой процесс
+        foreach ($senders as $sender) {
+            if ($dispatched >= $limit) {
+                break;
             }
 
-            $delaySec = max(0, (int) ($row->send_delay_seconds ?? 5));
-            $accum = $delayBySender[$row->sender_id] ?? 0;
+            $delaySec = max(1, (int) ($sender->send_delay_seconds ?: 2));
+            // Сколько ящик успеет отправить до следующего тика (+1 в запас от простоя).
+            $perSenderCap = (int) ceil($tick / $delaySec) + 1;
 
-            SendQueuedEmailJob::dispatch((int) $row->id)->delay(now()->addSeconds($accum));
+            $rows = DB::connection('reports')->table('email_queue')
+                ->where('sender_id', $sender->id)
+                ->where(function ($q) {
+                    $q->where(function ($q) {
+                        $q->where('status', 'pending')->whereRaw('scheduled_at <= NOW()');
+                    })->orWhere(function ($q) {
+                        $q->where('status', 'error')
+                            ->whereColumn('retry_count', '<', 'max_retries')
+                            ->whereRaw('scheduled_at <= NOW()');
+                    });
+                })
+                ->orderByRaw("CASE WHEN status = 'pending' THEN 0 ELSE 1 END")
+                ->orderByDesc('priority')
+                ->orderBy('scheduled_at')
+                ->limit($perSenderCap)
+                ->get(['id']);
 
-            $delayBySender[$row->sender_id] = $accum + $delaySec;
-            $dispatched++;
+            if ($rows->count() >= $perSenderCap) {
+                $totalCapHit++;
+            }
+
+            $accum = 0;
+            foreach ($rows as $row) {
+                if ($dispatched >= $limit) {
+                    break;
+                }
+
+                $claimed = EmailQueue::where('id', $row->id)
+                    ->whereIn('status', ['pending', 'error'])
+                    ->update(['status' => 'sending', 'updated_at' => now()]);
+
+                if (!$claimed) {
+                    continue; // письмо уже забрал другой процесс
+                }
+
+                SendQueuedEmailJob::dispatch((int) $row->id)->delay(now()->addSeconds($accum));
+
+                $accum += $delaySec;
+                $dispatched++;
+            }
         }
 
-        $this->info("Dispatched: {$dispatched}");
+        $this->info("Dispatched: {$dispatched} (senders: {$senders->count()}, на лимите ящика: {$totalCapHit})");
         return self::SUCCESS;
     }
 }

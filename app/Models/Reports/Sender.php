@@ -49,6 +49,7 @@ class Sender extends Model
         'send_delay_seconds',
         'emails_sent_today',
         'last_send_date',
+        'last_send_at',
     ];
 
     protected $casts = [
@@ -60,6 +61,7 @@ class Sender extends Model
         'blocked_until' => 'datetime',
         'last_block_at' => 'datetime',
         'last_send_date' => 'date',
+        'last_send_at' => 'datetime',
         'block_count' => 'integer',
         'send_delay_seconds' => 'integer',
         'emails_sent_today' => 'integer',

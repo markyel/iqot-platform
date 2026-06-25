@@ -29,7 +29,7 @@ Schedule::command('api:inbox:process')->everyFiveMinutes()->withoutOverlapping()
 // Рассылка: диспетчер очереди писем (замена n8n «Send Emails»).
 // Рабочее окно — Пн–Пт 08:00–20:00 по Europe/Riga (как в n8n Within Work Hours).
 Schedule::command('emails:dispatch-pending')
-    ->everyFiveMinutes()
+    ->everyMinute()
     ->weekdays()
     ->between('8:00', '20:00')
     ->timezone('Europe/Riga')
