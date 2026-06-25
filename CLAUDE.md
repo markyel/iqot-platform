@@ -44,13 +44,18 @@
 ## Рассылка: перенос из n8n в Laravel (заменяет воркфлоу «Send Emails v2»)
 БД та же — соединение `reports`, таблицы `email_queue`, `email_batches`, `senders`, `request_items`, `request_item_attachments`.
 
-Поток: планировщик → `emails:dispatch-pending` → claim (`status='sending'`) → `SendQueuedEmailJob` (по письму) → `QueuedEmailSender` (Symfony Mailer по SMTP отправителя, ssl/465).
-- `App\Console\Commands\DispatchPendingEmails` (`emails:dispatch-pending {--limit=150} {--force}`): реклейм застрявших `sending` старше 30 мин → `pending`; выборка кандидатов (как n8n Get Pending Emails: pending/error, `scheduled_at<=now`, отправитель `is_active` и не заблокирован); claim + dispatch с накопительной задержкой по `send_delay_seconds` каждого отправителя.
-- `App\Jobs\SendQueuedEmailJob` (timeout=120, **tries=1** — ретраи вручную через `email_queue.retry_count`/`scheduled_at`): на ошибке `+1 retry`, перенос `+5 мин`; при ratelimit — блок отправителя на 30 мин, деактивация при 3-й блокировке за сутки (логика n8n Update Error).
+Поток: планировщик → `emails:dispatch-pending` → claim (`status='sending'`) → очередь `emails` (8 воркеров) → `SendQueuedEmailJob` (по письму) → `QueuedEmailSender` (Symfony Mailer по SMTP отправителя, ssl/465).
+
+### Многопоточность + строгая пауза на ящик (коммиты ec30583, 9e6ffb3)
+Максимальная пропускная способность при соблюдении `send_delay_seconds` между письмами одного ящика. Параллелизм — по разным ящикам; внутри ящика паузу держит атомарный замок в БД.
+- `App\Console\Commands\DispatchPendingEmails` (`{--limit=3000} {--tick=60} {--force}`): реклейм застрявших `sending` >30 мин → `pending`; **честный round-robin** по готовым ящикам — на каждый берётся `perSenderCap = ceil(tick/delay)+1` писем (сколько ящик успеет до след. тика), claim (`status='sending'`) + dispatch в очередь `emails` с пред-разносом delay.
+- `App\Jobs\SendQueuedEmailJob` (очередь `emails`, timeout=120, **tries=0** + `retryUntil(30 мин)` — переносы по паузе через `release()` не жгут попытки): **`reserveSlot()`** — атомарный CAS `UPDATE senders SET last_send_at=NOW(3) WHERE id=? AND (last_send_at IS NULL OR last_send_at<=NOW(3)-INTERVAL ? SECOND)`. affected=1 → слот наш, шлём; affected=0 → рано → `release(delay)`. Row-lock гарантирует взаимоисключение, `TIMESTAMP(3)`+`NOW(3)` — строгий интервал ≥ delay (секундный floor давал просадку до ~1s). Ошибка: `+1 retry`, перенос `+5 мин`; ratelimit → блок ящика 30 мин, деактивация при 3-й блокировке/сутки.
 - `App\Services\Senders\QueuedEmailSender`: вложения из `request_item_attachments.file_data` (BLOB) по `email_batches.request_items` (JSON-массив id).
-- Расписание (`routes/console.php`): `->everyFiveMinutes()->weekdays()->between('8:00','20:00')->timezone('Europe/Riga')->withoutOverlapping()`.
+- Расписание (`routes/console.php`): `->everyMinute()->weekdays()->between('8:00','20:00')->timezone('Europe/Riga')->withoutOverlapping()`.
+- **Воркеры**: systemd-шаблон `iqot-email-worker@.service` (`queue:work database --queue=emails --tries=0 --timeout=120 --sleep=1`), 8 инстансов `@1..@8`. Очередь `default` (`iqot-queue-worker@1,2`) — для остальных джоб (импорт/discovery). Масштаб: `systemctl enable --now iqot-email-worker@N`.
 - **Флаг-предохранитель** `EMAILS_DISPATCH_ENABLED` (`config/services.php → services.email_dispatch.enabled`): без него команда молчит, ручной прогон — `--force`.
 - Админ-статистика: `/manage/emails/stats` (`EmailQueueStatsController` → `admin.emails.stats`), пункт сайдбара «Очередь рассылки».
+- **Проверка пауз**: `sent_at` секундной точности + джиттер SMTP → ложные «gap<2s». Мерить агрегатно: per-sender `span` vs `(n-1)*delay` и max сендов в скользящем 60s-окне (потолок `60/delay+1`). Live-замер: 0 нарушений, max 31/60s при delay=2.
 
 ### Состояние перехода (25.06.2026)
 - Коммит `5135c26`. n8n-воркфлоу «Send Emails v2» **отключён** пользователем; его последний прогон до отключения дослал свою пачку (~42 письма, MAX sent_at 12:26:54 МСК) и встал.
@@ -63,6 +68,8 @@
 - При диагностике sent/updated по reports-БД учитывать: Laravel-строки ищи в UTC-окне (~09:xx), n8n-строки — в МСК (~12:xx).
 
 ## История работы (июнь 2026)
+- `9e6ffb3` — миллисекундный замок интервала (`TIMESTAMP(3)`/`NOW(3)`): строгая пауза ≥ delay без секундного off-by-one.
+- `ec30583` — многопоточная рассылка: round-robin диспетчер, атомарный `reserveSlot`, очередь `emails` + 8 systemd-воркеров, `everyMinute`.
 - `5135c26` — перенос рассылки из n8n в Laravel + статистика очереди (диспетчер, джоба, Symfony Mailer, флаг-предохранитель).
 - `296227e` — вкладка «Генератор» адресов + раздел/отдел в ФИО.
 - `5b2dcf5` — именные логины (фамилия/имя.фамилия) при пустом ФИО директора (ExportBase не отдаёт ФИО → синтез из пула SURNAMES в `SenderAddressGenerator`).
