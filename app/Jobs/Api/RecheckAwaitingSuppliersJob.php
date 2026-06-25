@@ -20,10 +20,17 @@ use Illuminate\Support\Facades\Log;
  * RecheckAwaitingSuppliersJob (§6.3).
  *
  * Hourly cron. По позициям в `awaiting_suppliers`:
+ *   - product_type_id IS NULL → отклонить сразу (reason='unclassified'): без типа
+ *     продукта coverage не считается и discovery-run по паре не создаётся
+ *     (см. SupplierPoolService::applyToSubmission) → forward-пути нет, иначе позиция
+ *     висит вечно и блокирует промоушен всей заявки;
  *   - coverage стал достаточным → item_status='pool_ready';
  *   - прошло >14 дней И все последние supplier_discovery_runs по паре exhausted
  *     → отклонить с rejection_reason='no_suppliers_available', hold release,
  *     записать в api_submissions.rejected_summary.
+ *
+ * После любого отклонения дёргаем PromotionService::promoteIfReady — снятие
+ * блокирующей позиции может сделать заявку готовой к промоушену.
  */
 class RecheckAwaitingSuppliersJob implements ShouldQueue
 {
@@ -41,9 +48,10 @@ class RecheckAwaitingSuppliersJob implements ShouldQueue
 
     public function handle(SupplierCoverageService $coverage): void
     {
+        // null-product_type позиции НЕ исключаем (раньше так и зависали): их
+        // обрабатывает processItem отдельной веткой — отклоняет.
         $items = RequestItemStaging::query()
             ->where('item_status', 'awaiting_suppliers')
-            ->whereNotNull('product_type_id')
             ->get();
 
         foreach ($items as $item) {
@@ -60,6 +68,18 @@ class RecheckAwaitingSuppliersJob implements ShouldQueue
 
     private function processItem(RequestItemStaging $item, SupplierCoverageService $coverage): void
     {
+        // Без типа продукта позиция не имеет пути вперёд (coverage не считается,
+        // discovery-run не создаётся) — отклоняем сразу и пробуем промоутить заявку.
+        if ($item->product_type_id === null) {
+            $submission = $this->rejectItemAndRelease(
+                $item,
+                'unclassified',
+                'Позиция не классифицирована (не задан тип продукта) — требуется ручная переклассификация.'
+            );
+            $this->promoteOrFinalize($submission);
+            return;
+        }
+
         $result = $coverage->checkCoverage($item->domain_id, $item->product_type_id);
         if ($result['is_sufficient']) {
             $item->update(['item_status' => 'pool_ready']);
@@ -94,17 +114,55 @@ class RecheckAwaitingSuppliersJob implements ShouldQueue
             return;
         }
 
-        $this->rejectItemAndRelease($item, 'no_suppliers_available', 'Не удалось собрать пул поставщиков за 14 дней.');
+        $submission = $this->rejectItemAndRelease($item, 'no_suppliers_available', 'Не удалось собрать пул поставщиков за 14 дней.');
+        $this->promoteOrFinalize($submission);
+    }
+
+    /**
+     * После снятия блокирующей позиции: пробуем промоушен; если заявка не
+     * промоутнулась И активных позиций не осталось — закрываем как rejected_all
+     * (иначе пустая заявка вечно висит в фильтре status=ready).
+     */
+    private function promoteOrFinalize(?ApiSubmission $submission): void
+    {
+        if (!$submission) {
+            return;
+        }
+
+        $result = app(\App\Services\Api\PromotionService::class)->promoteIfReady($submission);
+        if (($result['status'] ?? null) === 'promoted') {
+            return;
+        }
+
+        $submission->refresh();
+        if ($submission->internal_request_id !== null) {
+            return;
+        }
+
+        $remaining = RequestItemStaging::query()
+            ->whereHas('staging', fn ($q) => $q->where('api_submission_id', $submission->id))
+            ->whereIn('item_status', ['pending', 'classified', 'accepted', 'awaiting_suppliers', 'pool_ready'])
+            ->count();
+
+        if ($remaining === 0 && $submission->status === 'ready') {
+            $submission->update([
+                'stage' => 'rejected_all',
+                'status_changed_at' => now(),
+            ]);
+        }
     }
 
     /**
      * Отклонение позиции после ready (§6.3).
-     * - item status='rejected', reason='no_suppliers_available', hold release.
+     * - item status='rejected', reason передаётся, hold release.
      * - Дописываем запись в api_submissions.rejected_summary.
+     *
+     * Возвращает затронутую ApiSubmission (или null) — чтобы вызывающий мог
+     * запустить promoteIfReady после снятия блокирующей позиции.
      */
-    private function rejectItemAndRelease(RequestItemStaging $item, string $reason, string $message): void
+    private function rejectItemAndRelease(RequestItemStaging $item, string $reason, string $message): ?ApiSubmission
     {
-        DB::transaction(function () use ($item, $reason, $message) {
+        return DB::transaction(function () use ($item, $reason, $message) {
             if ($item->balance_hold_id) {
                 /** @var BalanceHold|null $hold */
                 $hold = BalanceHold::find($item->balance_hold_id);
@@ -144,6 +202,8 @@ class RecheckAwaitingSuppliersJob implements ShouldQueue
             // Удаляем сам staging item (аналогично финализации §5.3).
             $item->update(['balance_hold_id' => null]);
             $item->delete();
+
+            return $submission;
         });
     }
 }
