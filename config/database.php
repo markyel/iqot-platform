@@ -46,6 +46,11 @@ return [
             'prefix' => '',
             'strict' => true,
             'engine' => null,
+            // Сервер этой БД (Beget) живёт в МСК, а app.timezone=UTC. Без явной
+            // session-таймзоны Laravel слал UTC-строки в МСК-сессию → метки на −3ч.
+            // Принудительно UTC: NOW()/CURRENT_TIMESTAMP и сериализация Carbon
+            // совпадают (как у главного коннекта), моменты пишутся истинными.
+            'timezone' => env('REPORTS_DB_TIMEZONE', '+00:00'),
         ],
 
         'n8n_mysql' => [

@@ -33,8 +33,14 @@ class EmailQueueStatsController extends Controller
             $sent = (int) ($byStatus['sent'] ?? 0);
             $error = (int) ($byStatus['error'] ?? 0);
 
+            // «Сегодня» — по московскому календарному дню (как ждёт оператор),
+            // хотя sent_at хранится в UTC: переводим границы МСК-суток в UTC.
+            $tz = 'Europe/Moscow';
             $sentToday = EmailQueue::where('status', 'sent')
-                ->whereDate('sent_at', now()->toDateString())
+                ->whereBetween('sent_at', [
+                    now($tz)->startOfDay()->utc(),
+                    now($tz)->endOfDay()->utc(),
+                ])
                 ->count();
 
             $errorRetryable = EmailQueue::where('status', 'error')
