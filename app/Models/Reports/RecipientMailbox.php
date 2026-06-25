@@ -32,6 +32,7 @@ class RecipientMailbox extends Model
         'last_error_at',
         'last_bounce_at',
         'last_success_at',
+        'last_dispatched_at',
         'blocked_at',
     ];
 
@@ -42,6 +43,7 @@ class RecipientMailbox extends Model
         'last_error_at' => 'datetime',
         'last_bounce_at' => 'datetime',
         'last_success_at' => 'datetime',
+        'last_dispatched_at' => 'datetime',
         'blocked_at' => 'datetime',
     ];
 
@@ -124,6 +126,29 @@ class RecipientMailbox extends Model
         }
 
         $row->save();
+    }
+
+    /**
+     * Зафиксировать момент раздачи письма получателю (адаптивный пейсинг).
+     *
+     * Ставится диспетчером при клейме письма (status→sending), а НЕ в момент
+     * успешной отправки: между тиком и асинхронным SendQueuedEmailJob иначе была
+     * бы гонка — следующий тик мог бы выдать получателю второе письмо до того,
+     * как первое реально ушло. Upsert по нормализованному email; счётчики
+     * ошибок/отбойников не трогаем.
+     */
+    public static function markDispatched(string $email): void
+    {
+        $email = self::normalize($email);
+        if ($email === '') {
+            return;
+        }
+
+        $now = now();
+        self::query()->updateOrCreate(
+            ['email' => $email],
+            ['last_dispatched_at' => $now],
+        );
     }
 
     public static function isBlocked(string $email): bool

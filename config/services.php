@@ -54,6 +54,17 @@ return [
         // Сколько ошибок отправки подряд по ящику получателя → блокировка адреса
         // (письма ему больше не ставятся в очередь). Успех сбрасывает счётчик.
         'recipient_error_threshold' => (int) env('EMAILS_RECIPIENT_ERROR_THRESHOLD', 3),
+
+        // Адаптивный пейсинг по получателю (to_email): чтобы не задолбить поставщика
+        // пачкой. На каждом тике интервал между письмами одному получателю =
+        // clamp(остаток_рабочего_окна / pending_получателю, MIN, MAX). Низкая
+        // нагрузка → MAX (≈раз в час), выше → плавно чаще, но не ниже MIN.
+        'recipient_interval_min_seconds' => (int) env('EMAILS_RECIPIENT_INTERVAL_MIN', 300),   // пол: 5 мин
+        'recipient_interval_max_seconds' => (int) env('EMAILS_RECIPIENT_INTERVAL_MAX', 3600),  // потолок: 1 ч
+        // Конец рабочего окна рассылки (час + таймзона) — горизонт, по которому
+        // размазываем дневной объём. Совпадает с расписанием emails:dispatch-pending.
+        'work_window_end_hour' => (int) env('EMAILS_WORK_WINDOW_END_HOUR', 20),
+        'work_window_timezone' => env('EMAILS_WORK_WINDOW_TZ', 'Europe/Riga'),
     ],
 
     // Приём почты (замена n8n «Receive and Route Emails v3»). По умолчанию выключен —
