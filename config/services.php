@@ -51,6 +51,9 @@ return [
     // включается флагом после сверки и отключения n8n-воркфлоу.
     'email_dispatch' => [
         'enabled' => env('EMAILS_DISPATCH_ENABLED', false),
+        // Сколько ошибок отправки подряд по ящику получателя → блокировка адреса
+        // (письма ему больше не ставятся в очередь). Успех сбрасывает счётчик.
+        'recipient_error_threshold' => (int) env('EMAILS_RECIPIENT_ERROR_THRESHOLD', 3),
     ],
 
     // Приём почты (замена n8n «Receive and Route Emails v3»). По умолчанию выключен —

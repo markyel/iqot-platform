@@ -64,6 +64,13 @@ class DispatchPendingEmails extends Command
                         ->whereRaw('eq.scheduled_at <= NOW()');
                 });
             })
+            // Заблокированные получатели (N ошибок подряд) — сразу пропускаем, не клеймим.
+            ->whereNotExists(function ($q) {
+                $q->select(DB::raw(1))
+                    ->from('recipient_mailboxes as rm')
+                    ->whereColumn('rm.email', DB::raw('LOWER(eq.to_email)'))
+                    ->where('rm.is_blocked', 1);
+            })
             ->groupBy('s.id', 's.send_delay_seconds')
             ->get(['s.id', 's.send_delay_seconds']);
 
@@ -96,6 +103,13 @@ class DispatchPendingEmails extends Command
                             ->whereColumn('retry_count', '<', 'max_retries')
                             ->whereRaw('scheduled_at <= NOW()');
                     });
+                })
+                // Не выбирать письма заблокированным получателям (см. выше).
+                ->whereNotExists(function ($q) {
+                    $q->select(DB::raw(1))
+                        ->from('recipient_mailboxes as rm')
+                        ->whereColumn('rm.email', DB::raw('LOWER(email_queue.to_email)'))
+                        ->where('rm.is_blocked', 1);
                 })
                 ->orderByRaw("CASE WHEN status = 'pending' THEN 0 ELSE 1 END")
                 ->orderByDesc('priority')

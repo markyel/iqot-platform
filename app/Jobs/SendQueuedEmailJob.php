@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Reports\EmailBatch;
 use App\Models\Reports\EmailQueue;
+use App\Models\Reports\RecipientMailbox;
 use App\Models\Reports\Sender;
 use App\Services\Senders\QueuedEmailSender;
 use Illuminate\Bus\Queueable;
@@ -37,6 +38,11 @@ class SendQueuedEmailJob implements ShouldQueue
     // Нужно для release() по паузе: переносы не должны исчерпывать попытки.
     public int $tries = 0;
 
+    // Потолок переносов по занятому слоту (release): ~25*delay ≈ 50с ожидания,
+    // дальше письмо возвращается в pending (un-claim), а не множит attempts до
+    // переполнения TINYINT(255) → защита от «ядовитых» job'ов, валящих воркеры.
+    private const MAX_SLOT_DEFERRALS = 25;
+
     public function __construct(private readonly int $emailQueueId)
     {
         $this->onQueue('emails');
@@ -63,6 +69,16 @@ class SendQueuedEmailJob implements ShouldQueue
             return;
         }
 
+        // Ящик получателя заблокирован (N ошибок подряд) — не шлём, не переотправляем.
+        // Диспетчер такие письма не клеймит, это страховка от гонки claim→block.
+        if (RecipientMailbox::isBlocked((string) $email->to_email)) {
+            $email->update([
+                'status' => 'error',
+                'error_message' => 'recipient mailbox blocked',
+            ]);
+            return;
+        }
+
         $senderModel = $email->sender;
 
         // Отправитель недоступен — возвращаем письмо в очередь, заберёт следующий тик.
@@ -79,6 +95,13 @@ class SendQueuedEmailJob implements ShouldQueue
         // письмо на send_delay_seconds, статус остаётся 'sending' (claim не теряем).
         $delay = max(1, (int) ($senderModel->send_delay_seconds ?: 2));
         if (!$this->reserveSlot($senderModel->id, $delay)) {
+            // Слишком долго ждём слот (ящик перегружен своими письмами) — возвращаем
+            // письмо в очередь БД и завершаем job БЕЗ release(): диспетчер перепланирует
+            // на следующем тике, attempts не растёт до переполнения.
+            if ($this->attempts() >= self::MAX_SLOT_DEFERRALS) {
+                $email->update(['status' => 'pending']);
+                return;
+            }
             $this->release($delay);
             return;
         }
@@ -91,6 +114,9 @@ class SendQueuedEmailJob implements ShouldQueue
                 'sent_at' => now(),
                 'error_message' => null,
             ]);
+
+            // Успешная доставка — снять метку ошибок с ящика получателя.
+            RecipientMailbox::recordSuccess((string) $email->to_email);
 
             $this->bumpSenderCounter($senderModel);
             $this->refreshBatch($email->batch_id);
@@ -162,7 +188,17 @@ class SendQueuedEmailJob implements ShouldQueue
         $isRateLimit = (bool) preg_match('/ratelimit|rate limit|try again later|too many/i', $message);
 
         if ($isRateLimit) {
+            // Ratelimit — проблема отправителя, не получателя: блокируем ящик-отправитель,
+            // счётчик ошибок получателя НЕ трогаем (иначе блокировали бы валидные адреса).
             $this->blockSender($sender, $message);
+        } else {
+            // Любая другая ошибка отправки (не резолвится хост и т.п.) — копим по
+            // ящику получателя; при пороге подряд он блокируется (см. RecipientMailbox).
+            RecipientMailbox::recordFailure(
+                (string) $email->to_email,
+                $message,
+                (int) config('services.email_dispatch.recipient_error_threshold', 3),
+            );
         }
 
         $retry = (int) $email->retry_count + 1;

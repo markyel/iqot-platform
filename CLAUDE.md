@@ -57,6 +57,14 @@
 - Админ-статистика: `/manage/emails/stats` (`EmailQueueStatsController` → `admin.emails.stats`), пункт сайдбара «Очередь рассылки».
 - **Проверка пауз**: `sent_at` секундной точности + джиттер SMTP → ложные «gap<2s». Мерить агрегатно: per-sender `span` vs `(n-1)*delay` и max сендов в скользящем 60s-окне (потолок `60/delay+1`). Live-замер: 0 нарушений, max 31/60s при delay=2.
 
+### Защита от зависаний: ядовитые job'ы + блокировка битых получателей (25.06.2026)
+Симптом: очередь `emails` встала, письма зависли в `sending`, число не меняется.
+- **Корень — переполнение `jobs.attempts` (TINYINT, макс. 255).** Когда у одного ящика много писем (delay=2с → 1 письмо/2с), их job'ы конкурируют за слот → `reserveSlot()=false` → `release()` каждые 2с. При `tries=0`+`retryUntil(30 мин)` голодающий job делает ~900 переносов → `attempts` переполняется на 256 → `SQLSTATE[22003]` **при pop'е** (до `handle()`) → job «ядовитый», валит воркер. Ядовитые в голове очереди обрушивают все воркеры → очередь колом. (255 «попыток» = переносы по слоту, НЕ попытки доставки; старый `[Errno -3]` в `error_message` — наследие n8n-микросервиса.)
+- **Фикс 1 (потолок):** миграция `jobs.attempts` TINYINT→`INT UNSIGNED` (`2026_06_25_160000_widen_jobs_attempts_to_int.php`).
+- **Фикс 2 (предохранитель):** `SendQueuedEmailJob::MAX_SLOT_DEFERRALS=25` — после 25 переносов по занятому слоту письмо возвращается в `pending` (un-claim) и job завершается БЕЗ `release()`; перепланирует диспетчер. `attempts` не растёт до потолка.
+- **Блокировка получателя по ошибкам подряд:** таблица `reports.recipient_mailboxes` (ключ — нормализованный `to_email`), модель `App\Models\Reports\RecipientMailbox`. Любая НЕ-ratelimit ошибка отправки → `recordFailure()` (инкремент `consecutive_errors`); успех → `recordSuccess()` (сброс в 0). При пороге `services.email_dispatch.recipient_error_threshold` (env `EMAILS_RECIPIENT_ERROR_THRESHOLD`, дефолт **3**) → `is_blocked=1`. Диспетчер (`whereNotExists` по `recipient_mailboxes`) и сам джоб такие адреса пропускают. **Ratelimit получателя НЕ штрафует** (это проблема отправителя → `blockSender`). Разблокировка ручная: `UPDATE recipient_mailboxes SET is_blocked=0, consecutive_errors=0 WHERE email='...'`.
+- **Расклинивание (разово, прод):** после `migrate` — `UPDATE email_queue SET status='cancelled' WHERE status='sending' AND sender_id=<залипший>`; `DELETE FROM jobs WHERE queue='emails'`; `config:clear` + `queue:restart`.
+
 ### Состояние перехода (25.06.2026)
 - Коммит `5135c26`. n8n-воркфлоу «Send Emails v2» **отключён** пользователем; его последний прогон до отключения дослал свою пачку (~42 письма, MAX sent_at 12:26:54 МСК) и встал.
 - Тест `--force --limit=1` дважды → письма ушли (id 98491 info@pkm2007.ru, 98492 sales@istlisft.ru, sender 66).
