@@ -63,7 +63,7 @@ class ReceiveSenderEmailsJob implements ShouldQueue
                 return;
             }
 
-            $counts = ['replied' => 0, 'conversation' => 0, 'unidentified' => 0, 'duplicate' => 0, 'skipped' => 0, 'error' => 0];
+            $counts = ['replied' => 0, 'conversation' => 0, 'unidentified' => 0, 'bounce' => 0, 'duplicate' => 0, 'skipped' => 0, 'error' => 0];
 
             foreach ($emails as $uid => $email) {
                 try {

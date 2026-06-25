@@ -43,11 +43,25 @@ class ReceiveEmailStatsController extends Controller
                 ->where('direction', 'incoming')
                 ->count();
 
+            // «Неопознанные» считаем без отбойников (reason='bounce') — это письма
+            // о недоставке, для них отдельный счётчик ниже.
             $unidentToday = DB::connection('reports')->table('unidentified_emails')
+                ->where('reason', '!=', 'bounce')
                 ->whereBetween('received_at', [$dayStart, $dayEnd])
                 ->count();
 
-            $unidentTotal = DB::connection('reports')->table('unidentified_emails')->count();
+            $unidentTotal = DB::connection('reports')->table('unidentified_emails')
+                ->where('reason', '!=', 'bounce')
+                ->count();
+
+            $bounceToday = DB::connection('reports')->table('unidentified_emails')
+                ->where('reason', 'bounce')
+                ->whereBetween('received_at', [$dayStart, $dayEnd])
+                ->count();
+
+            $bounceTotal = DB::connection('reports')->table('unidentified_emails')
+                ->where('reason', 'bounce')
+                ->count();
 
             $convByStatus = DB::connection('reports')->table('email_conversations')
                 ->select('status', DB::raw('count(*) as c'))
@@ -85,6 +99,8 @@ class ReceiveEmailStatsController extends Controller
                 'incoming_total' => $incomingTotal,
                 'unident_today' => $unidentToday,
                 'unident_total' => $unidentTotal,
+                'bounce_today' => $bounceToday,
+                'bounce_total' => $bounceTotal,
                 'conv_waiting' => (int) ($convByStatus['waiting'] ?? 0),
                 'conv_complete' => (int) ($convByStatus['complete'] ?? 0),
                 'conv_needs_clarification' => (int) ($convByStatus['needs_clarification'] ?? 0),

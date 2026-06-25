@@ -31,12 +31,65 @@ class IncomingEmailRouter
     private const ATTACH_DISK = 'public';
     private const ATTACH_ROOT = 'email-attachments';
 
+    // Отбойники (NDR / delivery status notifications). Локальная часть адреса
+    // отправителя и подстроки в теме — без них письмо о недоставке прилетает как
+    // «неопознанное no_token» (тему/тело не на чем матчить) и тащит свои MIME-куски
+    // (возвращённый оригинал message/rfc822 + delivery-status) в вложения.
+    private const BOUNCE_FROM_LOCAL = ['mailer-daemon', 'postmaster'];
+    private const BOUNCE_SUBJECTS = [
+        'undeliverable',
+        'mail delivery failed',
+        'mail delivery failure',
+        'returning message to sender',
+        'returned to sender',
+        'undelivered mail returned',
+        'delivery status notification',
+        'delivery has failed',
+        'failure notice',
+        'не удается доставить',
+        'не удалось доставить',
+        'недоставленное',
+        'сообщение не доставлено',
+        'возврат сообщения',
+    ];
+
+    // MIME → расширение для безымянных частей (webklex даёт им имя-хеш без
+    // расширения → файл в Drive нечитаем). Symfony MimeTypes — фолбэк.
+    private const MIME_EXT = [
+        'message/rfc822' => 'eml',
+        'text/plain' => 'txt',
+        'text/html' => 'html',
+        'text/csv' => 'csv',
+        'text/xml' => 'xml',
+        'application/xml' => 'xml',
+        'application/json' => 'json',
+        'application/pdf' => 'pdf',
+        'application/rtf' => 'rtf',
+        'application/zip' => 'zip',
+        'application/x-7z-compressed' => '7z',
+        'application/x-rar-compressed' => 'rar',
+        'application/vnd.rar' => 'rar',
+        'application/msword' => 'doc',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
+        'application/vnd.ms-excel' => 'xls',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => 'xlsx',
+        'application/vnd.ms-powerpoint' => 'ppt',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation' => 'pptx',
+        'application/octet-stream' => 'bin',
+        'image/png' => 'png',
+        'image/jpeg' => 'jpg',
+        'image/gif' => 'gif',
+        'image/webp' => 'webp',
+        'image/bmp' => 'bmp',
+        'image/tiff' => 'tiff',
+    ];
+
     public function __construct(private GoogleDriveUploader $driveUploader)
     {
     }
 
     /**
-     * @return string исход: duplicate | replied | conversation | unidentified | skipped
+     * @return string исход: duplicate | replied | conversation | unidentified | bounce | skipped
      */
     public function route(int $senderId, ParsedEmail $email): string
     {
@@ -46,6 +99,14 @@ class IncomingEmailRouter
 
         if ($this->isDuplicate($email->messageId)) {
             return 'duplicate';
+        }
+
+        // Отбойник о недоставке: фиксируем как 'bounce' и НЕ матчим батч (иначе
+        // токен из возвращённого оригинала создаёт ложную беседу) и НЕ грузим
+        // вложения (см. saveUnidentified).
+        if ($this->isBounce($email)) {
+            $this->saveUnidentified($senderId, $email, 'bounce');
+            return 'bounce';
         }
 
         $batchId = $this->matchBatch($email);
@@ -231,6 +292,10 @@ class IncomingEmailRouter
             return;
         }
 
+        // Вложения отбойников (возвращённый оригинал + delivery-status) — мусор:
+        // не сохраняем ни локально, ни в Drive, в счётчике их не показываем.
+        $storeAttachments = $reason !== 'bounce' && $email->hasAttachments();
+
         $id = (int) DB::connection('reports')->table('unidentified_emails')->insertGetId([
             'sender_id' => $senderId,
             'message_id' => Str::limit($email->messageId, 255, ''),
@@ -241,15 +306,15 @@ class IncomingEmailRouter
             'body_html' => $email->bodyHtml !== '' ? $email->bodyHtml : null,
             'reason' => $reason,
             'status' => 'pending',
-            'has_attachments' => $email->hasAttachments() ? 1 : 0,
-            'attachments_count' => count($email->attachments),
+            'has_attachments' => $storeAttachments ? 1 : 0,
+            'attachments_count' => $storeAttachments ? count($email->attachments) : 0,
             'processing_attempts' => 0,
             'received_at' => $receivedAt,
             'created_at' => $now,
             'updated_at' => $now,
         ]);
 
-        if ($email->hasAttachments()) {
+        if ($storeAttachments) {
             $this->storeAttachments('unidentified_email_attachments', 'unident', $id, $email, [
                 'unidentified_email_id' => $id,
             ]);
@@ -266,7 +331,10 @@ class IncomingEmailRouter
         $now = now();
 
         foreach ($email->attachments as $index => $att) {
-            $safeName = $this->sanitizeFilename($att['name'], $index);
+            // Безымянным частям (имя-хеш без расширения) добавляем расширение по
+            // MIME — чтобы файл в Drive/на диске был узнаваем.
+            $displayName = $this->displayName((string) $att['name'], (string) $att['mime'], $index);
+            $safeName = $this->sanitizeFilename($displayName, $index);
             $localPath = self::ATTACH_ROOT . "/{$subdir}/{$ownerId}/{$safeName}";
 
             try {
@@ -283,7 +351,7 @@ class IncomingEmailRouter
             $filePath = $localPath;
             if ($this->driveUploader->isEnabled()) {
                 $driveUrl = $this->driveUploader->upload(
-                    (string) $att['name'],
+                    $displayName,
                     (string) $att['content'],
                     (string) $att['mime']
                 );
@@ -295,7 +363,7 @@ class IncomingEmailRouter
             $ext = strtolower(pathinfo($safeName, PATHINFO_EXTENSION)) ?: null;
 
             DB::connection('reports')->table($table)->insert(array_merge($ownerColumns, [
-                'file_name' => Str::limit($att['name'], 500, ''),
+                'file_name' => Str::limit($displayName, 500, ''),
                 'file_path' => Str::limit($filePath, 1000, ''),
                 'local_path' => $localPath,
                 'file_type' => $ext,
@@ -305,6 +373,75 @@ class IncomingEmailRouter
                 'created_at' => $now,
             ]));
         }
+    }
+
+    /**
+     * Отбойник о недоставке (NDR): по адресу отправителя (mailer-daemon@/postmaster@)
+     * либо по характерной теме письма о недоставке.
+     */
+    private function isBounce(ParsedEmail $email): bool
+    {
+        $from = mb_strtolower(trim($email->fromEmail));
+        if ($from !== '') {
+            $local = explode('@', $from)[0];
+            if (in_array($local, self::BOUNCE_FROM_LOCAL, true)) {
+                return true;
+            }
+            foreach (self::BOUNCE_FROM_LOCAL as $needle) {
+                if (str_contains($from, $needle . '@')) {
+                    return true;
+                }
+            }
+        }
+
+        $subject = mb_strtolower($email->subject);
+        if ($subject !== '') {
+            foreach (self::BOUNCE_SUBJECTS as $needle) {
+                if (str_contains($subject, $needle)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Имя файла для хранения/Drive: если у части нет расширения — добавляем по MIME.
+     */
+    private function displayName(string $name, string $mime, int $index): string
+    {
+        $name = trim($name);
+        if ($name === '') {
+            $name = "attachment_{$index}";
+        }
+
+        if (pathinfo($name, PATHINFO_EXTENSION) !== '') {
+            return $name;
+        }
+
+        $ext = $this->extensionForMime($mime);
+
+        return $ext !== null ? "{$name}.{$ext}" : $name;
+    }
+
+    private function extensionForMime(string $mime): ?string
+    {
+        $mime = strtolower(trim($mime));
+        if ($mime === '') {
+            return null;
+        }
+
+        // Отсекаем параметры, например "text/plain; charset=utf-8".
+        $mime = trim(explode(';', $mime)[0]);
+
+        if (isset(self::MIME_EXT[$mime])) {
+            return self::MIME_EXT[$mime];
+        }
+
+        $exts = \Symfony\Component\Mime\MimeTypes::getDefault()->getExtensions($mime);
+
+        return $exts[0] ?? null;
     }
 
     private function sanitizeFilename(string $name, int $index): string

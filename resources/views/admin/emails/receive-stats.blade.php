@@ -86,7 +86,7 @@
             />
         </div>
 
-        <div class="stats-grid">
+        <div class="stats-grid" style="margin-bottom: var(--space-6);">
             <x-stat-card
                 value="{{ number_format($stats['unident_manual_review'], 0, '.', ' ') }}"
                 label="На ручном разборе"
@@ -110,6 +110,21 @@
                 label="Заблокировано ящиков"
                 icon="shield-off"
                 icon-type="error"
+            />
+        </div>
+
+        <div class="stats-grid">
+            <x-stat-card
+                value="{{ number_format($stats['bounce_today'], 0, '.', ' ') }}"
+                label="Отбойники (NDR) сегодня"
+                icon="mail-x"
+                icon-type="accent"
+            />
+            <x-stat-card
+                value="{{ number_format($stats['bounce_total'], 0, '.', ' ') }}"
+                label="Отбойники (NDR) всего"
+                icon="mail-x"
+                icon-type="accent"
             />
         </div>
     @endif
