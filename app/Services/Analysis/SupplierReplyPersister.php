@@ -243,7 +243,7 @@ class SupplierReplyPersister
             ->where('id', $conversationId)
             ->update([
                 'items_covered' => $covered,
-                'status' => $covered > 0 ? 'partial' : 'pending',
+                'status' => $covered > 0 ? 'partial' : 'waiting',
                 'updated_at' => now(),
             ]);
     }
