@@ -31,6 +31,10 @@ class IncomingEmailRouter
     private const ATTACH_DISK = 'public';
     private const ATTACH_ROOT = 'email-attachments';
 
+    public function __construct(private GoogleDriveUploader $driveUploader)
+    {
+    }
+
     /**
      * @return string исход: duplicate | replied | conversation | unidentified | skipped
      */
@@ -263,20 +267,37 @@ class IncomingEmailRouter
 
         foreach ($email->attachments as $index => $att) {
             $safeName = $this->sanitizeFilename($att['name'], $index);
-            $path = self::ATTACH_ROOT . "/{$subdir}/{$ownerId}/{$safeName}";
+            $localPath = self::ATTACH_ROOT . "/{$subdir}/{$ownerId}/{$safeName}";
 
             try {
-                Storage::disk(self::ATTACH_DISK)->put($path, $att['content']);
+                Storage::disk(self::ATTACH_DISK)->put($localPath, $att['content']);
             } catch (\Throwable $e) {
                 // Файл не записался — строку вложения не создаём, но письмо не валим.
                 continue;
+            }
+
+            // Переходный период: дублируем в Google Drive и кладём Drive-URL в
+            // file_path (его читает downstream-воркфлоу). Локальная копия —
+            // источник истины (local_path). Если Drive выключен/упал — file_path
+            // остаётся локальным путём.
+            $filePath = $localPath;
+            if ($this->driveUploader->isEnabled()) {
+                $driveUrl = $this->driveUploader->upload(
+                    (string) $att['name'],
+                    (string) $att['content'],
+                    (string) $att['mime']
+                );
+                if ($driveUrl !== null) {
+                    $filePath = $driveUrl;
+                }
             }
 
             $ext = strtolower(pathinfo($safeName, PATHINFO_EXTENSION)) ?: null;
 
             DB::connection('reports')->table($table)->insert(array_merge($ownerColumns, [
                 'file_name' => Str::limit($att['name'], 500, ''),
-                'file_path' => $path,
+                'file_path' => Str::limit($filePath, 1000, ''),
+                'local_path' => $localPath,
                 'file_type' => $ext,
                 'file_size' => (int) $att['size'],
                 'mime_type' => Str::limit($att['mime'], 255, ''),

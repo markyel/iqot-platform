@@ -63,6 +63,22 @@ return [
         'per_mailbox_limit' => (int) env('EMAILS_RECEIVE_LIMIT', 20),
     ],
 
+    // Переходный период: дублирование вложений входящих писем в Google Drive, чтобы
+    // downstream-воркфлоу n8n «Process Email Conversations» (читает Drive-URL из
+    // email_attachments.file_path) продолжал работать. По умолчанию выключено —
+    // включается флагом ПОСЛЕ настройки OAuth2. См.
+    // App\Services\Senders\GoogleDriveUploader.
+    //   OAuth2 refresh-token пользователя liftway.ru (приложение типа Internal →
+    //   refresh-token не протухает). folder_id — папка-приёмник (PQSFiles) в его Drive.
+    'attachments_drive' => [
+        'enabled' => env('ATTACHMENTS_DRIVE_ENABLED', false),
+        'client_id' => env('GOOGLE_DRIVE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_DRIVE_CLIENT_SECRET'),
+        'refresh_token' => env('GOOGLE_DRIVE_REFRESH_TOKEN'),
+        'folder_id' => env('GOOGLE_DRIVE_FOLDER_ID'),
+        'timeout' => (int) env('GOOGLE_DRIVE_TIMEOUT', 30),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Telegram Bot
