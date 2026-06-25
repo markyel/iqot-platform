@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Services\Analysis\DocumentTextExtractor;
 use App\Services\Analysis\EmailBodyCleaner;
+use App\Services\Analysis\HeadlessPageRenderer;
 use App\Services\Analysis\SupplierReplyAnalyzer;
 use App\Services\Analysis\SupplierReplyPersister;
 use App\Services\Analysis\WebPageFetcher;
@@ -189,9 +190,19 @@ class AnalyzeSupplierReplyJob implements ShouldQueue
             timeout: (int) ($ec['timeout'] ?? 120),
         );
 
+        $headless = ($ec['headless_enabled'] ?? true)
+            ? new HeadlessPageRenderer(
+                (string) ($ec['headless_chrome_path'] ?? '/usr/bin/google-chrome-stable'),
+                (string) ($ec['headless_home'] ?? ''),
+                (int) ($ec['headless_timeout'] ?? 30),
+            )
+            : null;
+
         $fetcher = new WebPageFetcher(
             (int) ($ec['fetch_chars'] ?? 8000),
             (int) ($ec['fetch_timeout'] ?? 15),
+            $headless,
+            (int) ($ec['http_min_chars'] ?? 200),
         );
 
         return new SupplierReplyAnalyzer($client, $fetcher, [

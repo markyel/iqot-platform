@@ -11,12 +11,18 @@ use Illuminate\Support\Facades\Http;
  * `fetch_urls`. Мы грузим эти страницы здесь, чистим до текста и скармливаем
  * во второй прогон анализатора. Любая ошибка/таймаут → null (ссылку пропускаем,
  * анализ продолжается на том, что есть).
+ *
+ * Стратегия: сначала дешёвый HTTP-запрос. Если ответ пустой/слишком короткий
+ * (типичная JS-заглушка вроде Beget-антибота с set_cookie()+reload()) — fallback
+ * на headless-рендер через Chromium (если передан HeadlessPageRenderer).
  */
 class WebPageFetcher
 {
     public function __construct(
         private readonly int $maxChars = 8000,
         private readonly int $timeout = 15,
+        private readonly ?HeadlessPageRenderer $headless = null,
+        private readonly int $httpMinChars = 200,
     ) {
     }
 
@@ -27,6 +33,25 @@ class WebPageFetcher
             return null;
         }
 
+        $text = $this->fetchViaHttp($url);
+
+        // HTTP вернул пусто/огрызок (JS-заглушка) → пробуем headless-рендер.
+        if (($text === null || mb_strlen($text) < $this->httpMinChars) && $this->headless !== null) {
+            $rendered = $this->headless->render($url);
+            if ($rendered !== null && ($text === null || mb_strlen($rendered) > mb_strlen($text))) {
+                $text = $rendered;
+            }
+        }
+
+        if ($text === null || $text === '') {
+            return null;
+        }
+
+        return mb_substr($text, 0, $this->maxChars);
+    }
+
+    private function fetchViaHttp(string $url): ?string
+    {
         try {
             $response = Http::timeout($this->timeout)
                 ->withHeaders([
@@ -44,11 +69,7 @@ class WebPageFetcher
             return null;
         }
 
-        if ($text === '') {
-            return null;
-        }
-
-        return mb_substr($text, 0, $this->maxChars);
+        return $text === '' ? null : $text;
     }
 
     private function htmlToText(string $html): string

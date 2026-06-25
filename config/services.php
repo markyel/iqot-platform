@@ -98,6 +98,16 @@ return [
         'fetch_max' => (int) env('EMAILS_ANALYZE_FETCH_MAX', 3),       // макс. ссылок за письмо
         'fetch_chars' => (int) env('EMAILS_ANALYZE_FETCH_CHARS', 8000), // лимит текста со страницы
         'fetch_timeout' => (int) env('EMAILS_ANALYZE_FETCH_TIMEOUT', 15),
+        // Headless-рендер (Chromium) как fallback к HTTP: сайты с JS-антиботом
+        // (Beget: заглушка set_cookie()+reload()) отдают цены только после запуска
+        // браузера. Если HTTP вернул короткий огрызок (< http_min_chars) — рендерим.
+        'headless_enabled' => (bool) env('EMAILS_ANALYZE_HEADLESS', true),
+        'headless_chrome_path' => env('EMAILS_ANALYZE_CHROME_PATH', '/usr/bin/google-chrome-stable'),
+        // Писчий HOME для Chrome (воркеры под www-data, чей /var/www не пишется).
+        'headless_home' => env('EMAILS_ANALYZE_HEADLESS_HOME', storage_path('app/headless')),
+        'headless_timeout' => (int) env('EMAILS_ANALYZE_HEADLESS_TIMEOUT', 30),
+        // Порог «огрызка»: HTTP-текст короче → пробуем headless.
+        'http_min_chars' => (int) env('EMAILS_ANALYZE_HTTP_MIN_CHARS', 200),
     ],
 
     // Переходный период: дублирование вложений входящих писем в Google Drive, чтобы
