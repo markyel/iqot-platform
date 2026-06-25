@@ -119,7 +119,10 @@ class ImapMailboxReader
         try {
             $raw = $message->getDate();
             if ($raw && (string) $raw !== '') {
-                $date = $raw->toDate(); // Carbon
+                // Заголовок Date несёт исходный пояс отправителя (часто +03:00 МСК).
+                // Колонка received_at живёт в reports-БД с UTC-сессией, а created_at
+                // пишется в UTC — приводим к UTC, чтобы время приёма было сравнимо.
+                $date = $raw->toDate()->setTimezone('UTC'); // Carbon → UTC
             }
         } catch (\Throwable) {
             $date = null;

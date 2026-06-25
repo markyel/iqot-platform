@@ -85,9 +85,12 @@ class ReceiveEmailStatsController extends Controller
 
             $blockedMailboxes = RecipientMailbox::where('is_blocked', 1)->count();
 
+            // «Последнее входящее» считаем по created_at (момент записи в БД, всегда
+            // корректный UTC), а не по received_at — заголовок Date письма может нести
+            // чужой пояс/кривое значение и искажать «последнюю активность».
             $lastReceived = DB::connection('reports')->table('email_messages')
                 ->where('direction', 'incoming')
-                ->max('received_at');
+                ->max('created_at');
 
             return [
                 'ok' => true,

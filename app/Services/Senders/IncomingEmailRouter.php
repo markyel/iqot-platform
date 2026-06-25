@@ -2,6 +2,7 @@
 
 namespace App\Services\Senders;
 
+use App\Models\Reports\RecipientMailbox;
 use App\Support\Mail\ParsedEmail;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -106,6 +107,7 @@ class IncomingEmailRouter
         // вложения (см. saveUnidentified).
         if ($this->isBounce($email)) {
             $this->saveUnidentified($senderId, $email, 'bounce');
+            $this->recordBounceFailure($email);
             return 'bounce';
         }
 
@@ -404,6 +406,68 @@ class IncomingEmailRouter
         }
 
         return false;
+    }
+
+    /**
+     * Учёт отбойника по битому адресу получателя: вытаскиваем из NDR исходный
+     * адрес, на который письмо не доставилось, и копим по нему отбойники через
+     * RecipientMailbox::recordBounce(). При достижении порога подряд адрес
+     * помечается is_blocked — рассылка перестаёт слать на него (как при ошибках
+     * отправки). Порог — общий с отправкой (recipient_error_threshold).
+     */
+    private function recordBounceFailure(ParsedEmail $email): void
+    {
+        $failed = $this->extractFailedRecipient($email);
+        if ($failed === null) {
+            return;
+        }
+
+        // Шлём ли мы вообще на этот адрес? Защита от backscatter (подделанный
+        // отправитель) и ложного парса: блокируем только то, что сами слали.
+        $known = DB::connection('reports')->table('email_queue')
+            ->whereRaw('LOWER(to_email) = ?', [$failed])
+            ->exists();
+        if (!$known) {
+            return;
+        }
+
+        RecipientMailbox::recordBounce(
+            $failed,
+            $email->subject !== '' ? $email->subject : 'NDR',
+            (int) config('services.email_dispatch.recipient_error_threshold', 3),
+        );
+    }
+
+    /**
+     * Достаём из отбойника (NDR) исходный адрес, на который письмо не дошло.
+     * Источник истины — поля DSN (RFC 3464) в теле/части message/delivery-status:
+     * Final-Recipient / Original-Recipient, плюс заголовок X-Failed-Recipients
+     * возвращённого оригинала. Возвращаем нормализованный адрес или null.
+     */
+    private function extractFailedRecipient(ParsedEmail $email): ?string
+    {
+        // Тело + содержимое вложений (delivery-status и возвращённый оригинал
+        // несут DSN-поля даже когда сами вложения не сохраняем).
+        $haystack = $email->bodyText . "\n" . $email->bodyHtml;
+        foreach ($email->attachments as $att) {
+            $haystack .= "\n" . (string) ($att['content'] ?? '');
+        }
+
+        $patterns = [
+            '/(?:Final|Original)-Recipient:\s*[^;\r\n]*;\s*<?([^\s<>,;]+@[^\s<>,;]+)>?/i',
+            '/X-Failed-Recipients:\s*<?([^\s<>,;]+@[^\s<>,;]+)>?/i',
+        ];
+
+        foreach ($patterns as $re) {
+            if (preg_match($re, $haystack, $m) === 1) {
+                $addr = mb_strtolower(trim($m[1], " \t<>\"'"));
+                if (str_contains($addr, '@')) {
+                    return $addr;
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
