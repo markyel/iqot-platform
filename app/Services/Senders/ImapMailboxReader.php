@@ -32,7 +32,17 @@ class ImapMailboxReader
 
         $encryption = $this->normalizeEncryption($sender->imap_encryption, (int) $sender->imap_port);
 
-        $cm = new ClientManager();
+        // На проде НЕТ ext-imap. Дефолтный header-декодер webklex ('utf-8') в этом
+        // случае не разворачивает MIME encoded-word (=?utf-8?B?…?=) — тема остаётся
+        // закодированной. Принудительно ставим 'iconv' → iconv_mime_decode(), который
+        // работает без ext-imap и корректно декодирует заголовки.
+        $cm = new ClientManager([
+            'decoding' => [
+                'options' => [
+                    'header' => 'iconv',
+                ],
+            ],
+        ]);
         $client = $cm->make([
             'host' => $sender->imap_server,
             'port' => (int) ($sender->imap_port ?: 993),
