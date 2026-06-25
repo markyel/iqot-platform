@@ -69,7 +69,7 @@ class AnalyzeSupplierReplyJob implements ShouldQueue
             $analyzer = $this->makeAnalyzer($ec);
 
             $classification = $analyzer->analyze([
-                'sender_name' => $message->from_name ?? null,
+                'sender_name' => $message->supplier_name ?? null,
                 'sender_email' => $message->from_email ?? null,
                 'subject' => $message->subject ?? null,
                 'body' => $body,
@@ -121,7 +121,6 @@ class AnalyzeSupplierReplyJob implements ShouldQueue
                 'em.body_text',
                 'em.body_html',
                 'em.from_email',
-                'em.from_name',
                 'ec.batch_id',
                 'ec.supplier_id',
                 's.name as supplier_name',
