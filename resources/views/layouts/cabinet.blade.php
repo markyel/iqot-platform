@@ -468,6 +468,12 @@
                             <span class="sidebar-item-tooltip">Отправители</span>
                         </a>
 
+                        <a href="{{ route('admin.emails.stats') }}" class="sidebar-item {{ request()->routeIs('admin.emails.*') ? 'active' : '' }}">
+                            <i data-lucide="bar-chart-3" class="sidebar-item-icon"></i>
+                            <span class="sidebar-item-text">Очередь рассылки</span>
+                            <span class="sidebar-item-tooltip">Очередь рассылки</span>
+                        </a>
+
                         <a href="{{ route('admin.billing.settings.index') }}" class="sidebar-item {{ request()->routeIs('admin.billing.settings*') ? 'active' : '' }}">
                             <i data-lucide="settings" class="sidebar-item-icon"></i>
                             <span class="sidebar-item-text">Настройки биллинга</span>

@@ -47,6 +47,12 @@ return [
         'system_user_id' => env('N8N_SYSTEM_USER_ID', 1),
     ],
 
+    // Диспетчер рассылки (замена n8n «Send Emails»). По умолчанию выключен —
+    // включается флагом после сверки и отключения n8n-воркфлоу.
+    'email_dispatch' => [
+        'enabled' => env('EMAILS_DISPATCH_ENABLED', false),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Telegram Bot

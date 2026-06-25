@@ -42,6 +42,13 @@ class Sender extends Model
         'email_style',
         'email_greeting',
         'token_style',
+        'blocked_until',
+        'block_count',
+        'block_reason',
+        'last_block_at',
+        'send_delay_seconds',
+        'emails_sent_today',
+        'last_send_date',
     ];
 
     protected $casts = [
@@ -50,5 +57,11 @@ class Sender extends Model
         'daily_limit' => 'integer',
         'is_active' => 'boolean',
         'is_verified' => 'boolean',
+        'blocked_until' => 'datetime',
+        'last_block_at' => 'datetime',
+        'last_send_date' => 'date',
+        'block_count' => 'integer',
+        'send_delay_seconds' => 'integer',
+        'emails_sent_today' => 'integer',
     ];
 }
