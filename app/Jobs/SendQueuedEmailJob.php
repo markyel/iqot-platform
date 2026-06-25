@@ -106,8 +106,10 @@ class SendQueuedEmailJob implements ShouldQueue
      * отправки (или её ещё не было). affected=1 → слот наш, можно слать;
      * affected=0 → другой воркер уже занял слот / пауза не вышла → ждём.
      *
-     * Время пишем и сравниваем через NOW() самой БД (reports), чтобы не зависеть
-     * от рассинхрона таймзоны приложения (UTC) и БД (МСК).
+     * Время пишем и сравниваем через NOW(3) самой БД (reports): миллисекундная
+     * точность убирает off-by-one секундного floor (иначе интервал проседал до
+     * ~1s вместо delay). Это же NOW() не зависит от рассинхрона таймзоны
+     * приложения (UTC) и БД (МСК).
      */
     private function reserveSlot(int $senderId, int $delay): bool
     {
@@ -115,9 +117,9 @@ class SendQueuedEmailJob implements ShouldQueue
             ->where('id', $senderId)
             ->where(function ($q) use ($delay) {
                 $q->whereNull('last_send_at')
-                    ->orWhereRaw('last_send_at <= (NOW() - INTERVAL ? SECOND)', [$delay]);
+                    ->orWhereRaw('last_send_at <= (NOW(3) - INTERVAL ? SECOND)', [$delay]);
             })
-            ->update(['last_send_at' => DB::connection('reports')->raw('NOW()')]);
+            ->update(['last_send_at' => DB::connection('reports')->raw('NOW(3)')]);
 
         return $affected > 0;
     }
