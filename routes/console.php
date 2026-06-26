@@ -27,12 +27,12 @@ Schedule::command('catalog:sync')->hourly();
 Schedule::command('api:inbox:process')->everyFiveMinutes()->withoutOverlapping();
 
 // Рассылка: диспетчер очереди писем (замена n8n «Send Emails»).
-// Рабочее окно — Пн–Пт 08:00–20:00 по Europe/Riga (как в n8n Within Work Hours).
+// Рабочее окно — Пн–Пт 08:00–21:00 по Europe/Riga (как в n8n Within Work Hours).
 Schedule::command('emails:dispatch-pending')
     ->everyMinute()
     ->timezone('Europe/Riga')
     ->weekdays()
-    ->between('8:00', '20:00')
+    ->between('8:00', '21:00')
     ->withoutOverlapping();
 
 // Приём почты: диспетчер опроса IMAP активных ящиков (замена n8n «Receive and
@@ -61,7 +61,7 @@ Schedule::command('emails:process-questions')
     ->withoutOverlapping();
 
 // Отправка готовых ответов поставщикам (замена n8n «Send Outgoing Replies»).
-// Каждую минуту в рабочем окне Пн–Пт 08:00–20:00 по Europe/Riga (как массовая
+// Каждую минуту в рабочем окне Пн–Пт 08:00–21:00 по Europe/Riga (как массовая
 // рассылка) — чтобы сгенерённый триажем ответ уходил оперативно, а не ждал тика.
 // Диспетчер клеймит ответ (status='sending'), повторный тик его не подхватит. По
 // умолчанию молчит, пока флаг EMAILS_REPLIES_ENABLED=false — включать ТОЛЬКО после
@@ -70,7 +70,7 @@ Schedule::command('emails:dispatch-replies')
     ->everyMinute()
     ->timezone('Europe/Riga')
     ->weekdays()
-    ->between('8:00', '20:00')
+    ->between('8:00', '21:00')
     ->withoutOverlapping();
 
 // Идентификация неопознанных писем (второй проход, замена n8n «Process Unidentified
