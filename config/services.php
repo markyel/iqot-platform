@@ -142,6 +142,9 @@ return [
         'enabled' => (bool) env('EMAILS_REPLIES_ENABLED', false),
         // Сколько готовых ответов за тик ставим в очередь отправки.
         'batch_limit' => (int) env('EMAILS_REPLIES_BATCH_LIMIT', 30),
+        // Сколько раз ретраить транзиентную ошибку коннекта (битый IP round-robin
+        // smtp.beget.com) до перевода ответа в 'failed'. Зеркало email_queue.max_retries.
+        'max_retries' => (int) env('EMAILS_REPLIES_MAX_RETRIES', 3),
     ],
 
     // Переходный период: дублирование вложений входящих писем в Google Drive, чтобы

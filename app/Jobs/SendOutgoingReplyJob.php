@@ -24,9 +24,11 @@ use Illuminate\Support\Facades\Log;
  * столкнутся при любом числе воркеров.
  *
  * На успехе пишет email_messages (direction='outgoing') и переводит ответ в 'sent'.
- * Ошибки терминальны (status='failed') — в outgoing_replies нет счётчика ретраев,
- * как и в n8n. Исключение: ratelimit отправителя → блокируем ящик и возвращаем
- * ответ в 'pending' (диспетчер пропускает заблокированные ящики, заберёт после).
+ * Обработка ошибок (handleFailure): ratelimit → блок ящика + ответ в 'pending';
+ * транзиентная ошибка коннекта (битый IP round-robin smtp.beget.com) → ретрай по
+ * outgoing_replies.retry_count (возврат в 'pending', перезабор диспетчером) до
+ * max_retries, дальше 'failed'; 550 «sending is disabled» → авто-деактивация
+ * отправителя + 'failed'; прочее терминально ('failed').
  */
 class SendOutgoingReplyJob implements ShouldQueue
 {
@@ -95,6 +97,7 @@ class SendOutgoingReplyJob implements ShouldQueue
             $reply->update([
                 'status' => 'sent',
                 'sent_at' => now(),
+                'error_message' => null,
             ]);
 
             $this->bumpSenderCounter($senderModel);
@@ -160,24 +163,65 @@ class SendOutgoingReplyJob implements ShouldQueue
     private function handleFailure(OutgoingReply $reply, Sender $sender, string $message): void
     {
         $message = mb_substr($message, 0, 500);
+
         $isRateLimit = (bool) preg_match('/ratelimit|rate limit|try again later|too many/i', $message);
+        // 550 «sending is disabled for mailbox» — отправляющий ящик отключён на стороне
+        // провайдера (Beget). Ретрай бесполезен → деактивируем отправителя, ответ failed.
+        $isDeadMailbox = (bool) preg_match('/sending is disabled for mailbox|message sending is disabled/i', $message);
+        // Транзиентная ошибка коннекта: round-robin DNS smtp.beget.com отдал мёртвый IP
+        // (или сетевой блип). На повторе почти всегда другой, живой IP → ретраим.
+        $isTransient = (bool) preg_match('/connection could not be established|connection timed out|connection refused|timed out|stream_socket_client|could not connect|unable to connect/i', $message);
+
+        $action = 'failed';
 
         if ($isRateLimit) {
             // Ratelimit — проблема отправителя: блокируем ящик, ответ возвращаем в
             // pending (диспетчер пропускает заблокированные ящики, заберёт после снятия).
             $this->blockSender($sender, $message);
-            $reply->update(['status' => 'pending']);
+            $reply->update(['status' => 'pending', 'error_message' => $message]);
+            $action = 'ratelimit→pending';
+        } elseif ($isDeadMailbox) {
+            // Мёртвый ящик-отправитель: авто-деактивация, чтобы ни ответы, ни массовая
+            // рассылка через него больше не уходили. Ответ — terminal failed.
+            $this->deactivateSender($sender, $message);
+            $reply->update(['status' => 'failed', 'error_message' => $message]);
+            $action = 'dead-mailbox→deactivated';
+        } elseif ($isTransient) {
+            // Ретрай транзиентной ошибки: копим retry_count, возвращаем в pending —
+            // диспетчер перезаберёт на следующем тике. Исчерпали max_retries → failed.
+            $retry = (int) $reply->retry_count + 1;
+            $max = (int) config('services.email_replies.max_retries', 3);
+            if ($retry < $max) {
+                $reply->update(['status' => 'pending', 'retry_count' => $retry, 'error_message' => $message]);
+                $action = "transient→retry({$retry}/{$max})";
+            } else {
+                $reply->update(['status' => 'failed', 'retry_count' => $retry, 'error_message' => $message]);
+                $action = "transient→failed({$retry}/{$max})";
+            }
         } else {
-            // Прочая ошибка терминальна (в outgoing_replies нет ретраев, как в n8n).
-            $reply->update(['status' => 'failed']);
+            // Прочая ошибка терминальна (битый адрес, отклонение контента и т.п.).
+            $reply->update(['status' => 'failed', 'error_message' => $message]);
         }
 
         Log::warning('SendOutgoingReplyJob: send failed', [
             'outgoing_reply_id' => $reply->id,
             'sender_id' => $sender->id,
-            'ratelimit' => $isRateLimit,
+            'action' => $action,
             'error' => $message,
         ]);
+    }
+
+    /**
+     * Авто-деактивация отправителя при 550 «sending is disabled» (ящик отключён
+     * провайдером). Причину фиксируем в block_reason для разбора в админке.
+     */
+    private function deactivateSender(Sender $sender, string $reason): void
+    {
+        $sender->forceFill([
+            'is_active' => false,
+            'block_reason' => mb_substr($reason, 0, 255),
+            'last_block_at' => now(),
+        ])->save();
     }
 
     /**

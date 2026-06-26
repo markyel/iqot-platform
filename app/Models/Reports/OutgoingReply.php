@@ -28,6 +28,7 @@ class OutgoingReply extends Model
         'supplier_question_id' => 'integer',
         'sender_id' => 'integer',
         'supplier_id' => 'integer',
+        'retry_count' => 'integer',
         'sent_at' => 'datetime',
         'created_at' => 'datetime',
     ];
