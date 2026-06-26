@@ -60,10 +60,13 @@ class OpenAIClassifierClient
      * @param string $model
      * @param string $systemPrompt
      * @param string $userPrompt
+     * @param int $maxTokens
+     * @param float $temperature Дефолт 0 (детерминизм для analyze/identify/questions);
+     *                           генерация тела рассылки зовёт с 0.7 для уникальности.
      * @return array<string,mixed> распарсенный JSON из message.content
      * @throws \RuntimeException
      */
-    public function jsonCompletion(string $model, string $systemPrompt, string $userPrompt, int $maxTokens = 1024): array
+    public function jsonCompletion(string $model, string $systemPrompt, string $userPrompt, int $maxTokens = 1024, float $temperature = 0.0): array
     {
         if (!$this->isConfigured()) {
             throw new \RuntimeException('OpenAIClassifierClient is not configured.');
@@ -85,7 +88,7 @@ class OpenAIClassifierClient
                     ['role' => 'system', 'content' => $systemPrompt],
                     ['role' => 'user', 'content' => $userPrompt],
                 ],
-                'temperature' => 0,
+                'temperature' => $temperature,
                 'max_tokens' => $maxTokens,
                 'response_format' => ['type' => 'json_object'],
             ]);
@@ -110,5 +113,56 @@ class OpenAIClassifierClient
             throw new \RuntimeException('OpenAIClassifier: completion is not valid JSON.');
         }
         return $decoded;
+    }
+
+    /**
+     * Вызывает /chat/completions БЕЗ enforced JSON — возвращает сырой текст message.content.
+     *
+     * Нужен для генерации трекинг-токена рассылки (system «generate ONLY the token string»):
+     * модель отдаёт короткую строку-токен, а не JSON-объект.
+     *
+     * @throws \RuntimeException
+     */
+    public function textCompletion(string $model, string $systemPrompt, string $userPrompt, int $maxTokens = 100, float $temperature = 0.0): string
+    {
+        if (!$this->isConfigured()) {
+            throw new \RuntimeException('OpenAIClassifierClient is not configured.');
+        }
+
+        $headers = [
+            'Authorization' => 'Bearer ' . $this->apiKey,
+            'Content-Type' => 'application/json',
+        ];
+        if ($this->proxyKey !== '') {
+            $headers['X-Proxy-Key'] = $this->proxyKey;
+        }
+
+        $response = Http::withHeaders($headers)
+            ->timeout($this->timeout)
+            ->post($this->baseUrl . '/chat/completions', [
+                'model' => $model,
+                'messages' => [
+                    ['role' => 'system', 'content' => $systemPrompt],
+                    ['role' => 'user', 'content' => $userPrompt],
+                ],
+                'temperature' => $temperature,
+                'max_tokens' => $maxTokens,
+            ]);
+
+        if (!$response->successful()) {
+            $body = $response->body();
+            Log::warning('OpenAIClassifier: non-200 response (text)', [
+                'status' => $response->status(),
+                'body' => substr($body, 0, 500),
+            ]);
+            throw new \RuntimeException('OpenAIClassifier HTTP ' . $response->status());
+        }
+
+        $data = $response->json();
+        $content = $data['choices'][0]['message']['content'] ?? null;
+        if (!is_string($content) || $content === '') {
+            throw new \RuntimeException('OpenAIClassifier: empty text completion content.');
+        }
+        return $content;
     }
 }

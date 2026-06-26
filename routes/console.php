@@ -82,6 +82,17 @@ Schedule::command('emails:identify-unidentified')
     ->everyThirtyMinutes()
     ->withoutOverlapping();
 
+// Генерация рассылок (замена n8n «Create Email Queue v4 (AI)», каждые 5 мин).
+// Собирает заявки draft/new/active, бьёт позиции на батчи, AI-генерит тело и токен
+// по стилю отправителя (анти-фингерпринтинг), рендерит уникальный HTML на каждого
+// поставщика и пишет письма в email_queue(pending) (их потребляет emails:dispatch-
+// pending). По умолчанию молчит, пока флаг EMAILS_GENERATE_ENABLED=false — включать
+// ТОЛЬКО после отключения n8n-воркфлоу (INSERT'ы email_batches/email_queue не
+// идемпотентны — иначе двойная рассылка). Очередь `generate` (нужен воркер на проде).
+Schedule::command('emails:generate-queue')
+    ->everyFiveMinutes()
+    ->withoutOverlapping();
+
 // Публичный API: оркестратор Discovery поставщиков — каждые 10 минут (§7).
 Schedule::job(new \App\Jobs\Api\DiscoveryOrchestratorJob())->everyTenMinutes()->withoutOverlapping();
 

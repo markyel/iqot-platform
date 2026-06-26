@@ -175,6 +175,33 @@ return [
         'doc_max_chars' => (int) env('EMAILS_IDENTIFY_DOC_MAX_CHARS', 30000),
     ],
 
+    // Генерация рассылок (порт n8n «Create Email Queue v4 (AI)»): собирает заявки,
+    // бьёт позиции на батчи (≤5), подбирает профильных поставщиков, назначает ящик-
+    // отправитель, AI-генерит тело письма и трекинг-токен, рендерит уникальный HTML на
+    // каждого поставщика и пишет строки в email_queue (pending) для DispatchPendingEmails.
+    //   АНТИ-ФИНГЕРПРИНТИНГ: стиль письма (template/tone/token) привязан к sender'у и
+    //   стабилен из рассылки в рассылку → письма от РАЗНЫХ отправителей не похожи. Нельзя
+    //   вводить единый генератор тела/токена/вёрстки — всё рулится назначением per-sender.
+    //   ИДЕМПОТЕНТНОСТЬ: гарантируется claim'ом заявок (draft/new/active→queued_for_sending)
+    //   в начале команды; email_batches/email_queue INSERT'ы НЕ идемпотентны.
+    //   Флаг по умолчанию OFF — включать ТОЛЬКО после отключения n8n «Create Email Queue v4».
+    'email_generate' => [
+        'enabled' => (bool) env('EMAILS_GENERATE_ENABLED', false),
+        // Тело письма: выше качеством (1 AI-вызов на батч, не на поставщика → стоимость ок).
+        'body_model' => env('EMAILS_GENERATE_BODY_MODEL', 'gpt-4o'),
+        // Температура тела — уникальность формулировок.
+        'body_temperature' => (float) env('EMAILS_GENERATE_BODY_TEMP', 0.7),
+        // Токен генерится AI по стилю sender'а (token_templates.prompt_template).
+        'token_model' => env('EMAILS_GENERATE_TOKEN_MODEL', 'gpt-4o-mini'),
+        'token_use_ai' => (bool) env('EMAILS_GENERATE_TOKEN_USE_AI', true),
+        'timeout' => (int) env('EMAILS_GENERATE_TIMEOUT', 60),
+        'max_tokens' => (int) env('EMAILS_GENERATE_MAX_TOKENS', 1500),
+        // Заявок за тик (n8n брал LIMIT 20).
+        'request_limit' => (int) env('EMAILS_GENERATE_REQUEST_LIMIT', 20),
+        // Позиций на батч (n8n MAX 5).
+        'items_per_batch' => (int) env('EMAILS_GENERATE_ITEMS_PER_BATCH', 5),
+    ],
+
     // Переходный период: дублирование вложений входящих писем в Google Drive, чтобы
     // downstream-воркфлоу n8n «Process Email Conversations» (читает Drive-URL из
     // email_attachments.file_path) продолжал работать. По умолчанию выключено —
