@@ -13,6 +13,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -88,6 +89,23 @@ class SendQueuedEmailJob implements ShouldQueue
         }
         if ($senderModel->blocked_until && Carbon::parse($senderModel->blocked_until)->isFuture()) {
             $email->update(['status' => 'pending']);
+            return;
+        }
+
+        // ГЛОБАЛЬНЫЙ анти-бан троттл к SMTP-хосту. beget банит IP за высокую
+        // параллельность/частоту с одного адреса. n8n слал в один поток с паузой
+        // ~2с; здесь весь трафик идёт через один прокси-IP, поэтому ограничиваем
+        // интервал между ЛЮБЫМИ двумя отправками платформы (а не только одного
+        // ящика). Cache::add — атомарный SETNX с TTL: ключ живёт gap секунд, в это
+        // окно никто другой слот не возьмёт → коллективный темп ≤ 1/gap, эффективная
+        // одновременность ≈1 (если отправка короче gap). 0 = троттл выключен.
+        $globalGap = (int) config('services.email_dispatch.global_min_interval_seconds', 0);
+        if ($globalGap > 0 && !Cache::add('emails:global_send_gate', 1, $globalGap)) {
+            if ($this->attempts() >= self::MAX_SLOT_DEFERRALS) {
+                $email->update(['status' => 'pending']);
+                return;
+            }
+            $this->release(1);
             return;
         }
 
@@ -187,19 +205,33 @@ class SendQueuedEmailJob implements ShouldQueue
         $message = mb_substr($message, 0, 500);
         $isRateLimit = (bool) preg_match('/ratelimit|rate limit|try again later|too many/i', $message);
 
+        // Транзиентные ошибки ТРАНСПОРТА (коннект/таймаут/DNS/сеть) — проблема
+        // инфраструктуры отправителя или SMTP-хоста, НЕ получателя. Их нельзя
+        // вешать на ящик получателя: при недоступности smtp-сервера (бан IP,
+        // мёртвый round-robin-узел, обрыв сети) иначе массово блокируются валидные
+        // адреса. Такие письма просто переносятся на ретрай, без штрафа получателю.
+        $isTransient = (bool) preg_match(
+            '/connection could not be established|connection (refused|reset|timed out|could not be opened)|'
+            . 'failed to connect|could not connect|network is unreachable|no route to host|'
+            . 'getaddrinfo|name or service not known|could not be resolved|stream_socket_client|'
+            . 'operation timed out|connection timed out/i',
+            $message
+        );
+
         if ($isRateLimit) {
             // Ratelimit — проблема отправителя, не получателя: блокируем ящик-отправитель,
             // счётчик ошибок получателя НЕ трогаем (иначе блокировали бы валидные адреса).
             $this->blockSender($sender, $message);
-        } else {
-            // Любая другая ошибка отправки (не резолвится хост и т.п.) — копим по
-            // ящику получателя; при пороге подряд он блокируется (см. RecipientMailbox).
+        } elseif (!$isTransient) {
+            // Устойчивая ошибка уровня получателя (отказ адреса, 5xx user unknown и т.п.) —
+            // копим по ящику получателя; при пороге подряд он блокируется (см. RecipientMailbox).
             RecipientMailbox::recordFailure(
                 (string) $email->to_email,
                 $message,
                 (int) config('services.email_dispatch.recipient_error_threshold', 3),
             );
         }
+        // транзиентный коннект/таймаут — ни блока отправителя, ни штрафа получателю, только ретрай.
 
         $retry = (int) $email->retry_count + 1;
         $data = [
@@ -216,6 +248,7 @@ class SendQueuedEmailJob implements ShouldQueue
             'email_queue_id' => $email->id,
             'sender_id' => $sender->id,
             'ratelimit' => $isRateLimit,
+            'transient' => $isTransient,
             'error' => $message,
         ]);
     }
