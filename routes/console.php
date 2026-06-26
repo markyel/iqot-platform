@@ -30,9 +30,9 @@ Schedule::command('api:inbox:process')->everyFiveMinutes()->withoutOverlapping()
 // Рабочее окно — Пн–Пт 08:00–20:00 по Europe/Riga (как в n8n Within Work Hours).
 Schedule::command('emails:dispatch-pending')
     ->everyMinute()
+    ->timezone('Europe/Riga')
     ->weekdays()
     ->between('8:00', '20:00')
-    ->timezone('Europe/Riga')
     ->withoutOverlapping();
 
 // Приём почты: диспетчер опроса IMAP активных ящиков (замена n8n «Receive and
