@@ -110,6 +110,28 @@ return [
         'http_min_chars' => (int) env('EMAILS_ANALYZE_HTTP_MIN_CHARS', 200),
     ],
 
+    // Триаж вопросов поставщиков (замена n8n «Process Supplier Questions»).
+    // Берёт supplier_questions.status='pending', через AI решает можно ли ответить
+    // автоматически: ДА → формирует письмо-ответ в outgoing_replies (status='pending',
+    // отправку делает ОТДЕЛЬНЫЙ воркфлоу/процесс), НЕТ → дедуплицирует через
+    // question_consolidation и направляет автору в author_questions. По умолчанию
+    // ВЫКЛЮЧЕН — включать только ПОСЛЕ отключения n8n-воркфлоу (вставки в
+    // author_questions / question_consolidation / outgoing_replies не идемпотентны,
+    // параллельная работа двух систем плодит дубли).
+    'email_questions' => [
+        'enabled' => (bool) env('EMAILS_QUESTIONS_ENABLED', false),
+        // Модель AI (промпт классификации компактный → дефолт mini).
+        'model' => env('EMAILS_QUESTIONS_MODEL', 'gpt-4o-mini'),
+        // Таймаут запроса к AI.
+        'timeout' => (int) env('EMAILS_QUESTIONS_TIMEOUT', 60),
+        // Потолок токенов ответа.
+        'max_tokens' => (int) env('EMAILS_QUESTIONS_MAX_TOKENS', 1024),
+        // Сколько вопросов за тик ставим в очередь.
+        'batch_limit' => (int) env('EMAILS_QUESTIONS_BATCH_LIMIT', 10),
+        // Сколько прошлых ответов автора по этой заявке подмешиваем в промпт.
+        'history_limit' => (int) env('EMAILS_QUESTIONS_HISTORY_LIMIT', 15),
+    ],
+
     // Переходный период: дублирование вложений входящих писем в Google Drive, чтобы
     // downstream-воркфлоу n8n «Process Email Conversations» (читает Drive-URL из
     // email_attachments.file_path) продолжал работать. По умолчанию выключено —

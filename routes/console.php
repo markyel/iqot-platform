@@ -49,6 +49,14 @@ Schedule::command('emails:analyze-replies')
     ->everyThirtyMinutes()
     ->withoutOverlapping();
 
+// Триаж вопросов поставщиков (замена n8n «Process Supplier Questions», каждые
+// 120 мин). По умолчанию молчит, пока флаг EMAILS_QUESTIONS_ENABLED=false —
+// включать ТОЛЬКО после отключения n8n-воркфлоу (author_questions/
+// question_consolidation/outgoing_replies не идемпотентны).
+Schedule::command('emails:process-questions')
+    ->everyTwoHours()
+    ->withoutOverlapping();
+
 // Публичный API: оркестратор Discovery поставщиков — каждые 10 минут (§7).
 Schedule::job(new \App\Jobs\Api\DiscoveryOrchestratorJob())->everyTenMinutes()->withoutOverlapping();
 
