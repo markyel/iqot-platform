@@ -29,7 +29,20 @@ class CampaignSupplierSelector
             $rows = $this->selectOld($batch);
         }
 
-        return array_map(static fn ($r) => (array) $r, $rows);
+        $suppliers = array_map(static fn ($r) => (array) $r, $rows);
+
+        // Дозаполняем батч профильным списком (его потребляют CampaignEmailBuilder
+        // и CampaignPersister: per-supplier письма + email_batches.supplier_ids).
+        $batch->suppliers = $suppliers;
+        $batch->supplierIds = [];
+        foreach ($suppliers as $s) {
+            $id = (int) ($s['id'] ?? 0);
+            if ($id > 0 && !in_array($id, $batch->supplierIds, true)) {
+                $batch->supplierIds[] = $id;
+            }
+        }
+
+        return $suppliers;
     }
 
     /**
