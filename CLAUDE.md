@@ -173,7 +173,7 @@ Upsert офферов идемпотентен, но вставки в `request_
 - Composer-пакеты для парсинга добавлены: `phpoffice/phpspreadsheet`, `smalot/pdfparser`, `phpoffice/phpword` (на проде `composer install` из lock; в composer.json `config.audit.block-insecure=false` чтобы резолвер не блокировал уже запиненные пакеты).
 
 ## Триаж вопросов поставщиков (заменяет воркфлоу n8n «Process Supplier Questions»)
-Следующий шаг после AI-анализа: AI-анализ раскладывает входящие письма на офферы и вопросы (`supplier_questions.status='pending'`); триаж берёт эти вопросы и решает — ответить поставщику **автоматически** или направить вопрос **автору заявки**. БД та же — `reports`. **Отправку ответов делает ОТДЕЛЬНЫЙ активный n8n-воркфлоу** (читает `outgoing_replies.status='pending'` → отправляет → `sent`); порт его НЕ трогает, только формирует письма в `outgoing_replies`.
+Следующий шаг после AI-анализа: AI-анализ раскладывает входящие письма на офферы и вопросы (`supplier_questions.status='pending'`); триаж берёт эти вопросы и решает — ответить поставщику **автоматически** или направить вопрос **автору заявки**. БД та же — `reports`. Авто-ответы складываются в `outgoing_replies` (status='pending'); **их отправку делает отдельный шаг `emails:dispatch-replies`** (см. раздел «Отправка готовых ответов»).
 
 Поток: планировщик (`->everyTwoHours()`) → `emails:process-questions` → по job на вопрос в очередь `questions` → `ProcessSupplierQuestionJob` → AI #1 → ветка Auto/Author.
 
@@ -193,6 +193,34 @@ Upsert офферов идемпотентен, но вставки в `request_
 - `emails:process-questions {--force} {--limit=} {--question=ID}` — порт «Get Pending Questions» (`supplier_questions.status='pending'` JOIN беседы/поставщика, ORDER BY `created_at`, LIMIT `batch_limit`=10). `--question=ID` — точечный прогон одного вопроса.
 - **Очередь `questions`** — нужен отдельный systemd-воркер на проде (`queue:work database --queue=questions --tries=1 --timeout=120`), по аналогии с `iqot-receive-worker@`. Заводить ТОЛЬКО когда флаг ON.
 - Конфиг (`services.email_questions`): `EMAILS_QUESTIONS_MODEL` (дефолт `gpt-4o-mini`), `EMAILS_QUESTIONS_TIMEOUT` (60), `EMAILS_QUESTIONS_MAX_TOKENS` (1024), `EMAILS_QUESTIONS_BATCH_LIMIT` (10), `EMAILS_QUESTIONS_HISTORY_LIMIT` (15).
+
+## Отправка готовых ответов поставщикам (заменяет n8n «Send Outgoing Replies»)
+Последний шаг конвейера вопросов: триаж (`emails:process-questions`) складывает готовые ответы в `reports.outgoing_replies` (status='pending'), а этот шаг их отправляет по SMTP, пишет в `email_messages` (direction='outgoing') и переводит ответ в 'sent'/'failed'. БД та же — `reports`.
+
+Поток: планировщик → `emails:dispatch-replies` → claim (status='sending') → по job на ответ в очередь `replies` → `SendOutgoingReplyJob` → `OutgoingReplySender` (Symfony Mailer по SMTP отправителя, ssl/465).
+
+### Отличия от массовой рассылки
+- **Threading.** `OutgoingReplySender` проставляет `In-Reply-To`/`References` (порт `reply.in_reply_to`/`reply.references_header` — значения хранятся уже как Message-ID с угловыми скобками, отдаём текстовыми заголовками как есть), чтобы ответ лёг в ту же цепочку у поставщика. Сам генерит `Message-ID` (`bin2hex(random_bytes(16)).'@'.domain`, в `<>`) — раньше его возвращал внешний микросервис `45.146.167.20:8000/send`; теперь отдаём вызывающему для записи в `email_messages`.
+- **Save to Email Messages.** На успехе INSERT в `email_messages` (`direction='outgoing'`, `conversation_id`, from/to/subject/body, `message_id`, `in_reply_to`, `references_header`, `received_at=NOW()`) — порт одноимённого узла n8n, чтобы ответ попал в историю беседы и приём не счёл его новым.
+- **Вложения** — из `reports.outgoing_reply_attachments` (BLOB `file_data`), а не из `request_item_attachments`.
+- **Терминальность ошибок.** В `outgoing_replies` НЕТ счётчика ретраев (как и в n8n) → любая НЕ-ratelimit ошибка терминальна (`status='failed'`). Ratelimit → блок ящика 30 мин (общая логика с `SendQueuedEmailJob`: `block_count`, деактивация при 3-й блокировке/сутки) + ответ обратно в 'pending'.
+
+### Общая пауза на ящик
+Отправители (`senders`) общие с массовой рассылкой → паузу держит тот же атомарный «замок интервала» `reserveSlot()` (`UPDATE senders SET last_send_at=NOW(3) WHERE id=? AND (last_send_at IS NULL OR last_send_at<=NOW(3)-INTERVAL ? SECOND)`). Ответы и массовые письма с одного ящика не уйдут чаще `send_delay_seconds`. `tries=0` + `retryUntil(30 мин)` + `MAX_SLOT_DEFERRALS=25` (после 25 переносов по занятому слоту — ответ обратно в 'pending', un-claim) — защита от переполнения `attempts`, как в `SendQueuedEmailJob`.
+
+### Claim через status='sending' (миграция enum)
+Диспетчер берёт ответ в работу через `status='sending'` (повторный тик его не подхватит); реклейм застрявших 'sending' >30 мин → 'pending'. **Исходный ENUM был `('pending','sent','failed')` БЕЗ 'sending'** — n8n-узел «Update Status to Sending» молча писал `''` (MySQL в нестрогом режиме усекал недопустимый enum до пустой строки). Миграция `2026_06_26_120000_add_sending_to_outgoing_replies_status_enum.php` добавляет 'sending' → claim корректен.
+
+### Идемпотентность (ВАЖНО)
+Отправка письма побочна и НЕ идемпотентна. Поэтому:
+- **Флаг `EMAILS_REPLIES_ENABLED` по умолчанию OFF** (`services.email_replies.enabled`). Включать `true` в `.env` прода ТОЛЬКО ПОСЛЕ отключения n8n-воркфлоу «Send Outgoing Replies» (сейчас `active=true`) — иначе двойная отправка одного ответа. Без флага `emails:dispatch-replies` молчит, ручной/точечный прогон — `--force`.
+- Внутри Laravel двойную отправку отсекает claim (`status='sending'`) на уровне диспетчера + проверка статуса в начале job.
+
+### Команда и воркер
+- `emails:dispatch-replies {--force} {--limit=} {--reply=ID}` — порт «Get Pending Replies» (`outgoing_replies.status='pending'` ORDER BY `created_at`, LIMIT `batch_limit`=30). `--reply=ID` — точечный прогон одного ответа (claim + dispatch).
+- **Очередь `replies`** — нужен отдельный systemd-воркер на проде (`queue:work database --queue=replies --tries=0 --timeout=120`), по аналогии с `iqot-receive-worker@`. Заводить ТОЛЬКО когда флаг ON.
+- Расписание (`routes/console.php`): `->everyFifteenMinutes()->timezone('Europe/Riga')->weekdays()->between('8:00','20:00')->withoutOverlapping()` — рабочее окно как у массовой рассылки.
+- Конфиг (`services.email_replies`): `EMAILS_REPLIES_ENABLED` (дефолт false), `EMAILS_REPLIES_BATCH_LIMIT` (30).
 
 ## История работы (июнь 2026)
 - AI-анализ ответов поставщиков (порт n8n «Process Email Conversations») — сервисы `app/Services/Analysis/*`, `AnalyzeSupplierReplyJob`, команда `emails:analyze-replies`, расписание `everyThirtyMinutes`. Фиксы по ходу теста: `email_messages.from_name` не существует (sender_name из `suppliers.name`); `email_conversations.status` ENUM не содержит `pending` → `waiting`. Флаг `EMAILS_ANALYZE_ENABLED` остаётся OFF (планировщик молчит). Воркер очереди `analyze` на проде ЕЩЁ НЕ заведён (не нужен, пока флаг OFF). Тест на 6 реальных письмах (20391/20389/20387/19693/20376/19661, помечены `ai_processed=1`): классификация/вопросы/статус/дедуп/идемпотентность офферов — OK; извлечение цены по ссылкам не работает (см. ⚠ ограничение WebPageFetcher).

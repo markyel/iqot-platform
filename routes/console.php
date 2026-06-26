@@ -57,6 +57,17 @@ Schedule::command('emails:process-questions')
     ->everyTwoHours()
     ->withoutOverlapping();
 
+// Отправка готовых ответов поставщикам (замена n8n «Send Outgoing Replies»).
+// Рабочее окно — Пн–Пт 08:00–20:00 по Europe/Riga (как массовая рассылка). По
+// умолчанию молчит, пока флаг EMAILS_REPLIES_ENABLED=false — включать ТОЛЬКО после
+// отключения n8n-воркфлоу (иначе двойная отправка).
+Schedule::command('emails:dispatch-replies')
+    ->everyFifteenMinutes()
+    ->timezone('Europe/Riga')
+    ->weekdays()
+    ->between('8:00', '20:00')
+    ->withoutOverlapping();
+
 // Публичный API: оркестратор Discovery поставщиков — каждые 10 минут (§7).
 Schedule::job(new \App\Jobs\Api\DiscoveryOrchestratorJob())->everyTenMinutes()->withoutOverlapping();
 

@@ -132,6 +132,18 @@ return [
         'history_limit' => (int) env('EMAILS_QUESTIONS_HISTORY_LIMIT', 15),
     ],
 
+    // Отправка готовых ответов поставщикам (замена n8n «Send Outgoing Replies»).
+    // Берёт outgoing_replies.status='pending' (их создаёт триаж emails:process-questions),
+    // шлёт через SMTP отправителя (Symfony Mailer, как массовая рассылка) с заголовками
+    // threading (In-Reply-To/References), на успехе пишет email_messages
+    // (direction='outgoing') + status='sent'. По умолчанию ВЫКЛЮЧЕН — включать только
+    // ПОСЛЕ отключения n8n-воркфлоу «Send Outgoing Replies» (иначе двойная отправка).
+    'email_replies' => [
+        'enabled' => (bool) env('EMAILS_REPLIES_ENABLED', false),
+        // Сколько готовых ответов за тик ставим в очередь отправки.
+        'batch_limit' => (int) env('EMAILS_REPLIES_BATCH_LIMIT', 30),
+    ],
+
     // Переходный период: дублирование вложений входящих писем в Google Drive, чтобы
     // downstream-воркфлоу n8n «Process Email Conversations» (читает Drive-URL из
     // email_attachments.file_path) продолжал работать. По умолчанию выключено —
