@@ -73,6 +73,15 @@ Schedule::command('emails:dispatch-replies')
     ->between('8:00', '20:00')
     ->withoutOverlapping();
 
+// Идентификация неопознанных писем (второй проход, замена n8n «Process Unidentified
+// Emails v4»). Письма с потерянным токеном, не привязанные на приёме. В n8n был крон
+// раз в 120 мин; гоним каждые 30 мин, чтобы быстрее разгребать бэклог pending. По
+// умолчанию молчит, пока флаг EMAILS_IDENTIFY_ENABLED=false — включать ТОЛЬКО после
+// отключения n8n-воркфлоу (миграция письма создаёт боевые строки — иначе дубли).
+Schedule::command('emails:identify-unidentified')
+    ->everyThirtyMinutes()
+    ->withoutOverlapping();
+
 // Публичный API: оркестратор Discovery поставщиков — каждые 10 минут (§7).
 Schedule::job(new \App\Jobs\Api\DiscoveryOrchestratorJob())->everyTenMinutes()->withoutOverlapping();
 

@@ -147,6 +147,34 @@ return [
         'max_retries' => (int) env('EMAILS_REPLIES_MAX_RETRIES', 3),
     ],
 
+    // Разбор неопознанных писем (замена n8n «Process Unidentified Emails v4»). Второй
+    // проход по unidentified_emails (status='pending', reason!='bounce'): мягкий матч
+    // токена (полный + базовая часть до дефиса), сбор кандидат-батчей по домену
+    // поставщика, AI-идентификация по НАЗВАНИЮ товара. При успехе письмо мигрирует в
+    // боевую беседу (email_messages/email_attachments, email_queue='replied') и далее
+    // подхватывается AI-анализом. По умолчанию ВЫКЛЮЧЕН — включать только ПОСЛЕ
+    // отключения n8n-воркфлоу (миграция email_messages деду­плицируется по message_id,
+    // но email_attachments — нет; параллельная работа двух систем плодит дубли вложений).
+    'email_identify' => [
+        'enabled' => (bool) env('EMAILS_IDENTIFY_ENABLED', false),
+        // Модель AI (n8n брал gpt-3.5-turbo; сопоставление по названию сложное → gpt-4o).
+        'model' => env('EMAILS_IDENTIFY_MODEL', 'gpt-4o'),
+        'timeout' => (int) env('EMAILS_IDENTIFY_TIMEOUT', 120),
+        'max_tokens' => (int) env('EMAILS_IDENTIFY_MAX_TOKENS', 1024),
+        // Сколько писем за тик ставим в очередь identify.
+        'batch_limit' => (int) env('EMAILS_IDENTIFY_BATCH_LIMIT', 50),
+        // Потолок попыток (порт «processing_attempts < 5»): больше — manual_review.
+        'max_attempts' => (int) env('EMAILS_IDENTIFY_MAX_ATTEMPTS', 5),
+        // Окно поиска отправленных писем для токенов/кандидатов (дней).
+        'lookback_days' => (int) env('EMAILS_IDENTIFY_LOOKBACK_DAYS', 60),
+        // Лимит кандидат-батчей в промпте.
+        'candidate_limit' => (int) env('EMAILS_IDENTIFY_CANDIDATE_LIMIT', 50),
+        // Минимальная уверенность AI для идентификации (порт «confidence >= 0.5»).
+        'min_confidence' => (float) env('EMAILS_IDENTIFY_MIN_CONFIDENCE', 0.5),
+        // Лимит текста вложений (КП) в промпте (начало+конец, если длиннее).
+        'doc_max_chars' => (int) env('EMAILS_IDENTIFY_DOC_MAX_CHARS', 30000),
+    ],
+
     // Переходный период: дублирование вложений входящих писем в Google Drive, чтобы
     // downstream-воркфлоу n8n «Process Email Conversations» (читает Drive-URL из
     // email_attachments.file_path) продолжал работать. По умолчанию выключено —
