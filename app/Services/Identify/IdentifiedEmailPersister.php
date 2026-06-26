@@ -100,6 +100,27 @@ class IdentifiedEmailPersister
     }
 
     /**
+     * Автоответ/приветствие без информации о товаре — шум, действий не требует.
+     * Помечаем status='spam' (терминально, без ретраев и без ручного разбора).
+     *
+     * @param array{reasoning:string,confidence:float,email_type:string} $decision
+     */
+    public function persistSpam(int $emailId, array $decision): void
+    {
+        DB::connection('reports')->table('unidentified_emails')
+            ->where('id', $emailId)
+            ->update([
+                'status' => 'spam',
+                'identification_details' => json_encode([
+                    'reasoning' => $decision['reasoning'] ?: 'Автоответ/приветствие без информации о товаре',
+                    'confidence' => $decision['confidence'],
+                    'email_type' => $decision['email_type'] ?? 'auto_reply',
+                ], JSON_UNESCAPED_UNICODE),
+                'updated_at' => now(),
+            ]);
+    }
+
+    /**
      * Кандидатов по домену/токену не нашлось — на ручной разбор (порт «No Candidates Found»).
      */
     public function persistNoCandidates(int $emailId): void

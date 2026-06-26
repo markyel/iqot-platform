@@ -28,7 +28,7 @@ class IdentificationAnalyzer
     /**
      * @param array<int,object> $candidates строки CandidateBatchLoader
      * @param array{queue_id:int}|null $tokenMatch
-     * @return array{identified_queue_id:?int,identified_batch_id:?int,identified_supplier_id:?int,confidence:float,reasoning:string,matched_items:array<int,string>,is_price_offer:bool,validation_passed:bool}
+     * @return array{identified_queue_id:?int,identified_batch_id:?int,identified_supplier_id:?int,confidence:float,reasoning:string,matched_items:array<int,string>,is_price_offer:bool,validation_passed:bool,email_type:string}
      */
     public function analyze(
         string $fromEmail,
@@ -58,13 +58,14 @@ class IdentificationAnalyzer
      * @param array<string,mixed> $parsed
      * @param array<int,object> $candidates
      * @param array{queue_id:int}|null $tokenMatch
-     * @return array{identified_queue_id:?int,identified_batch_id:?int,identified_supplier_id:?int,confidence:float,reasoning:string,matched_items:array<int,string>,is_price_offer:bool,validation_passed:bool}
+     * @return array{identified_queue_id:?int,identified_batch_id:?int,identified_supplier_id:?int,confidence:float,reasoning:string,matched_items:array<int,string>,is_price_offer:bool,validation_passed:bool,email_type:string}
      */
     private function parse(array $parsed, array $candidates, ?array $tokenMatch): array
     {
         $result = $this->fallback('');
         $result['confidence'] = (float) ($parsed['confidence'] ?? 0);
         $result['reasoning'] = (string) ($parsed['reasoning'] ?? '');
+        $result['email_type'] = $this->normalizeType($parsed['email_type'] ?? null);
         $result['matched_items'] = array_values(array_filter(
             (array) ($parsed['matched_items'] ?? []),
             static fn ($v) => is_string($v) && $v !== ''
@@ -102,7 +103,7 @@ class IdentificationAnalyzer
     }
 
     /**
-     * @return array{identified_queue_id:null,identified_batch_id:null,identified_supplier_id:null,confidence:float,reasoning:string,matched_items:array<int,string>,is_price_offer:bool,validation_passed:bool}
+     * @return array{identified_queue_id:null,identified_batch_id:null,identified_supplier_id:null,confidence:float,reasoning:string,matched_items:array<int,string>,is_price_offer:bool,validation_passed:bool,email_type:string}
      */
     private function fallback(string $reason): array
     {
@@ -115,7 +116,19 @@ class IdentificationAnalyzer
             'matched_items' => [],
             'is_price_offer' => false,
             'validation_passed' => false,
+            'email_type' => 'unknown',
         ];
+    }
+
+    /**
+     * Нормализует тип письма из ответа AI к фиксированному набору.
+     */
+    private function normalizeType(mixed $raw): string
+    {
+        $allowed = ['auto_reply', 'price_offer', 'rejection', 'question', 'requisites_request', 'unknown'];
+        $type = is_string($raw) ? strtolower(trim($raw)) : '';
+
+        return in_array($type, $allowed, true) ? $type : 'unknown';
     }
 
     /**
@@ -219,32 +232,44 @@ class IdentificationAnalyzer
 
 === ШАГ 0: КЛАССИФИКАЦИЯ ПИСЬМА ===
 
-СНАЧАЛА определи тип письма:
+СНАЧАЛА определи тип письма (email_type):
 
-1. АВТООТВЕТ / ПРИВЕТСТВИЕ — письмо НЕ содержит информации о конкретном товаре:
+1. auto_reply — АВТООТВЕТ / ПРИВЕТСТВИЕ, письмо НЕ содержит информации о товаре И НЕ требует от нас никаких действий:
    - "Ваша заявка принята / получена / зарегистрирована"
    - "Спасибо за обращение"
    - "Меня зовут [имя], я ваш менеджер"
    - "Мы обрабатываем ваш запрос"
    - "Ознакомьтесь с презентацией о компании"
-   → СРАЗУ верни null с reasoning "Автоответ/приветствие без информации о товаре"
+   → СРАЗУ верни identified_queue_id=null, email_type="auto_reply",
+     reasoning "Автоответ/приветствие без информации о товаре"
 
-2. УТОЧНЯЮЩИЙ ВОПРОС — поставщик спрашивает детали:
+2. requisites_request — ЗАПРОС НАШИХ РЕКВИЗИТОВ (это НЕ автоответ! требует ответа):
+   - "Пришлите ваши реквизиты / реквизиты компании"
+   - "Нужна карточка организации / карта партнёра / карточка предприятия"
+   - "Сообщите ИНН / КПП для оформления КП на вас"
+   - "Просьба прислать ваши данные / реквизиты для счёта"
+   → Поставщик хочет НАШИ данные, чтобы выставить НАМ предложение — это осмысленный
+     запрос. ОБЯЗАТЕЛЬНО попробуй определить queue_id. Товара в письме может НЕ быть —
+     ориентируйся на поставщика-кандидата: если кандидат с этим поставщиком ОДИН —
+     это он; если несколько — выбери САМЫЙ НЕДАВНИЙ (наименьшее "Дней назад").
+     email_type="requisites_request", confidence 0.6–0.8.
+
+3. question — УТОЧНЯЮЩИЙ ВОПРОС про товар/условия:
    - "Уточните количество / сроки / характеристики"
    - "Какой именно артикул вам нужен?"
-   → Можно идентифицировать, если понятно о каком товаре речь
+   → Можно идентифицировать, если понятно о каком товаре речь. email_type="question".
 
-3. КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ — содержит:
+4. price_offer — КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ — содержит:
    - Конкретные цены (руб, ₽, USD, EUR)
    - Сроки поставки
    - Наименования товаров с артикулами
-   → Анализируй и сопоставляй с кандидатами
+   → Анализируй и сопоставляй с кандидатами. email_type="price_offer".
 
-4. ОТКАЗ / НЕТ В НАЛИЧИИ:
+5. rejection — ОТКАЗ / НЕТ В НАЛИЧИИ:
    - "К сожалению, не поставляем"
    - "Нет в наличии"
    - "Не работаем с данным брендом"
-   → Можно идентифицировать, если понятно о каком товаре речь
+   → Можно идентифицировать, если понятно о каком товаре речь. email_type="rejection".
 
 === ШАГ 1: АНАЛИЗ ВЛОЖЕНИЙ ===
 
@@ -284,13 +309,14 @@ class IdentificationAnalyzer
 === КРИТЕРИИ УВЕРЕННОСТИ ===
 - 0.9-1.0: Метка ⭐ + название товара совпадает
 - 0.7-0.9: Название товара точно совпадает (тип + модель)
-- 0.5-0.7: Название частично совпадает (только тип товара)
+- 0.5-0.7: Название частично совпадает (только тип товара); ИЛИ запрос реквизитов с единственным/самым недавним кандидатом-поставщиком
 - 0.0: Автоответ, презентация, нет совпадений → верни null
 
 === ФОРМАТ ОТВЕТА (СТРОГО JSON) ===
 {
   "identified_queue_id": <number или null>,
   "confidence": <0.0-1.0>,
+  "email_type": "<auto_reply|requisites_request|question|price_offer|rejection|unknown>",
   "reasoning": "<тип письма + какое НАЗВАНИЕ товара из письма совпало с каким товаром кандидата>",
   "matched_items": ["<название товара из письма>"],
   "is_price_offer": <true если есть цены, иначе false>

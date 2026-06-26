@@ -108,17 +108,29 @@ class IdentifyUnidentifiedEmailJob implements ShouldQueue
 
             // 5. Запись результата.
             if ($decision['validation_passed'] && $decision['identified_batch_id'] !== null) {
+                // Опознано (в т.ч. запрос реквизитов): мигрируем в беседу — дальше
+                // emails:analyze-replies извлечёт вопрос/оффер, emails:process-questions
+                // при запросе реквизитов автоответит нашими данными организации.
                 $persister->persistIdentified($email, $decision);
                 Log::info('IdentifyUnidentifiedEmailJob: identified', [
                     'email_id' => $this->emailId,
                     'queue_id' => $decision['identified_queue_id'],
                     'batch_id' => $decision['identified_batch_id'],
+                    'email_type' => $decision['email_type'],
                     'confidence' => $decision['confidence'],
                 ]);
+            } elseif ($decision['email_type'] === 'auto_reply') {
+                // Автоответ/приветствие без действий → spam (не ручной разбор, не ретраим).
+                $persister->persistSpam($this->emailId, $decision);
+                Log::info('IdentifyUnidentifiedEmailJob: spam (auto_reply)', [
+                    'email_id' => $this->emailId,
+                ]);
             } else {
+                // Осмысленный ответ, но не опознан (отказ/вопрос без совпадения) → ручной разбор.
                 $persister->persistManualReview($this->emailId, $decision);
                 Log::info('IdentifyUnidentifiedEmailJob: manual_review', [
                     'email_id' => $this->emailId,
+                    'email_type' => $decision['email_type'],
                     'confidence' => $decision['confidence'],
                 ]);
             }
