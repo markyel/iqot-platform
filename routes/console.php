@@ -49,20 +49,25 @@ Schedule::command('emails:analyze-replies')
     ->everyThirtyMinutes()
     ->withoutOverlapping();
 
-// Триаж вопросов поставщиков (замена n8n «Process Supplier Questions», каждые
-// 120 мин). По умолчанию молчит, пока флаг EMAILS_QUESTIONS_ENABLED=false —
-// включать ТОЛЬКО после отключения n8n-воркфлоу (author_questions/
-// question_consolidation/outgoing_replies не идемпотентны).
+// Триаж вопросов поставщиков (замена n8n «Process Supplier Questions»). Гоним
+// каждую минуту — ответы генерим оперативно, без искусственной задержки (в n8n
+// был крон раз в 120 мин). Безопасно при частом запуске: ProcessSupplierQuestionJob
+// клеймит вопрос (Cache::lock + повторная проверка status='pending'), повторный
+// диспатч того же вопроса отваливается. По умолчанию молчит, пока флаг
+// EMAILS_QUESTIONS_ENABLED=false — включать ТОЛЬКО после отключения n8n-воркфлоу
+// (author_questions/question_consolidation/outgoing_replies не идемпотентны).
 Schedule::command('emails:process-questions')
-    ->everyTwoHours()
+    ->everyMinute()
     ->withoutOverlapping();
 
 // Отправка готовых ответов поставщикам (замена n8n «Send Outgoing Replies»).
-// Рабочее окно — Пн–Пт 08:00–20:00 по Europe/Riga (как массовая рассылка). По
+// Каждую минуту в рабочем окне Пн–Пт 08:00–20:00 по Europe/Riga (как массовая
+// рассылка) — чтобы сгенерённый триажем ответ уходил оперативно, а не ждал тика.
+// Диспетчер клеймит ответ (status='sending'), повторный тик его не подхватит. По
 // умолчанию молчит, пока флаг EMAILS_REPLIES_ENABLED=false — включать ТОЛЬКО после
 // отключения n8n-воркфлоу (иначе двойная отправка).
 Schedule::command('emails:dispatch-replies')
-    ->everyFifteenMinutes()
+    ->everyMinute()
     ->timezone('Europe/Riga')
     ->weekdays()
     ->between('8:00', '20:00')
