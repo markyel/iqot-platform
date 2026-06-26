@@ -205,6 +205,33 @@ class SendQueuedEmailJob implements ShouldQueue
         $message = mb_substr($message, 0, 500);
         $isRateLimit = (bool) preg_match('/ratelimit|rate limit|try again later|too many/i', $message);
 
+        // ОШИБКА АВТОРИЗАЦИИ ящика-отправителя (битый/сменённый пароль): SMTP-хост
+        // отвечает 535 «Incorrect authentication data» / «Failed to authenticate».
+        // КРИТИЧНО: каждая такая попытка — это failed-auth к smtp-хосту, а beget банит
+        // ИСХОДЯЩИЙ IP (у нас — прокси-релей) после 5 неудачных авторизаций на 24ч.
+        // Поэтому ретраить бессмысленно и ОПАСНО (тем же паролем снова провалимся и
+        // выжжем IP). Немедленно деактивируем отправитель (как 550 в SendOutgoingReplyJob),
+        // письмо — terminal error без ретрая. Получателя НЕ штрафуем: это не его вина.
+        $isAuthFailure = (bool) preg_match(
+            '/failed to authenticate|incorrect authentication(\s+data)?|authentication failed|'
+            . 'auth.*(failed|invalid|incorrect)|\b535\b/i',
+            $message
+        );
+        if ($isAuthFailure) {
+            $this->deactivateSenderAuth($sender, $message);
+            $email->update([
+                'status' => 'error',
+                'error_message' => $message,
+                'retry_count' => (int) $email->retry_count + 1,
+            ]);
+            Log::error('SendQueuedEmailJob: sender auth failure → deactivated (anti IP-ban)', [
+                'email_queue_id' => $email->id,
+                'sender_id' => $sender->id,
+                'error' => $message,
+            ]);
+            return;
+        }
+
         // Транзиентные ошибки ТРАНСПОРТА (коннект/таймаут/DNS/сеть) — проблема
         // инфраструктуры отправителя или SMTP-хоста, НЕ получателя. Их нельзя
         // вешать на ящик получателя: при недоступности smtp-сервера (бан IP,
@@ -278,6 +305,20 @@ class SendQueuedEmailJob implements ShouldQueue
         }
 
         $sender->forceFill($data)->save();
+    }
+
+    /**
+     * Деактивация отправителя при ошибке авторизации (битый пароль).
+     * Ретрай бесполезен (тот же пароль) и опасен (бан исходящего IP за 5 failed-auth).
+     * Зеркало ветки 550 «sending is disabled» в SendOutgoingReplyJob.
+     */
+    private function deactivateSenderAuth(Sender $sender, string $reason): void
+    {
+        $sender->forceFill([
+            'is_active' => false,
+            'last_block_at' => now(),
+            'block_reason' => mb_substr('auth failure: ' . $reason, 0, 255),
+        ])->save();
     }
 
     public function failed(\Throwable $exception): void
