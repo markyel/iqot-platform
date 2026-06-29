@@ -105,8 +105,10 @@ class SenderImportController extends Controller
             'excel.mimes' => 'Файл должен быть в формате .xlsx.',
         ]);
 
-        $domains = preg_split('/[\s,;]+/', $validated['domains']) ?: [];
-        $generated = $generator->generate($request->file('excel')->getRealPath(), $domains);
+        // Делим по СТРОКАМ (не по пробелам): строка может нести расширенный синтаксис
+        // «домен | smtp.host:port | imap.host:port», разбор/дедуп — в генераторе.
+        $domainLines = preg_split('/[\r\n]+/', $validated['domains']) ?: [];
+        $generated = $generator->generate($request->file('excel')->getRealPath(), $domainLines);
 
         return view('admin.senders.create', [
             'totalSenders' => $this->safeCount(),

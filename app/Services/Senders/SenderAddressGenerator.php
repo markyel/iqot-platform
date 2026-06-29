@@ -72,13 +72,17 @@ class SenderAddressGenerator
     /**
      * Сгенерировать кандидатов: по одному адресу на неиспользованную организацию.
      *
-     * @param string[] $domains
+     * Каждая строка $domainLines — либо просто домен (SMTP/IMAP выводятся авто),
+     * либо расширенный синтаксис «домен | smtp.host:port | imap.host:port» с явным
+     * указанием почтового сервера домена.
+     *
+     * @param string[] $domainLines строки textarea доменов (как есть, по \n)
      * @return array<int,array<string,mixed>>
      */
-    public function generate(string $excelPath, array $domains): array
+    public function generate(string $excelPath, array $domainLines): array
     {
-        $domains = $this->normalizeDomains($domains);
-        if ($domains === []) {
+        $entries = $this->parseDomainEntries($domainLines);
+        if ($entries === []) {
             return [];
         }
 
@@ -88,13 +92,14 @@ class SenderAddressGenerator
         $rows = [];
         $domainIdx = 0;
         foreach ($orgs as $org) {
-            $domain = $domains[$domainIdx % count($domains)];
+            $entry = $entries[$domainIdx % count($entries)];
             $domainIdx++;
 
+            $domain = $entry['domain'];
             $email = $this->uniqueEmail($org, $domain, $used);
             $used[mb_strtolower($email)] = true;
 
-            [$smtp, $imap] = $this->mailHostsFor($domain);
+            [$smtp, $imap] = $this->mailHostsFor($entry);
 
             $rows[] = [
                 'email' => $email,
@@ -116,40 +121,110 @@ class SenderAddressGenerator
     }
 
     /**
-     * Привести список доменов к чистому уникальному виду.
+     * Разобрать строки textarea доменов в упорядоченный уникальный список записей.
      *
-     * @param string[] $domains
-     * @return string[]
+     * Поддерживается два формата строки:
+     *   - «домен» (можно несколько в строке через пробел/запятую/;) — SMTP/IMAP авто;
+     *   - «домен | smtp.host[:port] | imap.host[:port]» — явный почтовый сервер домена
+     *     (override). Порт необязателен (по умолчанию SMTP 465 / IMAP 993). Битый
+     *     host:port в override молча игнорируется → откат на авто-вывод по домену.
+     *
+     * Дедуп по домену (первое вхождение выигрывает), порядок сохраняется (round-robin).
+     *
+     * @param string[] $lines
+     * @return array<int,array{domain:string,smtp:?string,imap:?string}>
      */
-    private function normalizeDomains(array $domains): array
+    private function parseDomainEntries(array $lines): array
     {
-        $clean = [];
-        foreach ($domains as $domain) {
-            $domain = mb_strtolower(trim((string) $domain));
-            $domain = ltrim($domain, '@');
-            if ($domain === '' || !preg_match('/^[a-z0-9.-]+\.[a-z]{2,}$/', $domain)) {
+        $seen = [];
+        $entries = [];
+
+        foreach ($lines as $line) {
+            $line = trim((string) $line);
+            if ($line === '') {
                 continue;
             }
-            $clean[$domain] = true;
+
+            if (str_contains($line, '|')) {
+                $parts = array_map('trim', explode('|', $line));
+                $domain = $this->cleanDomain($parts[0] ?? '');
+                if ($domain === '' || isset($seen[$domain])) {
+                    continue;
+                }
+                $seen[$domain] = true;
+                $entries[] = [
+                    'domain' => $domain,
+                    'smtp' => $this->cleanHostPort($parts[1] ?? '', 465),
+                    'imap' => $this->cleanHostPort($parts[2] ?? '', 993),
+                ];
+
+                continue;
+            }
+
+            // Строка без «|» — один или несколько простых доменов (авто SMTP/IMAP).
+            foreach (preg_split('/[\s,;]+/', $line) ?: [] as $token) {
+                $domain = $this->cleanDomain($token);
+                if ($domain === '' || isset($seen[$domain])) {
+                    continue;
+                }
+                $seen[$domain] = true;
+                $entries[] = ['domain' => $domain, 'smtp' => null, 'imap' => null];
+            }
         }
 
-        return array_keys($clean);
+        return $entries;
     }
 
     /**
-     * SMTP/IMAP-хосты для домена: сперва явный override (DOMAIN_MAIL для доменов на
-     * нестандартном хосте, напр. beget), иначе авто-вывод smtp.<домен>:465 /
-     * mail.<домен>:993 — паттерн бесплатной доменной почты Sprinthost/SpaceWeb.
+     * Нормализовать и провалидировать домен. Возвращает '' если домен невалиден.
+     */
+    private function cleanDomain(string $domain): string
+    {
+        $domain = ltrim(mb_strtolower(trim($domain)), '@');
+
+        return preg_match('/^[a-z0-9.-]+\.[a-z]{2,}$/', $domain) ? $domain : '';
+    }
+
+    /**
+     * Нормализовать «host[:port]» из override; пусто/битьё → null (откат на авто).
+     * Без порта подставляется $defaultPort.
+     */
+    private function cleanHostPort(string $value, int $defaultPort): ?string
+    {
+        $value = mb_strtolower(trim($value));
+        if ($value === '' || !preg_match('/^([a-z0-9.-]+\.[a-z]{2,})(?::(\d{1,5}))?$/', $value, $m)) {
+            return null;
+        }
+
+        $port = isset($m[2]) && $m[2] !== '' ? (int) $m[2] : $defaultPort;
+
+        return $m[1] . ':' . $port;
+    }
+
+    /**
+     * SMTP/IMAP-хосты для записи домена. Приоритет: явный override из строки textarea
+     * → карта DOMAIN_MAIL (для доменов на нестандартном хосте, напр. beget) → авто-вывод
+     * smtp.<домен>:465 / mail.<домен>:993 (паттерн Sprinthost/SpaceWeb). Если в override
+     * указана только одна сторона, недостающая берётся из авто-вывода.
      *
+     * @param array{domain:string,smtp:?string,imap:?string} $entry
      * @return array{0:string,1:string}
      */
-    private function mailHostsFor(string $domain): array
+    private function mailHostsFor(array $entry): array
     {
+        $domain = $entry['domain'];
+        $autoSmtp = 'smtp.' . $domain . ':465';
+        $autoImap = 'mail.' . $domain . ':993';
+
+        if ($entry['smtp'] !== null || $entry['imap'] !== null) {
+            return [$entry['smtp'] ?? $autoSmtp, $entry['imap'] ?? $autoImap];
+        }
+
         if (isset(self::DOMAIN_MAIL[$domain])) {
             return [self::DOMAIN_MAIL[$domain]['smtp'], self::DOMAIN_MAIL[$domain]['imap']];
         }
 
-        return ['smtp.' . $domain . ':465', 'mail.' . $domain . ':993'];
+        return [$autoSmtp, $autoImap];
     }
 
     /**

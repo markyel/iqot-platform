@@ -221,8 +221,11 @@
                         пароль и назначит домен по кругу. В превью отметьте галочками, какие адреса завести —
                         они добавятся в систему (ФИО-контакт и стиль письма допишет AI), а внизу появится
                         список <code>email&nbsp;пароль</code> по доменам, чтобы вы создали ящики на хостинге.
-                        SMTP/IMAP выводятся по домену (<code>smtp.&lt;домен&gt;</code> / <code>mail.&lt;домен&gt;</code>;
-                        для доменов на beget — общий beget, см. <code>DOMAIN_MAIL</code>). Добавление идёт в фоне —
+                        SMTP/IMAP по умолчанию выводятся из домена (<code>smtp.&lt;домен&gt;</code> /
+                        <code>mail.&lt;домен&gt;</code>). Если почтовый сервер домена другой (напр. домен на beget) —
+                        укажите его в строке через <code>|</code>:
+                        <code>домен&nbsp;|&nbsp;smtp.host:port&nbsp;|&nbsp;imap.host:port</code>.
+                        Назначенный сервер виден в колонке SMTP/IMAP превью. Добавление идёт в фоне —
                         страница статуса покажет прогресс и список ящиков.
                     </p>
                 </div>
@@ -331,14 +334,18 @@
                             rows="4"
                             class="input @error('domains') is-invalid @enderror"
                             style="font-family: monospace; font-size: 0.875rem;"
-                            placeholder="inmailbox.ru&#10;tomailbox.ru&#10;ooomail.ru"
+                            placeholder="wwwsend.ru&#10;tomailbox.ru, ooomail.ru&#10;mydomain.ru | smtp.beget.com:465 | imap.beget.com:993"
                             required
                         >{{ old('domains', $generatorInput['domains'] ?? '') }}</textarea>
                         @error('domains')
                             <div class="invalid-feedback">{{ $message }}</div>
                         @enderror
                         <small class="form-help">
-                            Можно через перенос строки, запятую или пробел. Домены чередуются по кругу.
+                            Простые домены — через перенос строки, запятую или пробел; SMTP/IMAP выведутся
+                            автоматически (<code>smtp.&lt;домен&gt;:465</code> / <code>mail.&lt;домен&gt;:993</code>).
+                            Чтобы задать сервер вручную — отдельной строкой
+                            <code>домен | smtp.host:port | imap.host:port</code> (порт необязателен).
+                            Домены чередуются по кругу.
                         </small>
                     </div>
 
@@ -384,6 +391,7 @@
                                             <th style="padding: 0.5rem;"><input type="checkbox" id="gen-all" checked></th>
                                             <th style="padding: 0.5rem;">Email</th>
                                             <th style="padding: 0.5rem;">Пароль</th>
+                                            <th style="padding: 0.5rem;">SMTP / IMAP</th>
                                             <th style="padding: 0.5rem;">Организация</th>
                                             <th style="padding: 0.5rem;">ИНН</th>
                                         </tr>
@@ -397,6 +405,9 @@
                                                 </td>
                                                 <td style="padding: 0.5rem; font-family: monospace;">{{ $g['email'] }}</td>
                                                 <td style="padding: 0.5rem; font-family: monospace;">{{ $g['password'] }}</td>
+                                                <td style="padding: 0.5rem; font-family: monospace; font-size: 0.8rem; color: var(--text-secondary); white-space: nowrap;">
+                                                    {{ $g['smtp'] ?? '—' }}<br>{{ $g['imap'] ?? '—' }}
+                                                </td>
                                                 <td style="padding: 0.5rem;">{{ $g['company'] ?? '—' }}</td>
                                                 <td style="padding: 0.5rem; font-family: monospace;">{{ $g['inn'] ?? '—' }}</td>
                                             </tr>
