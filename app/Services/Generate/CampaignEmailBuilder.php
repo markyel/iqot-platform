@@ -128,6 +128,29 @@ class CampaignEmailBuilder
 
     // ── Хелперы значений ────────────────────────────────────────────────────
 
+    /**
+     * Форматирование количества для письма: «20.000» → «20», «1.500» → «1.5».
+     * DB хранит quantity как decimal(_,3), сырой рендер «20.000» поставщик читает
+     * как 20 000 — поэтому убираем незначащие нули и дробную часть у целых.
+     */
+    private function formatQty(mixed $val, string $emptyVal = self::EMPTY_VAL): string
+    {
+        $s = $this->cleanValue($val, $emptyVal);
+        if ($s === $emptyVal || $s === '') {
+            return $s;
+        }
+        $num = str_replace([' ', ','], ['', '.'], trim($s));
+        if (!is_numeric($num)) {
+            return $s;
+        }
+        $f = (float) $num;
+        if (floor($f) === $f) {
+            return (string) (int) $f;
+        }
+
+        return rtrim(rtrim(number_format($f, 3, '.', ''), '0'), '.');
+    }
+
     private function cleanValue(mixed $val, string $emptyVal = self::EMPTY_VAL): string
     {
         if ($val === null || $val === '' || $val === 'null') {
@@ -447,7 +470,7 @@ class CampaignEmailBuilder
                 $displayName = $nameColor !== $textColor ? "<span style=\"color:{$nameColor};\">{$name}</span>" : $name;
             }
 
-            $qty = $this->cleanValue($item['quantity'] ?? null, '');
+            $qty = $this->formatQty($item['quantity'] ?? null, '');
             $displayQty = $boldQuantity ? "<strong>{$qty}</strong>" : $qty;
 
             $line = $this->replaceFirst($line, '{index}', (string) ($idx + 1));
@@ -504,7 +527,7 @@ class CampaignEmailBuilder
                 $label = $labels[$col] ?? $this->getDefaultLabel((string) $col);
 
                 if ($col === 'quantity') {
-                    $val = '<strong>' . $this->cleanValue($item['quantity'] ?? null, '1') . ' ' . $this->cleanValue($item['unit'] ?? null, 'шт') . '</strong>';
+                    $val = '<strong>' . $this->formatQty($item['quantity'] ?? null, '1') . ' ' . $this->cleanValue($item['unit'] ?? null, 'шт') . '</strong>';
                     $html .= "<p style=\"margin:5px 0;\"><span style=\"color:{$labelColor};\">{$label}:</span> {$val}</p>";
                 } elseif ($col === 'description') {
                     if ($this->hasValue($item['description'] ?? null)) {
@@ -552,7 +575,7 @@ class CampaignEmailBuilder
                 $displayName = $nameColor !== $textColor ? "<span style=\"color:{$nameColor};\">{$name}</span>" : $name;
             }
 
-            $qtyVal = $this->cleanValue($item['quantity'] ?? null, '');
+            $qtyVal = $this->formatQty($item['quantity'] ?? null, '');
             $unitVal = $this->cleanValue($item['unit'] ?? null, 'шт');
             $displayQty = $boldQuantity ? "<strong>{$qtyVal}</strong>" : $qtyVal;
             $displayUnit = $boldQuantity ? "<strong>{$unitVal}</strong>" : $unitVal;
@@ -612,7 +635,7 @@ class CampaignEmailBuilder
 
             $line = $this->replaceFirst($line, '{index}', (string) ($idx + 1));
             $line = $this->replaceFirst($line, '{name}', $displayName);
-            $line = $this->replaceFirst($line, '{quantity}', $this->cleanValue($item['quantity'] ?? null, ''));
+            $line = $this->replaceFirst($line, '{quantity}', $this->formatQty($item['quantity'] ?? null, ''));
             $line = $this->replaceFirst($line, '{unit}', $this->cleanValue($item['unit'] ?? null, 'шт'));
             $line = $this->replaceFirst($line, '{brand}', $this->cleanValue($item['brand'] ?? null, ''));
 
@@ -672,7 +695,7 @@ class CampaignEmailBuilder
             case 'article':
                 return $this->cleanValue($item['article'] ?? null, $emptyVal);
             case 'quantity':
-                $qty = $this->replaceFirst((string) $qtyFormat, '{value}', $this->cleanValue($item['quantity'] ?? null, ''));
+                $qty = $this->replaceFirst((string) $qtyFormat, '{value}', $this->formatQty($item['quantity'] ?? null, ''));
                 $qty = $this->replaceFirst($qty, '{unit}', $this->cleanValue($item['unit'] ?? null, 'шт'));
                 return $boldQuantity ? "<strong>{$qty}</strong>" : $qty;
             case 'unit':

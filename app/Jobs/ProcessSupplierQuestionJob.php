@@ -273,6 +273,11 @@ class ProcessSupplierQuestionJob implements ShouldQueue
             $name = trim((string) ($it->name ?? ''));
             $art = trim((string) ($it->article ?? ''));
             $qty = trim((string) ($it->quantity ?? ''));
+            $qn = str_replace(',', '.', $qty);
+            if (is_numeric($qn)) {
+                $qf = (float) $qn;
+                $qty = (floor($qf) === $qf) ? (string) (int) $qf : rtrim(rtrim(number_format($qf, 3, '.', ''), '0'), '.');
+            }
             $unit = trim((string) ($it->unit ?? ''));
             $artPart = ($art !== '' && mb_strtolower($art) !== 'не указан') ? (', артикул: ' . $art) : '';
             $qtyPart = ($qty !== '') ? (', кол-во: ' . $qty . ' ' . $unit) : '';
