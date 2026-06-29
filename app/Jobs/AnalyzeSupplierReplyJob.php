@@ -86,15 +86,6 @@ class AnalyzeSupplierReplyJob implements ShouldQueue
                 'batch_id' => $batchId,
             ], $classification);
 
-            // Негативный сигнал покрытия при отказе: накопление → авто-снятие категории.
-            if (($classification['email_type'] ?? '') === 'rejection') {
-                (new \App\Services\Analysis\SupplierCategorySignalService())->recordRejection(
-                    (int) $message->supplier_id,
-                    $batchId,
-                    $classification['rejection_reason'] ?? null
-                );
-            }
-
             Log::info('AnalyzeSupplierReplyJob: processed', [
                 'message_id' => $this->messageId,
                 'email_type' => $classification['email_type'] ?? null,
