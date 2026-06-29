@@ -15,12 +15,23 @@ use Throwable;
  * галочками, какие реально завести. Сами отправители создаются позже через
  * BulkSenderImporter::importBlocks(), который дотягивает персону/реквизиты AI.
  *
- * SMTP/IMAP — beget по умолчанию (ящики админ заводит вручную после превью).
+ * SMTP/IMAP выводятся ПО ДОМЕНУ (мульти-провайдерность против бана): по умолчанию
+ * smtp.<домен>:465 / mail.<домен>:993 (паттерн Sprinthost/SpaceWeb), а для доменов
+ * на нестандартном хосте (напр. припаркованных на beget — общий smtp.beget.com)
+ * берётся явный override из DOMAIN_MAIL. Ящики админ заводит вручную после превью.
  */
 class SenderAddressGenerator
 {
-    private const SMTP = 'smtp.beget.com:465';
-    private const IMAP = 'imap.beget.com:993';
+    /**
+     * Явный маппинг домен → [smtp, imap] для хостов, где почта НЕ на smtp.<домен>.
+     * Домены на beget: общий smtp.beget.com/imap.beget.com, а не smtp.<домен>.
+     * Остальные домены выводятся автоматически (см. mailHostsFor()).
+     *
+     * @var array<string,array{smtp:string,imap:string}>
+     */
+    private const DOMAIN_MAIL = [
+        // 'inmailbox.ru' => ['smtp' => 'smtp.beget.com:465', 'imap' => 'imap.beget.com:993'],
+    ];
 
     /** Обезличенные отделы для логинов вида zakupki@, snab@. */
     private const DEPTS = ['zakupki', 'snab', 'sales', 'office', 'info', 'opt', 'sbyt', 'tender', 'trade'];
@@ -83,12 +94,14 @@ class SenderAddressGenerator
             $email = $this->uniqueEmail($org, $domain, $used);
             $used[mb_strtolower($email)] = true;
 
+            [$smtp, $imap] = $this->mailHostsFor($domain);
+
             $rows[] = [
                 'email' => $email,
                 'password' => $this->password(),
                 'domain' => $domain,
-                'smtp' => self::SMTP,
-                'imap' => self::IMAP,
+                'smtp' => $smtp,
+                'imap' => $imap,
                 'company' => $org['name'] ?? $org['full_name'] ?? null,
                 'inn' => $org['inn'] ?? null,
                 'kpp' => $org['kpp'] ?? null,
@@ -121,6 +134,22 @@ class SenderAddressGenerator
         }
 
         return array_keys($clean);
+    }
+
+    /**
+     * SMTP/IMAP-хосты для домена: сперва явный override (DOMAIN_MAIL для доменов на
+     * нестандартном хосте, напр. beget), иначе авто-вывод smtp.<домен>:465 /
+     * mail.<домен>:993 — паттерн бесплатной доменной почты Sprinthost/SpaceWeb.
+     *
+     * @return array{0:string,1:string}
+     */
+    private function mailHostsFor(string $domain): array
+    {
+        if (isset(self::DOMAIN_MAIL[$domain])) {
+            return [self::DOMAIN_MAIL[$domain]['smtp'], self::DOMAIN_MAIL[$domain]['imap']];
+        }
+
+        return ['smtp.' . $domain . ':465', 'mail.' . $domain . ':993'];
     }
 
     /**

@@ -33,17 +33,33 @@ class QueuedEmailSender
 
         $encryption = $sender->smtp_encryption ?: 'ssl';
         $port = (int) ($sender->smtp_port ?: 465);
+        $isBeget = ($sender->smtp_server === 'smtp.beget.com');
 
-        // Маршрут: по умолчанию smtp_server отправителя (через /etc/hosts → прокси).
-        // dual-path: job может передать прямой IP beget — коннектимся на IP, а
-        // peer_name=smtp.beget.com, чтобы TLS-сертификат сошёлся.
-        $host = (is_array($route) && !empty($route['host'])) ? (string) $route['host'] : $sender->smtp_server;
+        // dual-path: job передаёт прямой IP beget ТОЛЬКО для beget-ящика (коннект на IP,
+        // peer_name=smtp.beget.com, чтобы TLS-сертификат сошёлся). Для не-beget отправителя
+        // подмену host игнорируем: иначе он полез бы на IP beget со своими кредами и упал
+        // бы на авторизации. По умолчанию — smtp_server самого отправителя.
+        $useDirect = $isBeget && is_array($route) && !empty($route['host']);
+        $host = $useDirect ? (string) $route['host'] : $sender->smtp_server;
         $transport = new EsmtpTransport($host, $port, $encryption === 'ssl');
 
-        if (is_array($route) && !empty($route['host'])) {
+        // ВАЖНО: опции потока ставим только через поток транспорта — на EsmtpTransport
+        // метода setStreamOptions нет.
+        if ($useDirect) {
             $transport->getStream()->setStreamOptions([
                 'ssl' => [
                     'peer_name' => (string) ($route['peer_name'] ?? 'smtp.beget.com'),
+                    'SNI_enabled' => true,
+                ],
+            ]);
+        } elseif ($encryption === 'ssl' && !$isBeget) {
+            // Не-beget провайдеры отдают ОБЩИЙ сертификат, не совпадающий с smtp.<домен>
+            // (Sprinthost: CN=from.sh, SAN=*.from.sh). Терпим mismatch хостнейма —
+            // verify_peer (CA-валидность) остаётся включён, TLS шифрует, но строгую
+            // проверку имени отключаем, иначе ssl-коннект падает.
+            $transport->getStream()->setStreamOptions([
+                'ssl' => [
+                    'verify_peer_name' => false,
                     'SNI_enabled' => true,
                 ],
             ]);

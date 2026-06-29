@@ -92,29 +92,44 @@ class SendQueuedEmailJob implements ShouldQueue
             return;
         }
 
-        // ГЛОБАЛЬНЫЙ анти-бан троттл к SMTP-хосту. beget банит IP за высокую
-        // параллельность/частоту с одного адреса. n8n слал в один поток с паузой
-        // ~2с; здесь весь трафик идёт через один прокси-IP, поэтому ограничиваем
-        // интервал между ЛЮБЫМИ двумя отправками платформы (а не только одного
-        // ящика). Cache::add — атомарный SETNX с TTL: ключ живёт gap секунд, в это
-        // окно никто другой слот не возьмёт → коллективный темп ≤ 1/gap, эффективная
-        // одновременность ≈1 (если отправка короче gap). 0 = троттл выключен.
+        // АНТИ-БАН ТРОТТЛ к SMTP-хосту — ПЕР-СЕРВЕРНЫЙ. Хостер банит IP за высокую
+        // параллельность/частоту с одного адреса, но этот лимит — у КАЖДОГО провайдера
+        // свой (разные IP/домены). Поэтому ключ гейта — по smtp_server отправителя:
+        // beget, sprinthost, spaceweb троттлятся НЕЗАВИСИМО, каждый в своём gap-темпе,
+        // суммарный потолок платформы ≈ ×(число серверов). Cache::add — атомарный SETNX
+        // с TTL: ключ живёт gap секунд, в это окно слот по этому серверу никто не возьмёт
+        // → темп на сервер ≤ 1/gap. 0 = троттл выключен.
         $globalGap = (int) config('services.email_dispatch.global_min_interval_seconds', 0);
         $dual = (bool) config('services.email_dispatch.dual_smtp_enabled', false);
         $smtpRoute = null;
+        $isBeget = ($senderModel->smtp_server === 'smtp.beget.com');
 
-        if ($dual && $globalGap > 0) {
-            // Два независимых исходящих канала (прямой IP beget + прокси), у каждого
-            // свой gap-гейт → суммарный темп ~2x при том же per-IP анти-бан профиле.
-            // Берём любой свободный канал; оба заняты — переносим.
-            if (Cache::add('emails:send_gate:direct', 1, $globalGap)) {
-                $smtpRoute = [
-                    'host' => (string) config('services.email_dispatch.direct_smtp_host'),
-                    'peer_name' => 'smtp.beget.com',
-                ];
-            } elseif (Cache::add('emails:send_gate:proxy', 1, $globalGap)) {
-                $smtpRoute = null; // default: smtp_server отправителя (через /etc/hosts → прокси)
+        if ($globalGap > 0) {
+            $deferred = false;
+
+            if ($dual && $isBeget) {
+                // beget: два независимых исходящих канала (прямой IP beget + прокси-релей),
+                // у каждого свой gap-гейт → суммарный темп ~2x при том же per-IP профиле.
+                // Берём любой свободный канал; оба заняты — переносим.
+                if (Cache::add('emails:send_gate:beget:direct', 1, $globalGap)) {
+                    $smtpRoute = [
+                        'host' => (string) config('services.email_dispatch.direct_smtp_host'),
+                        'peer_name' => 'smtp.beget.com',
+                    ];
+                } elseif (Cache::add('emails:send_gate:beget:proxy', 1, $globalGap)) {
+                    $smtpRoute = null; // default: smtp_server отправителя (через /etc/hosts → прокси)
+                } else {
+                    $deferred = true;
+                }
             } else {
+                // Прочие провайдеры (и beget без dual-path) — один гейт на smtp_server.
+                $gateKey = 'emails:send_gate:' . md5((string) $senderModel->smtp_server);
+                if (!Cache::add($gateKey, 1, $globalGap)) {
+                    $deferred = true;
+                }
+            }
+
+            if ($deferred) {
                 if ($this->attempts() >= self::MAX_SLOT_DEFERRALS) {
                     $email->update(['status' => 'pending']);
                     return;
@@ -122,13 +137,6 @@ class SendQueuedEmailJob implements ShouldQueue
                 $this->release(1);
                 return;
             }
-        } elseif ($globalGap > 0 && !Cache::add('emails:global_send_gate', 1, $globalGap)) {
-            if ($this->attempts() >= self::MAX_SLOT_DEFERRALS) {
-                $email->update(['status' => 'pending']);
-                return;
-            }
-            $this->release(1);
-            return;
         }
 
         // Жёсткая пауза на ящик: атомарно «занимаем слот». Если рано — переносим
