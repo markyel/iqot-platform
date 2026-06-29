@@ -127,6 +127,8 @@ return [
     // параллельная работа двух систем плодит дубли).
     'email_questions' => [
         'enabled' => (bool) env('EMAILS_QUESTIONS_ENABLED', false),
+        // Авто-закрытие зависших вопросов к автору (команда emails:auto-close-questions).
+        'autoclose_enabled' => (bool) env('EMAILS_AUTOCLOSE_ENABLED', false),
         // Модель AI (промпт классификации компактный → дефолт mini).
         'model' => env('EMAILS_QUESTIONS_MODEL', 'gpt-4o-mini'),
         // Таймаут запроса к AI.
