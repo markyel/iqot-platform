@@ -100,7 +100,29 @@ class SendQueuedEmailJob implements ShouldQueue
         // окно никто другой слот не возьмёт → коллективный темп ≤ 1/gap, эффективная
         // одновременность ≈1 (если отправка короче gap). 0 = троттл выключен.
         $globalGap = (int) config('services.email_dispatch.global_min_interval_seconds', 0);
-        if ($globalGap > 0 && !Cache::add('emails:global_send_gate', 1, $globalGap)) {
+        $dual = (bool) config('services.email_dispatch.dual_smtp_enabled', false);
+        $smtpRoute = null;
+
+        if ($dual && $globalGap > 0) {
+            // Два независимых исходящих канала (прямой IP beget + прокси), у каждого
+            // свой gap-гейт → суммарный темп ~2x при том же per-IP анти-бан профиле.
+            // Берём любой свободный канал; оба заняты — переносим.
+            if (Cache::add('emails:send_gate:direct', 1, $globalGap)) {
+                $smtpRoute = [
+                    'host' => (string) config('services.email_dispatch.direct_smtp_host'),
+                    'peer_name' => 'smtp.beget.com',
+                ];
+            } elseif (Cache::add('emails:send_gate:proxy', 1, $globalGap)) {
+                $smtpRoute = null; // default: smtp_server отправителя (через /etc/hosts → прокси)
+            } else {
+                if ($this->attempts() >= self::MAX_SLOT_DEFERRALS) {
+                    $email->update(['status' => 'pending']);
+                    return;
+                }
+                $this->release(1);
+                return;
+            }
+        } elseif ($globalGap > 0 && !Cache::add('emails:global_send_gate', 1, $globalGap)) {
             if ($this->attempts() >= self::MAX_SLOT_DEFERRALS) {
                 $email->update(['status' => 'pending']);
                 return;
@@ -125,7 +147,7 @@ class SendQueuedEmailJob implements ShouldQueue
         }
 
         try {
-            $sender->send($email);
+            $sender->send($email, $smtpRoute);
 
             $email->update([
                 'status' => 'sent',

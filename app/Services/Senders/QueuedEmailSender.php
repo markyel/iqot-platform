@@ -20,7 +20,7 @@ use Symfony\Component\Mime\Part\DataPart;
  */
 class QueuedEmailSender
 {
-    public function send(EmailQueue $email): void
+    public function send(EmailQueue $email, ?array $route = null): void
     {
         $sender = $email->sender;
 
@@ -34,10 +34,21 @@ class QueuedEmailSender
         $encryption = $sender->smtp_encryption ?: 'ssl';
         $port = (int) ($sender->smtp_port ?: 465);
 
-        $transport = new EsmtpTransport($sender->smtp_server, $port, $encryption === 'ssl');
+        // Маршрут: по умолчанию smtp_server отправителя (через /etc/hosts → прокси).
+        // dual-path: job может передать прямой IP beget — коннектимся на IP, а
+        // peer_name=smtp.beget.com, чтобы TLS-сертификат сошёлся.
+        $host = (is_array($route) && !empty($route['host'])) ? (string) $route['host'] : $sender->smtp_server;
+        $transport = new EsmtpTransport($host, $port, $encryption === 'ssl');
 
-        if ($encryption === 'tls') {
-            $transport->setStreamOptions([
+        if (is_array($route) && !empty($route['host'])) {
+            $transport->getStream()->setStreamOptions([
+                'ssl' => [
+                    'peer_name' => (string) ($route['peer_name'] ?? 'smtp.beget.com'),
+                    'SNI_enabled' => true,
+                ],
+            ]);
+        } elseif ($encryption === 'tls') {
+            $transport->getStream()->setStreamOptions([
                 'ssl' => [
                     'verify_peer' => false,
                     'verify_peer_name' => false,

@@ -62,6 +62,12 @@ return [
         // паузой ~2с — это безопасный профиль. 0 = выключено.
         'global_min_interval_seconds' => (int) env('EMAILS_GLOBAL_MIN_INTERVAL', 2),
 
+        // Dual-path SMTP: слать половину писем напрямую (IP прода → beget), половину
+        // через прокси (45.146.167.20) — два source-IP, суммарный темп ~2x. Каждый канал
+        // со своим gap-гейтом. По умолчанию выключено.
+        'dual_smtp_enabled' => (bool) env('EMAILS_SMTP_DUAL_ENABLED', false),
+        'direct_smtp_host' => env('EMAILS_DIRECT_SMTP_HOST', '185.78.30.58'),
+
         // Адаптивный пейсинг по получателю (to_email): чтобы не задолбить поставщика
         // пачкой. На каждом тике интервал между письмами одному получателю =
         // clamp(остаток_рабочего_окна / pending_получателю, MIN, MAX). Низкая
