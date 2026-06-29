@@ -93,6 +93,15 @@ Schedule::command('emails:generate-queue')
     ->everyFiveMinutes()
     ->withoutOverlapping();
 
+// Авто-закрытие зависших вопросов к автору: спустя N дней (по умолч. 4) без ответа
+// автора шлём поставщику «информации нет» и закрываем вопрос. Дозированно (--limit).
+// Молчит, пока EMAILS_AUTOCLOSE_ENABLED=false.
+Schedule::command('emails:auto-close-questions')
+    ->dailyAt('09:00')
+    ->timezone('Europe/Riga')
+    ->weekdays()
+    ->withoutOverlapping();
+
 // Публичный API: оркестратор Discovery поставщиков — каждые 10 минут (§7).
 Schedule::job(new \App\Jobs\Api\DiscoveryOrchestratorJob())->everyTenMinutes()->withoutOverlapping();
 
