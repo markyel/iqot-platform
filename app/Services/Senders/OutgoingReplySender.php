@@ -41,11 +41,25 @@ class OutgoingReplySender
 
         $encryption = $sender->smtp_encryption ?: 'ssl';
         $port = (int) ($sender->smtp_port ?: 465);
+        $isBeget = ($sender->smtp_server === 'smtp.beget.com');
 
         $transport = new EsmtpTransport($sender->smtp_server, $port, $encryption === 'ssl');
 
-        if ($encryption === 'tls') {
-            $transport->setStreamOptions([
+        // ВАЖНО: опции потока ставим только через поток транспорта — на EsmtpTransport
+        // метода setStreamOptions нет (зеркало логики QueuedEmailSender).
+        if ($encryption === 'ssl' && !$isBeget) {
+            // Не-beget провайдеры отдают ОБЩИЙ сертификат, не совпадающий с smtp.<домен>
+            // (Sprinthost в окне parked/UNVERIFIED: CN=from.sh, SAN=*.from.sh). Терпим
+            // mismatch хостнейма — verify_peer (CA-валидность) остаётся, TLS шифрует, но
+            // строгую проверку имени отключаем, иначе ssl-коннект ответа падает.
+            $transport->getStream()->setStreamOptions([
+                'ssl' => [
+                    'verify_peer_name' => false,
+                    'SNI_enabled' => true,
+                ],
+            ]);
+        } elseif ($encryption === 'tls') {
+            $transport->getStream()->setStreamOptions([
                 'ssl' => [
                     'verify_peer' => false,
                     'verify_peer_name' => false,
