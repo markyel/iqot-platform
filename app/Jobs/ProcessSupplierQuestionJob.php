@@ -72,6 +72,20 @@ class ProcessSupplierQuestionJob implements ShouldQueue
                 'max_tokens' => (int) ($cfg['max_tokens'] ?? 1024),
             ]))->classify($question, $sender ?? (object) [], $items, $authorAnswers);
 
+            // Детерминированный override: фото-запрос+артикул → ответ артикулом;
+            // «не вижу таблицу/вышлите ещё раз» → повтор позиций. LLM на длинном
+            // промпте эти случаи стабильно не ловит, поэтому решаем в коде.
+            if (!$decision['can_auto_answer']) {
+                $forced = $this->forcedAnswer($question, $items, $decision);
+                if ($forced !== null) {
+                    $decision['can_auto_answer'] = true;
+                    $decision['answer_text'] = $forced;
+                    $decision['used_history_index'] = null;
+                    $decision['original_reply_id'] = null;
+                    $decision['has_files_to_copy'] = false;
+                }
+            }
+
             if ($decision['can_auto_answer']) {
                 $this->autoAnswer($loader, $batch, $sender, $question, $decision);
 
@@ -178,6 +192,94 @@ class ProcessSupplierQuestionJob implements ShouldQueue
             'consolidation_id' => $consolidation['consolidation_id'] ?? null,
             'is_similar' => $consolidation['is_similar'] ?? false,
         ]);
+    }
+
+    /**
+     * Детерминированный авто-ответ для случаев, которые LLM-классификатор стабильно
+     * не ловит на длинном промпте: запрос фото при наличии артикула позиции, и
+     * просьба повторить заявку («не вижу таблицу / вышлите ещё раз»).
+     *
+     * @param array<int,object> $items
+     * @param array<string,mixed> $decision
+     */
+    private function forcedAnswer(object $question, array $items, array $decision): ?string
+    {
+        $text = mb_strtolower((string) ($question->question_text ?? ''));
+
+        // Просьба повторить заявку / «не вижу таблицу».
+        if (preg_match('/не\\s*вид\\w*\\s+табл|таблиц\\w*\\s+не\\s+(виж|вид|приш|откр)|(вышлите|отправьте|пришлите|скиньте|продублируйте)\\s+.{0,30}(ещ[её]\\s*раз|повторно|заново|снова)|продублир|повтор\\w*\\s+(спис|позиц|заявк|запрос)/u', $text)) {
+            $repeat = $this->repeatItemsText($items);
+            if ($repeat !== null) {
+                return $repeat;
+            }
+        }
+
+        // Запрос фото/файла + у позиции есть артикул → предлагаем артикул вместо фото.
+        if (preg_match('/фото|фотограф|снимок|шильд|чертеж|чертёж|схем|изображени/u', $text)) {
+            $art = $this->relatedArticle($items, $decision);
+            if ($art !== null) {
+                return 'Фотографию предоставить не можем, но известен артикул производителя: ' . $art
+                    . '. Сможете подобрать/предложить по этому артикулу? При необходимости пришлём дополнительные данные из заявки.';
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Артикул позиции, к которой относится вопрос (по related_item_id; для заявки
+     * из одной позиции — её артикул). null, если артикула нет / неоднозначно.
+     *
+     * @param array<int,object> $items
+     * @param array<string,mixed> $decision
+     */
+    private function relatedArticle(array $items, array $decision): ?string
+    {
+        $itemId = (int) ($decision['related_item_id'] ?? 0);
+        if ($itemId > 0) {
+            foreach ($items as $it) {
+                if ((int) ($it->id ?? 0) === $itemId) {
+                    $art = trim((string) ($it->article ?? ''));
+
+                    return ($art !== '' && mb_strtolower($art) !== 'не указан') ? $art : null;
+                }
+            }
+
+            return null;
+        }
+        if (count($items) === 1) {
+            $art = trim((string) ($items[0]->article ?? ''));
+
+            return ($art !== '' && mb_strtolower($art) !== 'не указан') ? $art : null;
+        }
+
+        return null;
+    }
+
+    /**
+     * Текстовый повтор запрошенных позиций (дубль заявки без вложений).
+     *
+     * @param array<int,object> $items
+     */
+    private function repeatItemsText(array $items): ?string
+    {
+        if ($items === []) {
+            return null;
+        }
+        $lines = ['Дублируем заявку — запрошенные позиции:'];
+        $n = 0;
+        foreach ($items as $it) {
+            $n++;
+            $name = trim((string) ($it->name ?? ''));
+            $art = trim((string) ($it->article ?? ''));
+            $qty = trim((string) ($it->quantity ?? ''));
+            $unit = trim((string) ($it->unit ?? ''));
+            $artPart = ($art !== '' && mb_strtolower($art) !== 'не указан') ? (', артикул: ' . $art) : '';
+            $qtyPart = ($qty !== '') ? (', кол-во: ' . $qty . ' ' . $unit) : '';
+            $lines[] = $n . '. ' . $name . $artPart . $qtyPart;
+        }
+
+        return implode("\n", $lines);
     }
 
     /**
