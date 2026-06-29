@@ -54,9 +54,13 @@ class SupplierReplyPersister
                 $this->saveOffer($offer, $supplierId, $batchId, $emailQueueId);
             }
 
-            foreach (($classification['questions'] ?? []) as $question) {
-                if (is_array($question)) {
-                    $this->saveQuestion($question, $conversationId, $supplierId, $batchId, $messageId);
+            // Отказ по определению не содержит вопроса к нам — не сохраняем questions,
+            // даже если AI вытащил их из процитированного исходного запроса (header-less цитата).
+            if (($classification['email_type'] ?? '') !== 'rejection') {
+                foreach (($classification['questions'] ?? []) as $question) {
+                    if (is_array($question)) {
+                        $this->saveQuestion($question, $conversationId, $supplierId, $batchId, $messageId);
+                    }
                 }
             }
 
