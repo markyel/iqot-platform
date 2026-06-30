@@ -11,6 +11,7 @@ use App\Services\Generate\CampaignPersister;
 use App\Services\Generate\CampaignSenderAssigner;
 use App\Services\Generate\CampaignSupplierSelector;
 use App\Services\Generate\CampaignTokenGenerator;
+use App\Services\Generate\SupplierTargetingService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -194,6 +195,10 @@ class GenerateCampaignJob implements ShouldQueue
             return;
         }
 
+        // #4 предрассылочный таргетинг: ищем позиции в Яндексе, помечаем поставщиков
+        // пула найденными ссылками (группа A) и отдаём новые домены в discovery.
+        $this->applyTargeting($batch);
+
         $tokenGenerator->generate($batch);
         $bodyGenerator->generate($batch);
 
@@ -203,6 +208,55 @@ class GenerateCampaignJob implements ShouldQueue
         }
 
         $persister->persist($batch, $emails);
+    }
+
+    /**
+     * #4 фаза 4a/4b: Яндекс-поиск позиций батча → группа A (сайт нашёлся) получает
+     * found_urls для письма со ссылками-намёками; новые домены-кандидаты уходят в
+     * фоновый discovery (анализ сайта + авто-добавление поставщика с таксономией).
+     */
+    private function applyTargeting(Batch $batch): void
+    {
+        if (!(bool) config('services.email_pretarget.enabled', false)) {
+            return;
+        }
+
+        try {
+            $res = SupplierTargetingService::make()->target($batch->items, $batch->supplierIds);
+        } catch (\Throwable $e) {
+            Log::warning('GenerateCampaignJob: targeting failed', ['error' => $e->getMessage()]);
+            return;
+        }
+
+        // Группа A — прикрепляем найденные ссылки к записям поставщиков пула.
+        if (!empty($res['groupA'])) {
+            foreach ($batch->suppliers as $i => $sup) {
+                $sid = (int) ($sup['id'] ?? 0);
+                if ($sid > 0 && !empty($res['groupA'][$sid])) {
+                    $batch->suppliers[$i]['found_urls'] = $res['groupA'][$sid];
+                }
+            }
+        }
+
+        // Discovery — новые домены в фон (только с известным product_type).
+        if ((bool) config('services.email_pretarget.discovery_enabled', true) && !empty($res['candidates'])) {
+            foreach ($res['candidates'] as $cand) {
+                if (empty($cand['product_type_id'])) {
+                    continue;
+                }
+                DiscoverFromCampaignJob::dispatch(
+                    (string) $cand['url'],
+                    (int) $cand['product_type_id'],
+                    isset($cand['domain_id']) ? (int) $cand['domain_id'] : null,
+                );
+            }
+        }
+
+        Log::info('GenerateCampaignJob: targeting applied', [
+            'group_a' => count($res['groupA'] ?? []),
+            'candidates' => count($res['candidates'] ?? []),
+            'searched_items' => $res['searched_items'] ?? 0,
+        ]);
     }
 
     /**

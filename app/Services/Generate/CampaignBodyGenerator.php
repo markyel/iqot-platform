@@ -223,7 +223,8 @@ TXT;
 {
   "greeting": "Приветствие",
   "introduction": "Вступление ({$introMin}-{$introMax} предложения)",
-  "closing": "Заключение ({$closingMin}-{$closingMax} предложения)"
+  "closing": "Заключение ({$closingMin}-{$closingMax} предложения)",
+  "found_intro": "1 короткое предложение"
 }
 
 ТРЕБОВАНИЯ:
@@ -244,6 +245,12 @@ TXT;
    {$closingCustomer}
    - БЕЗ подписи (она добавляется отдельно)
    - {$closingMin}-{$closingMax} предложения
+
+4. found_intro (мягкий намёк к ссылкам):
+   - 1 предложение в тоне "{$toneName}": мы заметили, что часть позиций, похоже,
+     представлена у вас на сайте, и будем рады, если поможете проработать всю заявку
+   - БЕЗ самих ссылок (они подставятся отдельной строкой для каждого поставщика)
+   - Мягко, как ПРЕДПОЛОЖЕНИЕ, НЕ как утверждение/требование
 
 ═══════════════════════════════════════
 УНИКАЛЬНОСТЬ
@@ -295,6 +302,7 @@ TXT;
         $greeting = isset($parsed['greeting']) ? trim((string) $parsed['greeting']) : '';
         $introduction = isset($parsed['introduction']) ? trim((string) $parsed['introduction']) : '';
         $closing = isset($parsed['closing']) ? trim((string) $parsed['closing']) : '';
+        $foundIntro = isset($parsed['found_intro']) ? trim((string) $parsed['found_intro']) : '';
 
         if ($greeting === '' || mb_strlen($greeting) < 3) {
             $greeting = 'Добрый день,';
@@ -305,11 +313,15 @@ TXT;
         if ($closing === '' || mb_strlen($closing) < 10) {
             $closing = 'Буду признателен за оперативный ответ на это письмо.';
         }
+        if ($foundIntro === '' || mb_strlen($foundIntro) < 10) {
+            $foundIntro = 'Кажется, часть позиций представлена у вас на сайте — будем рады, если поможете проработать всю заявку.';
+        }
 
         return [
             'greeting' => $greeting,
             'introduction' => $introduction,
             'closing' => $closing,
+            'found_intro' => $foundIntro,
         ];
     }
 
@@ -322,6 +334,7 @@ TXT;
             'greeting' => 'Добрый день,',
             'introduction' => 'Прошу предоставить коммерческое предложение на следующие товары:',
             'closing' => 'Буду признателен за оперативный ответ на это письмо.',
+            'found_intro' => 'Кажется, часть позиций представлена у вас на сайте — будем рады, если поможете проработать всю заявку.',
         ];
     }
 }

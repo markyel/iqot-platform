@@ -186,6 +186,68 @@ class SupplierDiscoveryService
     }
 
     /**
+     * #4: discovery из ОДНОГО URL, найденного предрассылочным таргетингом, с уже
+     * известным product_type (и опц. domain) запрошенной позиции. Анализирует сайт,
+     * валидирует как B2B-поставщика, добавляет (или расширяет scope существующего).
+     * Авто-добавление после умного анализа сайта (категории/домены — через таксономию).
+     *
+     * @return array{status:string, reason?:string, supplier_id?:int}
+     */
+    public function discoverFromUrl(string $url, int $productTypeId, ?int $domainId = null): array
+    {
+        $productType = ProductType::find($productTypeId);
+        if (!$productType) {
+            return ['status' => 'skip', 'reason' => 'no_product_type'];
+        }
+        $domain = $domainId ? ApplicationDomain::find($domainId) : null;
+
+        $host = (string) (parse_url($url, PHP_URL_HOST) ?: '');
+        $normDomain = $host !== '' ? mb_strtolower(preg_replace('/^www\./i', '', $host)) : null;
+
+        $existingId = null;
+        if ($normDomain) {
+            $map = $this->loadExistingSupplierMap([$normDomain]);
+            $existingId = $map[$normDomain] ?? null;
+        }
+
+        $fetched = $this->parser->fetchWithContactLinks($url);
+        if ($fetched === null || mb_strlen($fetched['text']) < 200) {
+            return ['status' => 'skip', 'reason' => 'no_page'];
+        }
+
+        $r = ['url' => $url, 'title' => '', 'content' => '', 'domain' => $host];
+        try {
+            $info = $this->extractAndValidate($productType, $domain, $r, $fetched['text']);
+        } catch (\Throwable $e) {
+            Log::warning('SupplierDiscovery: discoverFromUrl ai failed', ['url' => $url, 'error' => $e->getMessage()]);
+            return ['status' => 'skip', 'reason' => 'ai_failed'];
+        }
+
+        if (!$info['is_supplier'] || $info['confidence'] < 0.6) {
+            return ['status' => 'rejected', 'reason' => $info['reason'] ?: 'not_supplier'];
+        }
+
+        if (empty($info['email']) && !empty($fetched['contact_links'])) {
+            $info = $this->enrichWithContactPage($productType, $domain, $r, $fetched['text'], $fetched['contact_links'], $info);
+        }
+        if (empty($info['email']) && empty($info['phone'])) {
+            return ['status' => 'rejected', 'reason' => 'no_contacts'];
+        }
+
+        if ($existingId === null) {
+            $existingId = $this->findExistingSupplierByContacts($info['email'], $info['phone']);
+        }
+        if ($existingId !== null) {
+            $this->extendExistingSupplier($existingId, $info, $productTypeId, $domainId);
+            return ['status' => 'extended', 'supplier_id' => $existingId];
+        }
+
+        $this->persistSupplier($info, $productTypeId, $domainId, $host, $url);
+
+        return ['status' => 'created'];
+    }
+
+    /**
      * Генерация поисковых запросов через AI. Стратегия зависит от номера итерации (§7.3).
      *
      * @return array<string>
