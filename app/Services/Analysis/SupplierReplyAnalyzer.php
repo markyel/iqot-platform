@@ -168,6 +168,8 @@ class SupplierReplyAnalyzer
         return [
             'email_type' => (string) ($raw['email_type'] ?? 'other'),
             'rejection_reason' => $raw['rejection_reason'] ?? null,
+            'unsubscribe' => (bool) ($raw['unsubscribe'] ?? false),
+            'unsubscribe_reason' => $this->nullableString($raw['unsubscribe_reason'] ?? null),
             'has_offers' => (bool) ($raw['has_offers'] ?? ($offers !== [])),
             'offers' => $offers,
             'has_questions' => (bool) ($raw['has_questions'] ?? ($questions !== [])),
@@ -175,6 +177,13 @@ class SupplierReplyAnalyzer
             'summary' => (string) ($raw['summary'] ?? ''),
             'fetch_urls' => $fetchUrls,
         ];
+    }
+
+    private function nullableString(mixed $value): ?string
+    {
+        $value = is_string($value) ? trim($value) : '';
+
+        return $value !== '' ? $value : null;
     }
 
     private function round2(mixed $value): ?float
@@ -197,6 +206,8 @@ class SupplierReplyAnalyzer
         return [
             'email_type' => 'unknown',
             'rejection_reason' => null,
+            'unsubscribe' => false,
+            'unsubscribe_reason' => null,
             'has_offers' => false,
             'offers' => [],
             'has_questions' => false,
@@ -429,6 +440,21 @@ has_questions=false, offers=[], questions=[].
 
 Типы писем (email_type): offer | question | mixed | rejection | auto_reply | empty_reply | other.
 
+🚨 ОТПИСКА ОТ РАССЫЛКИ (поле unsubscribe, boolean) — ОТДЕЛЬНЫЙ сигнал, НЕ зависит от email_type:
+unsubscribe=true ТОЛЬКО когда поставщик просит ПРЕКРАТИТЬ слать ему письма или жалуется на
+их КОЛИЧЕСТВО/НАЗОЙЛИВОСТЬ. Маркеры: «не пишите нам больше», «отпишите/удалите нас из рассылки/
+базы», «прекратите присылать заявки», «перестаньте слать», «сколько можно писать», «хватит/
+достали письма», «слишком много писем», «уберите наш адрес», «это спам». Это РЕЛЕЙШЕНШИП-уровень
+(не хочет получать письма ВООБЩЕ).
+unsubscribe=false (это НЕ отписка, обычный рабочий отказ по конкретной заявке — поставщик
+готов получать ДРУГИЕ заявки):
+- «нет этого товара», «нет в наличии», «снято с производства» (not_available);
+- «не наш профиль», «не занимаемся этим», «мы специализируемся на …», «эту позицию не найдём»
+  (not_our_profile) — даже если просит присылать ДРУГИЕ/ПОДХОДЯЩИЕ заявки («ждём от вас заявок»);
+- «заказы только через сайт/магазин» (это про КАНАЛ конкретного заказа, НЕ отписка от рассылки).
+Если сомневаешься — unsubscribe=false. При unsubscribe=true укажи unsubscribe_reason: краткую
+цитату/причину из письма (например «просит больше не присылать», «жалоба на количество писем»).
+
 rejection_reason (ТОЛЬКО при email_type="rejection"):
 - "not_our_profile": "не наш профиль", "не занимаемся", "не работаем с", "не поставляем".
 - "not_available": "нет в наличии", "снят с производства", "временно отсутствует".
@@ -451,6 +477,8 @@ rejection_reason (ТОЛЬКО при email_type="rejection"):
 {
   "email_type": "offer" | "question" | "mixed" | "rejection" | "auto_reply" | "empty_reply" | "other",
   "rejection_reason": "not_our_profile" | "not_available" | "other" | null,
+  "unsubscribe": boolean,
+  "unsubscribe_reason": "string" | null,
   "has_offers": boolean,
   "offers": [
     {

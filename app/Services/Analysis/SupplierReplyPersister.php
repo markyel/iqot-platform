@@ -42,6 +42,14 @@ class SupplierReplyPersister
         ): void {
             $this->saveClassification($messageId, $classification);
 
+            // Отписка от рассылки (релейшеншип-сигнал) → пауза/увеличение интервала,
+            // повторно → отключение. НЕ зависит от email_type (может прийти с offer/rejection).
+            (new SupplierUnsubscribeEscalator())->apply(
+                $supplierId,
+                (bool) ($classification['unsubscribe'] ?? false),
+                $classification['unsubscribe_reason'] ?? null,
+            );
+
             $emailQueueId = $this->resolveEmailQueueId($batchId, $supplierId);
 
             foreach (($classification['offers'] ?? []) as $offer) {
@@ -73,6 +81,8 @@ class SupplierReplyPersister
         $json = json_encode([
             'email_type' => $classification['email_type'] ?? 'other',
             'rejection_reason' => $classification['rejection_reason'] ?? null,
+            'unsubscribe' => (bool) ($classification['unsubscribe'] ?? false),
+            'unsubscribe_reason' => $classification['unsubscribe_reason'] ?? null,
             'has_offers' => (bool) ($classification['has_offers'] ?? false),
             'offers' => $classification['offers'] ?? [],
             'has_questions' => (bool) ($classification['has_questions'] ?? false),

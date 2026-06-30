@@ -229,10 +229,36 @@ class DispatchPendingEmails extends Command
             ->whereIn('email', $counts->keys()->all())
             ->pluck('last_dispatched_at', 'email');
 
+        // Личный интервал / пауза по отписке (suppliers, см. SupplierUnsubscribeEscalator):
+        // override поднимает ПОЛ интервала для адреса; активная пауза (unsubscribe_until в
+        // будущем) делает получателя временно НЕ eligible. Несколько поставщиков на один
+        // адрес → берём самый щадящий (макс. интервал / макс. пауза).
+        $overrides = [];
+        $pausedUntil = [];
+        $supplierMeta = DB::connection('reports')->table('suppliers')
+            ->whereIn(DB::raw('LOWER(email)'), $counts->keys()->all())
+            ->get([DB::raw('LOWER(email) as r'), 'unsubscribe_until', 'send_interval_override_seconds']);
+        foreach ($supplierMeta as $m) {
+            if ($m->send_interval_override_seconds !== null) {
+                $overrides[$m->r] = max($overrides[$m->r] ?? 0, (int) $m->send_interval_override_seconds);
+            }
+            if ($m->unsubscribe_until !== null) {
+                $pausedUntil[$m->r] = max($pausedUntil[$m->r] ?? '', (string) $m->unsubscribe_until);
+            }
+        }
+
         $now = now();
         $eligible = [];
         foreach ($counts as $recipient => $n) {
-            $interval = (int) min($maxInterval, max($minInterval, intdiv($remainingSec, max(1, (int) $n))));
+            // На паузе по отписке — пропускаем до истечения.
+            if (isset($pausedUntil[$recipient]) && Carbon::parse($pausedUntil[$recipient])->isFuture()) {
+                continue;
+            }
+
+            // Пол интервала — не ниже личного override; потолок поднимаем под override.
+            $floor = max($minInterval, (int) ($overrides[$recipient] ?? 0));
+            $ceil = max($maxInterval, $floor);
+            $interval = (int) min($ceil, max($floor, intdiv($remainingSec, max(1, (int) $n))));
             $last = $lastDispatched[$recipient] ?? null;
 
             if ($last === null || Carbon::parse($last)->lte($now->copy()->subSeconds($interval))) {

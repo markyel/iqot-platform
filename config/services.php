@@ -80,6 +80,17 @@ return [
         'work_window_timezone' => env('EMAILS_WORK_WINDOW_TZ', 'Europe/Riga'),
     ],
 
+    // Реакция на ОТПИСКУ поставщика (AI-сигнал unsubscribe в ответе, см.
+    // SupplierUnsubscribeEscalator). 1-я отписка → пауза + увеличенный личный интервал;
+    // повторная (>= disable_threshold) → отключение от рассылки. enabled=false — только
+    // детект/лог без действий.
+    'email_unsubscribe' => [
+        'enabled' => (bool) env('EMAILS_UNSUBSCRIBE_ENABLED', true),
+        'pause_days' => (int) env('EMAILS_UNSUBSCRIBE_PAUSE_DAYS', 7),
+        'escalated_interval_seconds' => (int) env('EMAILS_UNSUBSCRIBE_INTERVAL', 604800), // 7 дней
+        'disable_threshold' => (int) env('EMAILS_UNSUBSCRIBE_DISABLE_THRESHOLD', 2),
+    ],
+
     // Приём почты (замена n8n «Receive and Route Emails v3»). По умолчанию выключен —
     // включается флагом после сверки и отключения n8n-воркфлоу.
     'email_receive' => [

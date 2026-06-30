@@ -57,6 +57,7 @@ class CampaignSupplierSelector
             ->where('s.notify_email', 1);
 
         $this->excludeBlockedDomains($query);
+        $this->excludePaused($query);
 
         $domainIds = $this->intList($batch->domainIds);
         if (!empty($domainIds)) {
@@ -103,8 +104,25 @@ class CampaignSupplierSelector
             });
 
         $this->excludeBlockedDomains($query);
+        $this->excludePaused($query);
 
         return $query->get()->all();
+    }
+
+    /**
+     * Исключить поставщиков на ПАУЗЕ по отписке (suppliers.unsubscribe_until в будущем).
+     * После истечения паузы поставщик снова попадает в подбор, но с увеличенным личным
+     * интервалом (send_interval_override_seconds — чтит DispatchPendingEmails). Полностью
+     * отключённые (is_active=0) уже отсечены условием выше.
+     *
+     * @param \Illuminate\Database\Query\Builder $query
+     */
+    private function excludePaused($query): void
+    {
+        $query->where(function ($q) {
+            $q->whereNull('s.unsubscribe_until')
+                ->orWhereRaw('s.unsubscribe_until <= NOW()');
+        });
     }
 
     /**
