@@ -249,6 +249,10 @@ return [
         'request_limit' => (int) env('EMAILS_GENERATE_REQUEST_LIMIT', 20),
         // Позиций на батч (n8n MAX 5).
         'items_per_batch' => (int) env('EMAILS_GENERATE_ITEMS_PER_BATCH', 5),
+        // Фильтр свежести: не генерить заявки старше N дней (защита от «слива backlog'а» —
+        // древние заявки, осевшие в active/new/draft, не загребаются массовой генерацией).
+        // 0 = выключено. Точечный --request не ограничивается.
+        'max_request_age_days' => (int) env('EMAILS_GENERATE_MAX_AGE_DAYS', 30),
     ],
 
     // Переходный период: дублирование вложений входящих писем в Google Drive, чтобы

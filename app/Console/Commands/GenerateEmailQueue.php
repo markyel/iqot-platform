@@ -59,9 +59,15 @@ class GenerateEmailQueue extends Command
 
         $limit = (int) ($this->option('limit') ?: config('services.email_generate.request_limit', 20));
 
+        // Фильтр свежести: не загребать ДРЕВНИЕ заявки, случайно осевшие в active/new/draft
+        // (защита от бага «слива backlog'а» — старые заявки попадали в массовую генерацию).
+        // 0 = выключено. Точечный --request этим НЕ ограничивается.
+        $maxAgeDays = (int) config('services.email_generate.max_request_age_days', 30);
+
         // Порт «Get Requests»: именные в приоритете, старые раньше.
         $eligible = DB::connection(self::CONN)->table('requests')
             ->whereIn('status', ['draft', 'new', 'active'])
+            ->when($maxAgeDays > 0, fn ($q) => $q->where('created_at', '>=', now()->subDays($maxAgeDays)))
             ->orderBy('is_customer_request', 'desc')
             ->orderBy('created_at', 'asc')
             ->limit($limit)
