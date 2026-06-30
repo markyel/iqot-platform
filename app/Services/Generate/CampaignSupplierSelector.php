@@ -56,6 +56,8 @@ class CampaignSupplierSelector
             ->where('s.is_active', 1)
             ->where('s.notify_email', 1);
 
+        $this->excludeBlockedDomains($query);
+
         $domainIds = $this->intList($batch->domainIds);
         if (!empty($domainIds)) {
             $in = implode(',', $domainIds);
@@ -100,7 +102,26 @@ class CampaignSupplierSelector
                 }
             });
 
+        $this->excludeBlockedDomains($query);
+
         return $query->get()->all();
+    }
+
+    /**
+     * Исключить поставщиков, чей домен email — в блок-листе (reports.blocked_domains):
+     * домены, кому рассылку не шлём совсем (жалобы на спам и т.п.). Сверяется по домену
+     * primary email поставщика, регистронезависимо. Раздел ответственности:
+     * blocked_domains — доменный блок на ГЕНЕРАЦИИ; recipient_mailboxes.is_blocked —
+     * per-адресный блок на ОТПРАВКЕ; suppliers.is_active/notify_email — точечный.
+     *
+     * @param \Illuminate\Database\Query\Builder $query
+     */
+    private function excludeBlockedDomains($query): void
+    {
+        $query->whereRaw(
+            "NOT EXISTS (SELECT 1 FROM blocked_domains bd "
+            . "WHERE bd.domain = SUBSTRING_INDEX(LOWER(s.email), '@', -1))"
+        );
     }
 
     /**
