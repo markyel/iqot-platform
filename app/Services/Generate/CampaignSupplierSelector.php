@@ -87,19 +87,26 @@ class CampaignSupplierSelector
             ->get(['id', 'profile_confidence', 'rating'])
             ->keyBy('id');
 
-        // Если явной привязки нет вообще (старый роутинг без pt) — тайт = весь пул.
-        $tightIds = $explicit !== [] ? array_values(array_filter($ids, static fn ($id) => isset($explicit[$id]))) : $ids;
-
-        // Ранжир тайта по (confidence desc, rating desc) и срез до порога.
-        usort($tightIds, function ($a, $b) use ($meta) {
+        // Приоритет: сначала явно-привязанные по типу (целевые), затем остальные —
+        // и те и другие ранжируем по (confidence desc, rating desc). Волну 1 ДОБИВАЕМ
+        // до порога (не режем до одних явно-привязанных — среди «остальных» тоже есть
+        // целевые без pt-метки). В волну 2 уходит только хвост за порогом.
+        $cmp = function ($a, $b) use ($meta) {
             $ca = (float) ($meta[$a]->profile_confidence ?? 0);
             $cb = (float) ($meta[$b]->profile_confidence ?? 0);
             if ($ca !== $cb) {
                 return $cb <=> $ca;
             }
             return (float) ($meta[$b]->rating ?? 0) <=> (float) ($meta[$a]->rating ?? 0);
-        });
-        $wave1Ids = array_flip(array_slice($tightIds, 0, $threshold));
+        };
+        $tightIds = array_values(array_filter($ids, static fn ($id) => isset($explicit[$id])));
+        $restIds = array_values(array_filter($ids, static fn ($id) => !isset($explicit[$id])));
+        usort($tightIds, $cmp);
+        usort($restIds, $cmp);
+
+        // Явно-привязанные впереди, добор общими до порога.
+        $ordered = array_merge($tightIds, $restIds);
+        $wave1Ids = array_flip(array_slice($ordered, 0, $threshold));
 
         $wave1 = [];
         $expansion = [];
