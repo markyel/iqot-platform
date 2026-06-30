@@ -80,6 +80,18 @@ return [
         'work_window_timezone' => env('EMAILS_WORK_WINDOW_TZ', 'Europe/Riga'),
     ],
 
+    // Двухэтапный таргетинг рассылки (#4): перед отправкой ищем позиции батча в
+    // Яндексе (1 запрос на позицию, много результатов), делим пул на A (сайт нашёлся
+    // → письмо со ссылками-намёками) и B (как раньше). Новые домены → discovery.
+    'email_pretarget' => [
+        'enabled' => (bool) env('EMAILS_PRETARGET_ENABLED', false),
+        'results_per_query' => (int) env('EMAILS_PRETARGET_RESULTS', 20),
+        'max_items_per_batch' => (int) env('EMAILS_PRETARGET_MAX_ITEMS', 10),
+        'discovery_enabled' => (bool) env('EMAILS_PRETARGET_DISCOVERY', true),
+        // Дневной потолок Яндекс-запросов (анти-перерасход квоты/денег). 0 = без лимита.
+        'daily_query_cap' => (int) env('EMAILS_PRETARGET_DAILY_CAP', 2000),
+    ],
+
     // Реакция на ОТПИСКУ поставщика (AI-сигнал unsubscribe в ответе, см.
     // SupplierUnsubscribeEscalator). 1-я отписка → пауза + увеличенный личный интервал;
     // повторная (>= disable_threshold) → отключение от рассылки. enabled=false — только
