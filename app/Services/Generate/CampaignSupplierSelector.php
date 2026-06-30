@@ -31,18 +31,88 @@ class CampaignSupplierSelector
 
         $suppliers = array_map(static fn ($r) => (array) $r, $rows);
 
+        // Адаптивный двухволновой пул: при сверх-большом пуле волна 1 = ужесточённый
+        // поднабор, остальное → пул расширения (волна 2, досыл при малом отклике).
+        [$wave1, $expansion] = $this->splitPool($batch, $suppliers);
+
         // Дозаполняем батч профильным списком (его потребляют CampaignEmailBuilder
         // и CampaignPersister: per-supplier письма + email_batches.supplier_ids).
-        $batch->suppliers = $suppliers;
+        $batch->suppliers = $wave1;
+        $batch->expansionSuppliers = $expansion;
         $batch->supplierIds = [];
-        foreach ($suppliers as $s) {
+        foreach ($wave1 as $s) {
             $id = (int) ($s['id'] ?? 0);
             if ($id > 0 && !in_array($id, $batch->supplierIds, true)) {
                 $batch->supplierIds[] = $id;
             }
         }
 
-        return $suppliers;
+        return $wave1;
+    }
+
+    /**
+     * Адаптивное ужесточение пула. Если |pool| <= порога — волна 1 = весь пул.
+     * Иначе волна 1 = поставщики с ЯВНОЙ привязкой к типам позиций батча (ранжир по
+     * profile_confidence/rating, срез до порога), остальное → пул расширения.
+     *
+     * @param array<int,array<string,mixed>> $suppliers
+     * @return array{0:array<int,array<string,mixed>>,1:array<int,array<string,mixed>>} [wave1, expansion]
+     */
+    private function splitPool(Batch $batch, array $suppliers): array
+    {
+        $threshold = max(1, (int) config('services.email_pool.wave1_threshold', 150));
+        if (count($suppliers) <= $threshold) {
+            return [$suppliers, []];
+        }
+
+        $ids = array_map(static fn ($s) => (int) ($s['id'] ?? 0), $suppliers);
+        $typeIds = $this->intList($batch->productTypeIds);
+
+        // Поставщики с явной привязкой к типам позиций (целевые по типу).
+        $explicit = [];
+        if ($typeIds !== []) {
+            $in = implode(',', $typeIds);
+            $explicit = array_flip(
+                DB::connection(self::CONN)->table('supplier_product_types')
+                    ->whereIn('supplier_id', $ids)
+                    ->whereRaw("product_type_id IN ($in)")
+                    ->where('is_included', 1)
+                    ->distinct()->pluck('supplier_id')->map(fn ($v) => (int) $v)->all()
+            );
+        }
+
+        // Метаданные для ранжира.
+        $meta = DB::connection(self::CONN)->table('suppliers')
+            ->whereIn('id', $ids)
+            ->get(['id', 'profile_confidence', 'rating'])
+            ->keyBy('id');
+
+        // Если явной привязки нет вообще (старый роутинг без pt) — тайт = весь пул.
+        $tightIds = $explicit !== [] ? array_values(array_filter($ids, static fn ($id) => isset($explicit[$id]))) : $ids;
+
+        // Ранжир тайта по (confidence desc, rating desc) и срез до порога.
+        usort($tightIds, function ($a, $b) use ($meta) {
+            $ca = (float) ($meta[$a]->profile_confidence ?? 0);
+            $cb = (float) ($meta[$b]->profile_confidence ?? 0);
+            if ($ca !== $cb) {
+                return $cb <=> $ca;
+            }
+            return (float) ($meta[$b]->rating ?? 0) <=> (float) ($meta[$a]->rating ?? 0);
+        });
+        $wave1Ids = array_flip(array_slice($tightIds, 0, $threshold));
+
+        $wave1 = [];
+        $expansion = [];
+        foreach ($suppliers as $s) {
+            $id = (int) ($s['id'] ?? 0);
+            if (isset($wave1Ids[$id])) {
+                $wave1[] = $s;
+            } else {
+                $expansion[] = $s;
+            }
+        }
+
+        return [$wave1, $expansion];
     }
 
     /**

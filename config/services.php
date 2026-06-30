@@ -80,6 +80,17 @@ return [
         'work_window_timezone' => env('EMAILS_WORK_WINDOW_TZ', 'Europe/Riga'),
     ],
 
+    // Адаптивный двухволновой пул: если подобранный пул > порога — волна 1 шлёт
+    // ужесточённому поднабору (явная привязка к типу + ранжир по confidence/rating до
+    // порога), остаток откладывается в «пул расширения». Через followup_delay_days, если
+    // ответов по заявке < followup_min_responses, волна 2 досылает по пулу расширения.
+    'email_pool' => [
+        'wave1_threshold' => (int) env('EMAILS_POOL_WAVE1_THRESHOLD', 150),
+        'followup_enabled' => (bool) env('EMAILS_POOL_FOLLOWUP_ENABLED', true),
+        'followup_delay_days' => (int) env('EMAILS_POOL_FOLLOWUP_DELAY_DAYS', 2),
+        'followup_min_responses' => (int) env('EMAILS_POOL_FOLLOWUP_MIN_RESPONSES', 3),
+    ],
+
     // Двухэтапный таргетинг рассылки (#4): перед отправкой ищем позиции батча в
     // Яндексе (1 запрос на позицию, много результатов), делим пул на A (сайт нашёлся
     // → письмо со ссылками-намёками) и B (как раньше). Новые домены → discovery.

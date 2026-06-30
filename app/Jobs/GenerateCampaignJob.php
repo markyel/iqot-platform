@@ -202,9 +202,17 @@ class GenerateCampaignJob implements ShouldQueue
         $tokenGenerator->generate($batch);
         $bodyGenerator->generate($batch);
 
+        // Волна 1 (шлём сразу) + волна 2 (пул расширения, держится до досыла).
         $emails = [];
         foreach ($batch->suppliers as $supplier) {
-            $emails[] = $emailBuilder->build($batch, $supplier);
+            $e = $emailBuilder->build($batch, $supplier);
+            $e['wave'] = 1;
+            $emails[] = $e;
+        }
+        foreach ($batch->expansionSuppliers as $supplier) {
+            $e = $emailBuilder->build($batch, $supplier);
+            $e['wave'] = 2;
+            $emails[] = $e;
         }
 
         $persister->persist($batch, $emails);

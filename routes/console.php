@@ -35,6 +35,15 @@ Schedule::command('emails:dispatch-pending')
     ->between('8:00', '21:00')
     ->withoutOverlapping();
 
+// Досыл по пулу расширения (волна 2): раз в день в начале рабочего окна проверяем
+// заявки с придержанной волной 2 (старше followup_delay_days) — при малом отклике
+// отпускаем письма в рассылку, иначе отменяем. Флаг EMAILS_POOL_FOLLOWUP_ENABLED.
+Schedule::command('emails:dispatch-followup')
+    ->dailyAt('8:05')
+    ->timezone('Europe/Riga')
+    ->weekdays()
+    ->withoutOverlapping();
+
 // Приём почты: диспетчер опроса IMAP активных ящиков (замена n8n «Receive and
 // Route Emails v3»). Ответы приходят в любое время — без рабочего окна. Защита
 // от наложения: withoutOverlapping + Cache::lock на ящик внутри job.

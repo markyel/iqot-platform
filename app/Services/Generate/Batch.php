@@ -55,6 +55,13 @@ class Batch
     /** @var array<int,int> id поставщиков (dedup). */
     public array $supplierIds = [];
 
+    /**
+     * Пул расширения (волна 2): поставщики, срезанные при ужесточении сверх-большого
+     * пула. Письма им строятся сразу, но держатся (scheduled_at в будущем) до досыла.
+     * @var array<int,array<string,mixed>>
+     */
+    public array $expansionSuppliers = [];
+
     /** Базовый трекинг-токен батча (до per-supplier суффикса). */
     public ?string $trackingToken = null;
 

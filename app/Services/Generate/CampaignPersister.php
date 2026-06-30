@@ -24,6 +24,10 @@ class CampaignPersister
 {
     private const CONN = 'reports';
 
+    /** Sentinel scheduled_at для «придержанных» писем волны 2 (диспетчер их не берёт).
+     *  В пределах TIMESTAMP (макс 2038-01-19), но далеко в будущем. */
+    public const HELD_UNTIL = '2037-12-31 00:00:00';
+
     /**
      * @param array<int,array<string,mixed>> $emails результаты CampaignEmailBuilder::build()
      *        на каждого поставщика батча
@@ -69,6 +73,11 @@ class CampaignPersister
                 }
 
                 $token = (string) ($email['tracking_token'] ?? '');
+                // Волна 2 (пул расширения) держится: status=pending, но scheduled_at в
+                // далёком будущем — диспетчер берёт только scheduled_at <= NOW(), поэтому
+                // не тронет, пока follow-up не «отпустит» (scheduled_at=now) или не отменит.
+                $wave = (int) ($email['wave'] ?? 1);
+                $scheduledAt = $wave === 2 ? self::HELD_UNTIL : now();
                 $emailQueueId = (int) DB::connection(self::CONN)->table('email_queue')->insertGetId([
                     'batch_id' => $batchId,
                     'token' => $token,
@@ -80,8 +89,9 @@ class CampaignPersister
                     'body_html' => (string) ($email['body_html'] ?? ''),
                     'tracking_token' => $token,
                     'priority' => 0,
-                    'scheduled_at' => now(),
+                    'scheduled_at' => $scheduledAt,
                     'status' => 'pending',
+                    'wave' => $wave,
                 ]);
                 $queueIds[] = $emailQueueId;
 
