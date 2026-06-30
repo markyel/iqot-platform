@@ -480,6 +480,12 @@
                             <span class="sidebar-item-tooltip">Приём писем</span>
                         </a>
 
+                        <a href="{{ route('admin.exclusions.index') }}" class="sidebar-item {{ request()->routeIs('admin.exclusions*') ? 'active' : '' }}">
+                            <i data-lucide="ban" class="sidebar-item-icon"></i>
+                            <span class="sidebar-item-text">Стоп-лист рассылки</span>
+                            <span class="sidebar-item-tooltip">Стоп-лист рассылки</span>
+                        </a>
+
                         <a href="{{ route('admin.billing.settings.index') }}" class="sidebar-item {{ request()->routeIs('admin.billing.settings*') ? 'active' : '' }}">
                             <i data-lucide="settings" class="sidebar-item-icon"></i>
                             <span class="sidebar-item-text">Настройки биллинга</span>
