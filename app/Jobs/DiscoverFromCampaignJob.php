@@ -8,6 +8,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -29,6 +30,8 @@ class DiscoverFromCampaignJob implements ShouldQueue
         private readonly string $url,
         private readonly int $productTypeId,
         private readonly ?int $domainId = null,
+        private readonly ?int $batchId = null,
+        private readonly ?int $requestId = null,
     ) {
     }
 
@@ -36,9 +39,24 @@ class DiscoverFromCampaignJob implements ShouldQueue
     {
         try {
             $res = $discovery->discoverFromUrl($this->url, $this->productTypeId, $this->domainId);
+
+            // Привязка найденного поставщика к батчу-источнику → волна 2 его подхватит.
+            $supplierId = (int) ($res['supplier_id'] ?? 0);
+            if ($this->batchId && $supplierId > 0 && in_array(($res['status'] ?? ''), ['created', 'extended'], true)) {
+                DB::connection('reports')->table('campaign_discoveries')->insertOrIgnore([
+                    'batch_id' => $this->batchId,
+                    'request_id' => $this->requestId,
+                    'supplier_id' => $supplierId,
+                    'source_url' => mb_substr($this->url, 0, 500),
+                    'emailed' => 0,
+                    'created_at' => now(),
+                ]);
+            }
+
             Log::info('DiscoverFromCampaignJob: done', [
                 'url' => $this->url,
                 'product_type_id' => $this->productTypeId,
+                'batch_id' => $this->batchId,
                 'result' => $res,
             ]);
         } catch (\Throwable $e) {

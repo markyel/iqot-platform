@@ -216,6 +216,21 @@ class GenerateCampaignJob implements ShouldQueue
         }
 
         $persister->persist($batch, $emails);
+
+        // Discovery новых доменов — после persist (есть batch_id). Найденные
+        // поставщики привяжутся к батчу (campaign_discoveries) и обогатят волну 2.
+        if (!$this->dryRun && $batch->batchId && $batch->discoveryCandidates !== []) {
+            $requestId = (int) ($batch->requestIds[0] ?? 0);
+            foreach ($batch->discoveryCandidates as $cand) {
+                DiscoverFromCampaignJob::dispatch(
+                    (string) $cand['url'],
+                    (int) $cand['product_type_id'],
+                    isset($cand['domain_id']) ? (int) $cand['domain_id'] : null,
+                    (int) $batch->batchId,
+                    $requestId ?: null,
+                );
+            }
+        }
     }
 
     /**
@@ -246,17 +261,13 @@ class GenerateCampaignJob implements ShouldQueue
             }
         }
 
-        // Discovery — новые домены в фон (только с известным product_type).
+        // Discovery — новые домены с известным product_type. Диспатч ПОСЛЕ persist
+        // (нужен batch_id) — складываем кандидатов на батч.
         if ((bool) config('services.email_pretarget.discovery_enabled', true) && !empty($res['candidates'])) {
             foreach ($res['candidates'] as $cand) {
-                if (empty($cand['product_type_id'])) {
-                    continue;
+                if (!empty($cand['product_type_id'])) {
+                    $batch->discoveryCandidates[] = $cand;
                 }
-                DiscoverFromCampaignJob::dispatch(
-                    (string) $cand['url'],
-                    (int) $cand['product_type_id'],
-                    isset($cand['domain_id']) ? (int) $cand['domain_id'] : null,
-                );
             }
         }
 

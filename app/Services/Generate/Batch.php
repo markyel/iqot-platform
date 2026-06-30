@@ -62,6 +62,14 @@ class Batch
      */
     public array $expansionSuppliers = [];
 
+    /**
+     * Кандидаты discovery (новые домены из Яндекс-таргетинга): {url, product_type_id,
+     * domain_id}. Диспатчатся в discovery ПОСЛЕ persist (нужен batch_id) — найденные
+     * поставщики обогащают волну 2 этого батча.
+     * @var array<int,array<string,mixed>>
+     */
+    public array $discoveryCandidates = [];
+
     /** Базовый трекинг-токен батча (до per-supplier суффикса). */
     public ?string $trackingToken = null;
 

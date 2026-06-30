@@ -242,9 +242,9 @@ class SupplierDiscoveryService
             return ['status' => 'extended', 'supplier_id' => $existingId];
         }
 
-        $this->persistSupplier($info, $productTypeId, $domainId, $host, $url);
+        $newId = $this->persistSupplier($info, $productTypeId, $domainId, $host, $url);
 
-        return ['status' => 'created'];
+        return ['status' => 'created', 'supplier_id' => $newId];
     }
 
     /**
@@ -587,9 +587,9 @@ class SupplierDiscoveryService
         return $changed;
     }
 
-    private function persistSupplier(array $info, int $productTypeId, ?int $domainId, string $siteDomain, string $url): void
+    private function persistSupplier(array $info, int $productTypeId, ?int $domainId, string $siteDomain, string $url): int
     {
-        DB::connection('reports')->transaction(function () use ($info, $productTypeId, $domainId, $siteDomain, $url) {
+        return DB::connection('reports')->transaction(function () use ($info, $productTypeId, $domainId, $siteDomain, $url) {
             $website = $info['website'] ?: $url;
             $now = now();
 
@@ -636,6 +636,8 @@ class SupplierDiscoveryService
                     'updated_at' => $now,
                 ]);
             }
+
+            return $supplierId;
         });
     }
 

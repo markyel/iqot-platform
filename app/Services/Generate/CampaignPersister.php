@@ -51,7 +51,8 @@ class CampaignPersister
             ]);
             $batch->batchId = $batchId;
 
-            // 2. Save AI Text → email_batches (ai_generated).
+            // 2. Save AI Text → email_batches (ai_generated). gen_context — снимок
+            // для пересборки писем на волне 2 (новым поставщикам из discovery).
             DB::connection(self::CONN)->table('email_batches')
                 ->where('id', $batchId)
                 ->update([
@@ -59,6 +60,21 @@ class CampaignPersister
                     'ai_model' => (string) $batch->aiModel,
                     'ai_generated_at' => now(),
                     'status' => 'ai_generated',
+                    'gen_context' => json_encode([
+                        'ai_body' => $batch->aiBody,
+                        'sender' => $batch->sender,
+                        'email_template' => $batch->emailTemplate,
+                        'request_numbers' => $batch->requestNumbers,
+                        'request_ids' => $batch->requestIds,
+                        'is_customer_request' => $batch->isCustomerRequest,
+                        'customer' => [
+                            'company' => $batch->customerCompany,
+                            'contact_person' => $batch->customerContactPerson,
+                            'email' => $batch->customerEmail,
+                            'phone' => $batch->customerPhone,
+                        ],
+                        'items_count' => $batch->itemsCount,
+                    ], JSON_UNESCAPED_UNICODE),
                 ]);
 
             // 3. Insert Email Queue + Insert Item Responses на каждого поставщика.
