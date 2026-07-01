@@ -111,7 +111,7 @@ class IncomingEmailRouter
             return 'bounce';
         }
 
-        $batchId = $this->matchBatch($email);
+        $batchId = $this->matchBatch($senderId, $email);
 
         if (!$batchId) {
             $this->saveUnidentified($senderId, $email, 'no_token');
@@ -145,18 +145,25 @@ class IncomingEmailRouter
 
     /**
      * Ищем активный батч, чей tracking_token встречается в теме/теле письма.
+     *
+     * Скоуп — ТОЛЬКО батчи ящика-отправителя, на который пришёл ответ ($senderId):
+     * поставщик отвечает на адрес, с которого его контактировали, поэтому нужный
+     * батч всегда среди рассылок этого отправителя. У одного отправителя за 60д
+     * единицы батчей (макс ~9), поэтому прежний глобальный limit(200) не нужен — он
+     * лишь молча выталкивал батчи 8–60-дневной давности при глобальном поиске и
+     * плодил межотправительские коллизии токенов (843 уникальных из 894).
      */
-    private function matchBatch(ParsedEmail $email): ?int
+    private function matchBatch(int $senderId, ParsedEmail $email): ?int
     {
         $haystack = $this->searchText($email);
 
         $batches = DB::connection('reports')->table('email_batches')
+            ->where('sender_id', $senderId)
             ->whereIn('status', self::ACTIVE_BATCH_STATUSES)
             ->where('created_at', '>=', now()->subDays(60))
             ->whereNotNull('tracking_token')
             ->where('tracking_token', '!=', '')
             ->orderByDesc('created_at')
-            ->limit(200)
             ->get(['id', 'tracking_token']);
 
         foreach ($batches as $batch) {
