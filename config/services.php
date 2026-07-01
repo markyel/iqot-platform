@@ -342,4 +342,20 @@ return [
         'timeout' => (int) env('YANDEX_SEARCH_TIMEOUT', 30),
     ],
 
+    /*
+     * Биллинг. api_reconcile.enabled — предохранитель для списания за выполненные
+     * API-позиции в balance:check-completed-items. API-ветка была никогда не
+     * бита: raw-SQL запись КП в request_item_responses не будит Eloquent-обсервер
+     * offers_count → charge-обсервер не срабатывал, а сам chargeForItem падал на
+     * NOT NULL request_id. После фикса (nullable request_id + разбор API-холдов в
+     * команде) флаг по умолчанию OFF: сначала прогнать --dry-run и сверить сумму
+     * бэклога, затем включить BILLING_API_RECONCILE_ENABLED=true. --dry-run и
+     * --force игнорируют флаг.
+     */
+    'billing' => [
+        'api_reconcile' => [
+            'enabled' => (bool) env('BILLING_API_RECONCILE_ENABLED', false),
+        ],
+    ],
+
 ];
