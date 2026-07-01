@@ -56,15 +56,29 @@ class GenerateCampaignJob implements ShouldQueue
     /**
      * @param array<int,int> $requestIds перехваченные командой id заявок
      */
+    /** Повтор отложенного батча (гейт качества): id из deferred_batches. */
+    private ?int $deferredBatchId = null;
+
+    /** Сохранённая Яндекс-выдача для повтора (matchPool без нового поиска). */
+    private array $retryFound = [];
+
     public function __construct(
         private readonly array $requestIds,
         private readonly bool $dryRun = false,
+        ?int $deferredBatchId = null,
     ) {
+        $this->deferredBatchId = $deferredBatchId;
         $this->onQueue('generate');
     }
 
     public function handle(): void
     {
+        // Повтор отложенного батча — отдельная ветка, нормальный путь не трогает.
+        if ($this->deferredBatchId) {
+            $this->handleRetry();
+            return;
+        }
+
         $requestIds = array_values(array_filter(array_map('intval', $this->requestIds), static fn ($id) => $id > 0));
         if ($requestIds === []) {
             return;
@@ -197,7 +211,14 @@ class GenerateCampaignJob implements ShouldQueue
 
         // #4 предрассылочный таргетинг: ищем позиции в Яндексе, помечаем поставщиков
         // пула найденными ссылками (группа A) и отдаём новые домены в discovery.
-        $this->applyTargeting($batch);
+        $res = $this->applyTargeting($batch);
+
+        // Гейт качества волны 1 (discovery-first): слабый пул / мало найденных →
+        // откладываем батч, гоним discovery, повторим когда он готов (retry-deferred).
+        if ($this->shouldDefer($batch, $res)) {
+            $this->deferBatch($batch, $res);
+            return;
+        }
 
         $tokenGenerator->generate($batch);
         $bodyGenerator->generate($batch);
@@ -238,17 +259,25 @@ class GenerateCampaignJob implements ShouldQueue
      * found_urls для письма со ссылками-намёками; новые домены-кандидаты уходят в
      * фоновый discovery (анализ сайта + авто-добавление поставщика с таксономией).
      */
-    private function applyTargeting(Batch $batch): void
+    private function applyTargeting(Batch $batch): ?array
     {
         if (!(bool) config('services.email_pretarget.enabled', false)) {
-            return;
+            return null;
         }
 
         try {
-            $res = SupplierTargetingService::make()->target($batch->items, $batch->supplierIds);
+            if ($this->deferredBatchId) {
+                // Повтор: переиспользуем сохранённую Яндекс-выдачу (без нового поиска),
+                // матчим с уже обогащённым пулом.
+                $svc = SupplierTargetingService::make();
+                $res = $svc->matchPool($this->retryFound, $batch->supplierIds)
+                    + ['found' => $this->retryFound, 'searched_items' => count($this->retryFound) > 0 ? 1 : 0];
+            } else {
+                $res = SupplierTargetingService::make()->target($batch->items, $batch->supplierIds);
+            }
         } catch (\Throwable $e) {
             Log::warning('GenerateCampaignJob: targeting failed', ['error' => $e->getMessage()]);
-            return;
+            return null;
         }
 
         // Группа A — прикрепляем найденные ссылки к записям поставщиков пула.
@@ -276,6 +305,166 @@ class GenerateCampaignJob implements ShouldQueue
             'candidates' => count($res['candidates'] ?? []),
             'searched_items' => $res['searched_items'] ?? 0,
         ]);
+
+        return $res;
+    }
+
+    /**
+     * Гейт качества волны 1: откладывать ли батч (слабый пул / мало найденных Яндексом).
+     * Только при включённом гейте И реальном таргетинге (иначе нет данных о match-rate).
+     *
+     * @param array<string,mixed>|null $res результат таргетинга
+     */
+    private function shouldDefer(Batch $batch, ?array $res): bool
+    {
+        // Повтор (attempt 2) — гейт НЕ применяем (генерим без оглядки на порог).
+        if ($this->deferredBatchId || $this->dryRun || !(bool) config('services.email_pool.gate_enabled', false)) {
+            return false;
+        }
+        if (!is_array($res) || (int) ($res['searched_items'] ?? 0) === 0) {
+            return false; // таргетинг не отработал — не по чему судить, не откладываем
+        }
+
+        $pool = count($batch->suppliers) + count($batch->expansionSuppliers);
+        if ($pool === 0) {
+            return false;
+        }
+        $groupA = count($res['groupA'] ?? []);
+        $rate = (int) round(100 * $groupA / $pool);
+
+        $minPool = (int) config('services.email_pool.gate_min_pool', 30);
+        $minRate = (int) config('services.email_pool.gate_min_match_rate', 25);
+
+        return $pool < $minPool || $rate < $minRate;
+    }
+
+    /**
+     * Отложить батч: сохранить в deferred_batches (с найденными доменами для повтора),
+     * запустить discovery по кандидатам. Повтор сделает emails:retry-deferred, когда
+     * discovery готов, уже без гейта.
+     *
+     * @param array<string,mixed> $res
+     */
+    private function deferBatch(Batch $batch, array $res): void
+    {
+        $itemIds = array_values(array_filter(array_map(static fn ($it) => (int) ($it['id'] ?? 0), $batch->items)));
+        $candidates = [];
+        foreach (($res['candidates'] ?? []) as $cand) {
+            if (!empty($cand['product_type_id'])) {
+                $candidates[] = $cand;
+            }
+        }
+        $total = count($candidates);
+        $pool = count($batch->suppliers) + count($batch->expansionSuppliers);
+
+        $deferredId = (int) DB::connection(self::CONN)->table('deferred_batches')->insertGetId([
+            'request_ids' => json_encode($batch->requestIds, JSON_UNESCAPED_UNICODE),
+            'item_ids' => json_encode($itemIds, JSON_UNESCAPED_UNICODE),
+            'sender_id' => (int) ($batch->sender['id'] ?? 0) ?: null,
+            'found_domains' => json_encode($res['found'] ?? [], JSON_UNESCAPED_UNICODE),
+            'candidates_total' => $total,
+            'candidates_done' => 0,
+            // Нет кандидатов на discovery → сразу готов к повтору.
+            'status' => $total === 0 ? 'ready' : 'pending',
+            'reason' => 'pool=' . $pool . ' groupA=' . count($res['groupA'] ?? []),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Discovery по кандидатам — с deferredId (счётчик готовности).
+        foreach ($candidates as $cand) {
+            DiscoverFromCampaignJob::dispatch(
+                (string) $cand['url'],
+                (int) $cand['product_type_id'],
+                isset($cand['domain_id']) ? (int) $cand['domain_id'] : null,
+                null,
+                (int) ($batch->requestIds[0] ?? 0) ?: null,
+                $deferredId,
+            );
+        }
+
+        Log::info('GenerateCampaignJob: batch deferred (quality gate)', [
+            'deferred_id' => $deferredId,
+            'pool' => $pool,
+            'group_a' => count($res['groupA'] ?? []),
+            'candidates' => $total,
+            'items' => count($itemIds),
+        ]);
+    }
+
+    /**
+     * Повтор отложенного батча (гейт качества, attempt 2): discovery уже обогатил пул,
+     * переиспользуем сохранённую Яндекс-выдачу, генерим БЕЗ гейта.
+     */
+    private function handleRetry(): void
+    {
+        $row = DB::connection(self::CONN)->table('deferred_batches')
+            ->where('id', $this->deferredBatchId)
+            ->whereIn('status', ['ready'])
+            ->first();
+        if (!$row) {
+            return;
+        }
+        // Клейм — чтобы повторный тик не взял тот же.
+        $claimed = DB::connection(self::CONN)->table('deferred_batches')
+            ->where('id', $row->id)->where('status', 'ready')
+            ->update(['status' => 'processing', 'updated_at' => now()]);
+        if ($claimed === 0) {
+            return;
+        }
+
+        try {
+            $this->retryFound = json_decode((string) $row->found_domains, true) ?: [];
+            $itemIds = json_decode((string) $row->item_ids, true) ?: [];
+            $items = $this->loadItemsByIds(array_map('intval', $itemIds));
+            if ($items === []) {
+                DB::connection(self::CONN)->table('deferred_batches')->where('id', $row->id)->update(['status' => 'done', 'updated_at' => now()]);
+                return;
+            }
+
+            $useNewRouting = $this->loadUseNewRouting();
+            $categories = $this->loadCategories();
+            $cfg = config('services.email_generate');
+            $client = $this->makeClient($cfg);
+
+            $grouper = new CampaignItemGrouper($categories, $useNewRouting, (int) ($cfg['items_per_batch'] ?? 5));
+            $batches = $grouper->group($items);
+            (new CampaignSenderAssigner())->assign($batches);
+
+            $supplierSelector = new CampaignSupplierSelector();
+            $tokenGenerator = new CampaignTokenGenerator($client, (string) ($cfg['token_model'] ?? 'gpt-4o-mini'), (bool) ($cfg['token_use_ai'] ?? true));
+            $bodyGenerator = new CampaignBodyGenerator($client, (string) ($cfg['body_model'] ?? 'gpt-4o'), (float) ($cfg['body_temperature'] ?? 0.7), (int) ($cfg['max_tokens'] ?? 1500));
+            $emailBuilder = new CampaignEmailBuilder();
+            $persister = new CampaignPersister();
+
+            $ok = 0;
+            foreach ($batches as $batch) {
+                try {
+                    $this->processBatch($batch, $supplierSelector, $tokenGenerator, $bodyGenerator, $emailBuilder, $persister);
+                    $ok++;
+                } catch (\Throwable $e) {
+                    Log::error('GenerateCampaignJob(retry): батч упал', ['deferred_id' => $row->id, 'error' => mb_substr($e->getMessage(), 0, 400)]);
+                }
+            }
+
+            DB::connection(self::CONN)->table('deferred_batches')->where('id', $row->id)->update(['status' => 'done', 'updated_at' => now()]);
+            Log::info('GenerateCampaignJob: deferred retried', ['deferred_id' => $row->id, 'batches' => count($batches), 'ok' => $ok]);
+        } catch (\Throwable $e) {
+            DB::connection(self::CONN)->table('deferred_batches')->where('id', $row->id)->update(['status' => 'ready', 'updated_at' => now()]);
+            Log::error('GenerateCampaignJob(retry): фатально', ['deferred_id' => $row->id, 'error' => mb_substr($e->getMessage(), 0, 400)]);
+        }
+    }
+
+    /** Позиции по списку id (для повтора отложенного батча). @param array<int,int> $ids */
+    private function loadItemsByIds(array $ids): array
+    {
+        $ids = array_values(array_filter($ids, static fn ($v) => $v > 0));
+        if ($ids === []) {
+            return [];
+        }
+        $reqIds = DB::connection(self::CONN)->table('request_items')->whereIn('id', $ids)->distinct()->pluck('request_id')->map(fn ($v) => (int) $v)->all();
+
+        return $this->loadItems($reqIds, $ids);
     }
 
     /**
@@ -283,13 +472,15 @@ class GenerateCampaignJob implements ShouldQueue
      * статусу — команда уже перевела их в queued_for_sending).
      *
      * @param array<int,int> $requestIds
+     * @param array<int,int>|null $onlyItemIds ограничить набором позиций (повтор отложенного)
      * @return array<int,array<string,mixed>>
      */
-    private function loadItems(array $requestIds): array
+    private function loadItems(array $requestIds, ?array $onlyItemIds = null): array
     {
         $rows = DB::connection(self::CONN)->table('request_items as ri')
             ->join('requests as r', 'ri.request_id', '=', 'r.id')
             ->whereIn('r.id', $requestIds)
+            ->when($onlyItemIds !== null, fn ($q) => $q->whereIn('ri.id', $onlyItemIds))
             ->orderBy('r.is_customer_request', 'desc')
             ->orderBy('ri.position_number', 'asc')
             ->orderBy('r.id', 'asc')

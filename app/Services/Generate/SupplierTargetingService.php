@@ -62,19 +62,32 @@ class SupplierTargetingService
      */
     public function target(array $items, array $poolSupplierIds): array
     {
-        $empty = ['groupA' => [], 'candidates' => [], 'searched_items' => 0];
+        $empty = ['groupA' => [], 'candidates' => [], 'found' => [], 'searched_items' => 0];
 
         if (!(bool) config('services.email_pretarget.enabled', false) || !$this->search->isConfigured()) {
             return $empty;
         }
 
-        $poolHostToId = $this->poolHostMap($poolSupplierIds);
+        // 1) Поиск: собираем сырые найденные домены (для матчинга и переиспользования).
+        $found = $this->searchItems($items, $searched);
+        // 2) Матч с пулом.
+        $match = $this->matchPool($found, $poolSupplierIds);
+
+        return $match + ['found' => $found, 'searched_items' => $searched];
+    }
+
+    /**
+     * Поиск позиций в Яндексе → плоский список найденных допустимых доменов.
+     *
+     * @param array<int,array<string,mixed>> $items
+     * @return array<int,array{host:string,url:string,item_id:int,item_name:string,product_type_id:?int,domain_id:?int}>
+     */
+    public function searchItems(array $items, ?int &$searched = 0): array
+    {
+        $searched = 0;
         $maxItems = max(1, (int) config('services.email_pretarget.max_items_per_batch', 10));
         $items = array_slice(array_values($items), 0, $maxItems);
-
-        $groupA = [];
-        $candidateHosts = []; // host => {domain,url,item_id,product_type_id,domain_id}
-        $searched = 0;
+        $found = [];
 
         foreach ($items as $item) {
             $query = $this->buildQuery($item);
@@ -82,45 +95,68 @@ class SupplierTargetingService
                 continue;
             }
             $searched++;
-
-            $results = $this->search->multiSearch([$query]); // 1 запрос — много результатов
-
-            foreach ($results as $r) {
+            foreach ($this->search->multiSearch([$query]) as $r) {
                 $host = $this->normHost($r['domain'] ?: (string) parse_url($r['url'], PHP_URL_HOST));
                 if ($host === '' || !$this->allowedHost($host)) {
                     continue;
                 }
-                $itemId = (int) ($item['id'] ?? 0);
-
-                // Матч по домену найденного сайта или по его базовому домену (поддомены).
-                $sid = $poolHostToId[$host] ?? ($poolHostToId[$this->baseDomain($host)] ?? null);
-                if ($sid !== null) {
-                    $groupA[$sid][] = [
-                        'url' => $r['url'],
-                        'item_id' => $itemId,
-                        'item_name' => (string) ($item['name'] ?? ''),
-                    ];
-                } elseif (!isset($candidateHosts[$host])) {
-                    $candidateHosts[$host] = [
-                        'domain' => $host,
-                        'url' => $r['url'],
-                        'item_id' => $itemId,
-                        'product_type_id' => isset($item['product_type_id']) ? (int) $item['product_type_id'] : null,
-                        'domain_id' => isset($item['domain_id']) ? (int) $item['domain_id'] : null,
-                    ];
-                }
+                $found[] = [
+                    'host' => $host,
+                    'url' => $r['url'],
+                    'item_id' => (int) ($item['id'] ?? 0),
+                    'item_name' => (string) ($item['name'] ?? ''),
+                    'product_type_id' => isset($item['product_type_id']) ? (int) $item['product_type_id'] : null,
+                    'domain_id' => isset($item['domain_id']) ? (int) $item['domain_id'] : null,
+                ];
             }
         }
 
-        // Кандидаты — только реально новые домены (которых нет среди существующих поставщиков).
-        $candidates = $this->dropExistingSupplierHosts($candidateHosts);
+        return $found;
+    }
 
-        // В группе A склеиваем дубли URL по поставщику.
+    /**
+     * Матч сохранённых найденных доменов с пулом → группа A + кандидаты (новые домены).
+     * Переиспользуется на повторе (гейт качества) без нового Яндекс-поиска.
+     *
+     * @param array<int,array<string,mixed>> $found из searchItems()
+     * @param array<int> $poolSupplierIds
+     * @return array{groupA:array<int,array<int,mixed>>,candidates:array<string,array<string,mixed>>}
+     */
+    public function matchPool(array $found, array $poolSupplierIds): array
+    {
+        $poolHostToId = $this->poolHostMap($poolSupplierIds);
+        $groupA = [];
+        $candidateHosts = [];
+
+        foreach ($found as $f) {
+            $host = (string) ($f['host'] ?? '');
+            if ($host === '') {
+                continue;
+            }
+            $sid = $poolHostToId[$host] ?? ($poolHostToId[$this->baseDomain($host)] ?? null);
+            if ($sid !== null) {
+                $groupA[$sid][] = [
+                    'url' => $f['url'],
+                    'item_id' => (int) ($f['item_id'] ?? 0),
+                    'item_name' => (string) ($f['item_name'] ?? ''),
+                ];
+            } elseif (!isset($candidateHosts[$host])) {
+                $candidateHosts[$host] = [
+                    'domain' => $host,
+                    'url' => $f['url'],
+                    'item_id' => (int) ($f['item_id'] ?? 0),
+                    'product_type_id' => $f['product_type_id'] ?? null,
+                    'domain_id' => $f['domain_id'] ?? null,
+                ];
+            }
+        }
+
+        $candidates = $this->dropExistingSupplierHosts($candidateHosts);
         foreach ($groupA as $sid => $hits) {
             $groupA[$sid] = $this->dedupByUrl($hits);
         }
 
-        return ['groupA' => $groupA, 'candidates' => $candidates, 'searched_items' => $searched];
+        return ['groupA' => $groupA, 'candidates' => $candidates];
     }
 
     /** Поисковый запрос из позиции: бренд + артикул + название + коммерческий хвост. */

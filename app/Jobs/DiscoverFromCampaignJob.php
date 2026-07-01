@@ -32,6 +32,7 @@ class DiscoverFromCampaignJob implements ShouldQueue
         private readonly ?int $domainId = null,
         private readonly ?int $batchId = null,
         private readonly ?int $requestId = null,
+        private readonly ?int $deferredBatchId = null,
     ) {
     }
 
@@ -64,6 +65,19 @@ class DiscoverFromCampaignJob implements ShouldQueue
                 'url' => $this->url,
                 'error' => mb_substr($e->getMessage(), 0, 300),
             ]);
+        } finally {
+            // Счётчик готовности отложенного батча: любой исход = обработан. Когда все
+            // кандидаты обработаны → deferred_batch готов к повтору (emails:retry-deferred).
+            if ($this->deferredBatchId) {
+                DB::connection('reports')->table('deferred_batches')
+                    ->where('id', $this->deferredBatchId)
+                    ->increment('candidates_done', 1, ['updated_at' => now()]);
+                DB::connection('reports')->table('deferred_batches')
+                    ->where('id', $this->deferredBatchId)
+                    ->where('status', 'pending')
+                    ->whereColumn('candidates_done', '>=', 'candidates_total')
+                    ->update(['status' => 'ready', 'updated_at' => now()]);
+            }
         }
     }
 }

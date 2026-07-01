@@ -89,6 +89,14 @@ return [
         'followup_enabled' => (bool) env('EMAILS_POOL_FOLLOWUP_ENABLED', true),
         'followup_delay_days' => (int) env('EMAILS_POOL_FOLLOWUP_DELAY_DAYS', 2),
         'followup_min_responses' => (int) env('EMAILS_POOL_FOLLOWUP_MIN_RESPONSES', 3),
+
+        // Гейт качества волны 1 (discovery-first): если пул батча < min_pool ИЛИ доля
+        // найденных Яндексом < min_match_rate% — откладываем генерацию батча, гоним
+        // discovery по кандидатам, и повторяем когда discovery готов (переиспользуя
+        // сохранённую Яндекс-выдачу, уже без оглядки на порог). За флагом (по умолч. off).
+        'gate_enabled' => (bool) env('EMAILS_POOL_GATE_ENABLED', false),
+        'gate_min_pool' => (int) env('EMAILS_POOL_MIN', 30),
+        'gate_min_match_rate' => (int) env('EMAILS_POOL_MIN_MATCH_RATE', 25), // %
     ],
 
     // Двухэтапный таргетинг рассылки (#4): перед отправкой ищем позиции батча в

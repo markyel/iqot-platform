@@ -44,6 +44,13 @@ Schedule::command('emails:dispatch-followup')
     ->weekdays()
     ->withoutOverlapping();
 
+// Повтор отложенных гейтом качества батчей (discovery-first): когда discovery добрал
+// поставщиков (deferred_batches.status=ready) — генерим повторно без гейта. Каждые 15
+// мин. Флаг EMAILS_POOL_GATE_ENABLED (команда сама проверяет).
+Schedule::command('emails:retry-deferred')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping();
+
 // Приём почты: диспетчер опроса IMAP активных ящиков (замена n8n «Receive and
 // Route Emails v3»). Ответы приходят в любое время — без рабочего окна. Защита
 // от наложения: withoutOverlapping + Cache::lock на ящик внутри job.
