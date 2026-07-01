@@ -92,8 +92,9 @@ class SupplierTargetingService
                 }
                 $itemId = (int) ($item['id'] ?? 0);
 
-                if (isset($poolHostToId[$host])) {
-                    $sid = $poolHostToId[$host];
+                // Матч по домену найденного сайта или по его базовому домену (поддомены).
+                $sid = $poolHostToId[$host] ?? ($poolHostToId[$this->baseDomain($host)] ?? null);
+                if ($sid !== null) {
                     $groupA[$sid][] = [
                         'url' => $r['url'],
                         'item_id' => $itemId,
@@ -137,7 +138,8 @@ class SupplierTargetingService
         return $base === '' ? '' : $base . ' купить поставщик';
     }
 
-    /** website пула → host => supplier_id. */
+    /** host => supplier_id по домену website И email пула (у многих website пуст,
+     *  домен — в email). Поддомены website схлопываем к базовому. */
     private function poolHostMap(array $supplierIds): array
     {
         $ids = array_values(array_filter(array_map('intval', $supplierIds), static fn ($v) => $v > 0));
@@ -147,18 +149,38 @@ class SupplierTargetingService
 
         $rows = DB::connection(self::CONN)->table('suppliers')
             ->whereIn('id', $ids)
-            ->whereNotNull('website')
-            ->get(['id', 'website']);
+            ->get(['id', 'website', 'email']);
 
         $map = [];
         foreach ($rows as $r) {
-            $host = $this->normHost((string) (parse_url((string) $r->website, PHP_URL_HOST) ?: $r->website));
-            if ($host !== '') {
-                $map[$host] = (int) $r->id;
+            // Домен website (host + базовый домен без поддомена).
+            if ($r->website) {
+                $host = $this->normHost((string) (parse_url((string) $r->website, PHP_URL_HOST) ?: $r->website));
+                if ($host !== '') {
+                    $map[$host] = (int) $r->id;
+                    $base = $this->baseDomain($host);
+                    if ($base !== '' && !isset($map[$base])) {
+                        $map[$base] = (int) $r->id;
+                    }
+                }
+            }
+            // Домен email (для поставщиков без website — их большинство).
+            if ($r->email && preg_match('/@([\w.-]+)$/', (string) $r->email, $m)) {
+                $eh = $this->normHost($m[1]);
+                if ($eh !== '' && !isset($map[$eh])) {
+                    $map[$eh] = (int) $r->id;
+                }
             }
         }
 
         return $map;
+    }
+
+    /** Базовый домен (последние 2 метки): ropes.revator.ru → revator.ru. */
+    private function baseDomain(string $host): string
+    {
+        $parts = explode('.', $host);
+        return count($parts) >= 2 ? implode('.', array_slice($parts, -2)) : $host;
     }
 
     /**
