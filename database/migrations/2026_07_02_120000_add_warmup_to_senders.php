@@ -18,10 +18,17 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::connection('reports')->table('senders', function (Blueprint $table) {
-            $table->unsignedInteger('daily_limit')->default(30)->after('spam_reject_count');
-            $table->date('warmup_updated_on')->nullable()->after('daily_limit');
-            $table->boolean('banned_once')->default(false)->after('warmup_updated_on');
+        $schema = Schema::connection('reports');
+        $schema->table('senders', function (Blueprint $table) use ($schema) {
+            if (!$schema->hasColumn('senders', 'daily_limit')) {
+                $table->unsignedInteger('daily_limit')->default(30)->after('spam_reject_count');
+            }
+            if (!$schema->hasColumn('senders', 'warmup_updated_on')) {
+                $table->date('warmup_updated_on')->nullable()->after('daily_limit');
+            }
+            if (!$schema->hasColumn('senders', 'banned_once')) {
+                $table->boolean('banned_once')->default(false)->after('warmup_updated_on');
+            }
         });
     }
 
