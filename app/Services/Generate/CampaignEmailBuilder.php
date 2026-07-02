@@ -99,16 +99,29 @@ class CampaignEmailBuilder
             'token' => $token,
         ];
 
-        foreach ($blocks as $block) {
-            $emailHTML .= $this->renderBlock((array) $block, $context, $globalStyle);
-        }
-
-        // #4 группа A: поставщику, у кого товар нашёлся на сайте, добавляем мягкий
-        // блок-намёк со СВОИМИ ссылками (фрейминг — в стиле sender, из aiBody).
-        $emailHTML .= $this->renderFoundBlock(
+        // #4 группа A: намёк со ссылками на товар у поставщика на сайте. Встраиваем
+        // В ТЕКСТ письма — ПЕРЕД вводным абзацем (ai_introduction), а не приклеиваем
+        // под подпись: так письмо читается естественно («нашли у вас на сайте … →
+        // помогите с заявкой» → далее обычный запрос КП).
+        $foundHtml = $this->renderFoundBlock(
             $batch->aiBody['found_intro'] ?? null,
             is_array($supplier['found_urls'] ?? null) ? $supplier['found_urls'] : [],
+            $globalStyle,
         );
+        $foundInjected = ($foundHtml === '');
+
+        foreach ($blocks as $block) {
+            $blockType = is_array($block) ? (string) ($block['type'] ?? '') : '';
+            if (!$foundInjected && in_array($blockType, ['ai_introduction', 'items_display'], true)) {
+                $emailHTML .= $foundHtml;
+                $foundInjected = true;
+            }
+            $emailHTML .= $this->renderBlock((array) $block, $context, $globalStyle);
+        }
+        // Фолбэк: в шаблоне нет ни ai_introduction, ни items_display — не теряем блок.
+        if (!$foundInjected) {
+            $emailHTML .= $foundHtml;
+        }
 
         $emailHTML .= "</div>\n</body>\n</html>";
 
@@ -134,49 +147,54 @@ class CampaignEmailBuilder
     }
 
     /**
-     * #4 группа A: блок-намёк со ссылками на товары, найденные у поставщика на сайте.
-     * Пусто, если поставщик не из группы A. Список — свой для каждого поставщика;
-     * вводное предложение (found_intro) — общее на батч, в стиле sender.
+     * #4 группа A: намёк со ссылками на товар у поставщика на сайте. Встраивается
+     * В ТЕКСТ письма (перед вводным абзацем) обычными абзацами в стиле тела —
+     * БЕЗ выделенной рамки, чтобы читалось естественно, а не как приписка снизу.
+     * Пусто, если поставщик не из группы A. found_intro — в стиле sender (из aiBody).
      *
      * @param array<int,array{url:string,item_id:int,item_name:string}> $foundUrls
+     * @param array<string,mixed> $style стиль тела (font_size/text_color/header_bg)
      */
-    private function renderFoundBlock(?string $intro, array $foundUrls): string
+    private function renderFoundBlock(?string $intro, array $foundUrls, array $style = []): string
     {
         if ($foundUrls === []) {
             return '';
         }
 
+        $fontSize = $style['font_size'] ?? '10pt';
+        $textColor = $style['text_color'] ?? '#333';
+        $linkColor = $style['header_bg'] ?? '#2c5aa0';
+        $textStyles = "font-size:{$fontSize};color:{$textColor};line-height:1.6;";
+
         $intro = trim((string) $intro);
         if ($intro === '' || mb_strlen($intro) < 10) {
-            $intro = 'Кажется, часть позиций представлена у вас на сайте — будем рады, если поможете проработать всю заявку.';
+            $intro = 'Мы нашли часть позиций у вас на сайте — похоже, это то, что нам нужно. Будем признательны, если поможете проработать заявку целиком.';
         }
+        $introHtml = htmlspecialchars($intro, ENT_QUOTES, 'UTF-8');
 
         $seen = [];
-        $lis = '';
+        $lines = [];
         foreach ($foundUrls as $f) {
             $url = trim((string) ($f['url'] ?? ''));
-            if ($url === '' || isset($seen[$url]) || !preg_match('#^https?://#i', $url)) {
+            $key = rtrim(mb_strtolower($url), '/'); // дедуп с нормализацией слэша (site.ru == site.ru/)
+            if ($url === '' || isset($seen[$key]) || !preg_match('#^https?://#i', $url)) {
                 continue;
             }
-            $seen[$url] = true;
+            $seen[$key] = true;
             $safeUrl = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
             $name = htmlspecialchars(trim((string) ($f['item_name'] ?? '')), ENT_QUOTES, 'UTF-8');
             $label = $name !== '' ? $name : $safeUrl;
-            $lis .= "<li style=\"margin:6px 0;\">{$label} — <a href=\"{$safeUrl}\" style=\"color:#2563eb;\">{$safeUrl}</a></li>";
-            if (count($seen) >= 8) {
+            $lines[] = "{$label} — <a href=\"{$safeUrl}\" style=\"color:{$linkColor};\">{$safeUrl}</a>";
+            if (count($seen) >= 6) {
                 break;
             }
         }
-        if ($lis === '') {
+        if ($lines === []) {
             return '';
         }
 
-        $introHtml = htmlspecialchars($intro, ENT_QUOTES, 'UTF-8');
-
-        return '<div style="margin:24px 0 0;padding:14px 16px;background:#f7f9fc;border-left:3px solid #2563eb;border-radius:4px;font-size:13px;color:#555;">'
-            . "<p style=\"margin:0 0 8px;\">{$introHtml}</p>"
-            . "<ul style=\"margin:0;padding-left:20px;\">{$lis}</ul>"
-            . '</div>';
+        return "<p style=\"margin:0 0 15px 0;{$textStyles}\">{$introHtml}</p>"
+            . "<p style=\"margin:0 0 20px 0;{$textStyles}\">" . implode('<br>', $lines) . '</p>';
     }
 
     // ── Хелперы значений ────────────────────────────────────────────────────
