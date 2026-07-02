@@ -142,10 +142,10 @@ class SendQueuedEmailJob implements ShouldQueue
         }
 
         // Мультиканальность релея (Phase 3c): если dual-path не задал маршрут, но
-        // настроены каналы — выбираем стабильный по sender_id канал (свой source-IP).
-        // Вне gap-блока: применяется и при выключенном глобальном троттле.
+        // настроены каналы — распределяем отправку по пулу каналов (per-send по id
+        // письма). Вне gap-блока: применяется и при выключенном глобальном троттле.
         if ($smtpRoute === null) {
-            $smtpRoute = (new RelayChannelSelector())->forSender((int) $senderModel->id, $isBeget);
+            $smtpRoute = (new RelayChannelSelector())->forSend((int) $email->id, $isBeget);
         }
 
         // Жёсткая пауза на ящик: атомарно «занимаем слот». Если рано — переносим

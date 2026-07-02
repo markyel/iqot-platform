@@ -92,10 +92,10 @@ class SendOutgoingReplyJob implements ShouldQueue
         }
 
         try {
-            // Мультиканальность релея (Phase 3c): стабильный по sender_id канал
-            // (свой source-IP), только для beget-ящика. Пустой пул каналов → null.
+            // Мультиканальность релея (Phase 3c): распределение по пулу каналов
+            // (per-send по id ответа), только для beget-ящика. Пустой пул → null.
             $isBeget = ($senderModel->smtp_server === 'smtp.beget.com');
-            $route = (new RelayChannelSelector())->forSender((int) $senderModel->id, $isBeget);
+            $route = (new RelayChannelSelector())->forSend((int) $reply->id, $isBeget);
             $messageId = $sender->send($reply, $route);
 
             $this->saveToEmailMessages($reply, $messageId);

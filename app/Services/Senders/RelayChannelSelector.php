@@ -16,16 +16,22 @@ namespace App\Services\Senders;
  *   - peer_name  — TLS peer/SNI (при подмене host на IP: 'smtp.beget.com', чтобы
  *                  сертификат beget сошёлся — как в dual-path direct).
  *
- * ПРИВЯЗКА СТАБИЛЬНА per-sender (детерминированно по sender_id, с учётом weight):
- * каждый ящик всегда уходит с ОДНОГО IP → репутация копится когерентно на этом IP,
- * и нагрузка равномерно раскладывается по каналам. Случайный round-robin размазал бы
- * каждый ящик по всем IP — спам-флаг одного IP тогда бьёт по всем ящикам, изоляции нет.
+ * РАСПРЕДЕЛЕНИЕ per-send (shared relay pool): канал выбирается по id письма/ответа
+ * (routingKey), с учётом weight. То есть поток КАЖДОГО ящика раскладывается по ВСЕМ
+ * каналам, а не привязан к одному IP. Для общего пула релеев это стандарт (как
+ * shared-пулы ESP): нагрузка идеально ровная по IP; добавление релея сразу снижает
+ * долю каждого существующего IP без churn'а репутации; бан одного IP отнимает у всех
+ * ящиков лишь 1/N ёмкости (никто не встаёт намертво) — больной канал можно убрать из
+ * пула, и все ящики его обойдут. (Стабильная привязка ящик→IP — стратегия ВЫДЕЛЕННЫХ
+ * IP, не пула: перекос нагрузки при неравном объёме ящиков и churn при +релее.)
  *
  * Применяется ТОЛЬКО к beget-ящикам (релей/направление — beget-специфичны, как
  * dual-path). Не-beget провайдеры (sprinthost и т.п.) шлют через свой smtp_server
  * без каналов. Пустой пул каналов → null (полный backward-compat, текущий путь).
  *
- * На каждый source_ip нужен свой rDNS/PTR + запись в SPF доменов-отправителей.
+ * На каждый source_ip нужен свой rDNS/PTR + запись в SPF доменов-отправителей
+ * (при распределении каждый домен-отправитель может уйти с ЛЮБОГО IP пула → в SPF
+ * перечислять ВЕСЬ пул).
  */
 class RelayChannelSelector
 {
@@ -49,19 +55,20 @@ class RelayChannelSelector
     }
 
     /**
-     * Маршрут отправки для ящика: стабильный взвешенный выбор канала по sender_id.
-     * Возвращает route-массив для *Sender::send() (host/port/peer_name/bindto) либо
-     * null (каналов нет / ящик не beget → текущий путь).
+     * Маршрут отправки: взвешенный выбор канала по routingKey (id письма/ответа) —
+     * распределение per-send по всему пулу. Возвращает route-массив для *Sender::send()
+     * (host/port/peer_name/bindto) либо null (каналов нет / ящик не beget → текущий путь).
      *
+     * @param int $routingKey per-send ключ распределения (email_queue.id / outgoing_reply.id)
      * @return array{host?:string,port?:int,peer_name?:string,bindto?:string}|null
      */
-    public function forSender(int $senderId, bool $isBeget): ?array
+    public function forSend(int $routingKey, bool $isBeget): ?array
     {
-        if (!$isBeget || $this->totalWeight <= 0 || $senderId <= 0) {
+        if (!$isBeget || $this->totalWeight <= 0) {
             return null;
         }
 
-        $channel = $this->pick($senderId);
+        $channel = $this->pick($routingKey);
         if ($channel === null) {
             return null;
         }
@@ -88,14 +95,16 @@ class RelayChannelSelector
     }
 
     /**
-     * Детерминированный взвешенный выбор канала по sender_id: индекс = sender_id по
-     * модулю суммарного веса, затем разворачиваем в конкретный канал по кумулятиву.
+     * Детерминированный взвешенный выбор канала по ключу: слот = key по модулю
+     * суммарного веса, затем разворачиваем в конкретный канал по кумулятиву. Ключ —
+     * per-send id (последовательные id письма/ответа циклически ровно раскладываются
+     * по каналам).
      *
      * @return array<string,mixed>|null
      */
-    private function pick(int $senderId): ?array
+    private function pick(int $key): ?array
     {
-        $slot = $senderId % $this->totalWeight;
+        $slot = abs($key) % $this->totalWeight;
         $acc = 0;
         foreach ($this->channels as $c) {
             $acc += (int) $c['weight'];

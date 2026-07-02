@@ -134,10 +134,11 @@ return [
 
     // Каналы отправки (Phase 3c): пул egress-каналов для диверсификации исходящего IP
     // (репутация общего релей-IP горит на всплеске → mail.ru спам-флаг на все ящики;
-    // лечится разными source-IP). Применяется ТОЛЬКО к beget-ящикам; привязка ящик→канал
-    // СТАБИЛЬНА по sender_id (когерентная per-IP репутация + равномерная нагрузка) —
-    // см. App\Services\Senders\RelayChannelSelector. Пусто → текущий одиночный путь
-    // (smtp.beget.com → /etc/hosts → релей :8000), полный backward-compat.
+    // лечится разными source-IP). Применяется ТОЛЬКО к beget-ящикам; распределение
+    // per-send по всему пулу (по id письма/ответа) — поток каждого ящика раскладывается
+    // по ВСЕМ каналам (shared-пул: ровная нагрузка, +релей без churn, бан IP отнимает
+    // 1/N у всех) — см. App\Services\Senders\RelayChannelSelector. Пусто → текущий
+    // одиночный путь (smtp.beget.com → /etc/hosts → релей :8000), полный backward-compat.
     //
     // Канал: {host, port, source_ip, peer_name, weight}. Два типа:
     //   - proxy: host=IP релея, port=порт (релей слушает разные порты под разные egress-IP);
