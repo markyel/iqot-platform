@@ -446,6 +446,12 @@ class IncomingEmailRouter
         // Сендер-сигнал (пометка spam) обрабатывается отдельно (см. sender-механизм).
         $reason = $this->classifyBounceReason($email);
         if ($reason !== 'permanent') {
+            // Спам-реджект — сигнал о репутации ОТПРАВИТЕЛЯ, а не вина получателя:
+            // копим счётчик на sender, при пороге отключаем его для генерации
+            // (приём продолжается). Получателя не трогаем.
+            if ($reason === 'spam') {
+                $this->penalizeSenderForSpam($email, $failed);
+            }
             \Illuminate\Support\Facades\Log::info('IncomingEmailRouter: bounce НЕ блокирует получателя', [
                 'to' => $failed,
                 'reason' => $reason,
@@ -487,6 +493,70 @@ class IncomingEmailRouter
         }
 
         return 'unknown';
+    }
+
+    /**
+     * Спам-реджект: находим ОТПРАВИТЕЛЯ забракованного письма и копим ему
+     * spam_reject_count. При пороге (sender_spam_threshold) выставляем
+     * sending_disabled=1 — ящик выпадает из генерации, но остаётся is_active=1
+     * (приём ответов продолжается).
+     */
+    private function penalizeSenderForSpam(ParsedEmail $email, string $failed): void
+    {
+        $senderId = $this->findSenderOfBounced($email, $failed);
+        if (!$senderId) {
+            return;
+        }
+
+        DB::connection('reports')->table('senders')->where('id', $senderId)->update([
+            'spam_reject_count' => DB::raw('spam_reject_count + 1'),
+            'updated_at' => now(),
+        ]);
+
+        $threshold = max(1, (int) config('services.email_dispatch.sender_spam_threshold', 5));
+        $count = (int) DB::connection('reports')->table('senders')->where('id', $senderId)->value('spam_reject_count');
+
+        if ($count >= $threshold) {
+            $flipped = DB::connection('reports')->table('senders')
+                ->where('id', $senderId)->where('sending_disabled', 0)
+                ->update(['sending_disabled' => 1, 'updated_at' => now()]);
+            if ($flipped) {
+                \Illuminate\Support\Facades\Log::warning('IncomingEmailRouter: sender отключён для генерации (спам-реджекты)', [
+                    'sender_id' => $senderId,
+                    'spam_reject_count' => $count,
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Определяет sender_id забракованного письма: сначала по нашему токену в теле NDR
+     * (возвращённый оригинал), иначе — по самому свежему письму этому получателю.
+     */
+    private function findSenderOfBounced(ParsedEmail $email, string $failed): ?int
+    {
+        $haystack = $email->bodyText . "\n" . $email->bodyHtml;
+        foreach ($email->attachments as $att) {
+            $haystack .= "\n" . (string) ($att['content'] ?? '');
+        }
+
+        $candidates = DB::connection('reports')->table('email_queue')
+            ->whereRaw('LOWER(to_email) = ?', [$failed])
+            ->whereNotNull('token')->where('token', '!=', '')
+            ->orderByDesc('id')->limit(50)
+            ->get(['token', 'sender_id']);
+        foreach ($candidates as $c) {
+            $tok = (string) $c->token;
+            if ($tok !== '' && strlen($tok) >= 5 && str_contains($haystack, $tok)) {
+                return (int) $c->sender_id;
+            }
+        }
+
+        $row = DB::connection('reports')->table('email_queue')
+            ->whereRaw('LOWER(to_email) = ?', [$failed])
+            ->orderByDesc('id')->first(['sender_id']);
+
+        return $row ? (int) $row->sender_id : null;
     }
 
     /**

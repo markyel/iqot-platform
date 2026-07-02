@@ -109,7 +109,7 @@ LEFT JOIN (
   WHERE id >= (SELECT COALESCE(MAX(id), 0) - 20 FROM email_batches)
   GROUP BY sender_id
 ) recent ON s.id = recent.sender_id
-WHERE s.is_active = 1
+WHERE s.is_active = 1 AND s.sending_disabled = 0
 ORDER BY
   COALESCE(recent.last_batch_id, 0) ASC,
   COALESCE(recent.usage_count, 0) ASC,
