@@ -134,6 +134,7 @@ class CampaignSupplierSelector
             ->where('s.notify_email', 1);
 
         $this->excludeBlockedDomains($query);
+        $this->excludeBlockedRecipients($query);
         $this->excludePaused($query);
 
         $domainIds = $this->intList($batch->domainIds);
@@ -181,6 +182,7 @@ class CampaignSupplierSelector
             });
 
         $this->excludeBlockedDomains($query);
+        $this->excludeBlockedRecipients($query);
         $this->excludePaused($query);
 
         return $query->get()->all();
@@ -206,8 +208,8 @@ class CampaignSupplierSelector
      * Исключить поставщиков, чей домен email — в блок-листе (reports.blocked_domains):
      * домены, кому рассылку не шлём совсем (жалобы на спам и т.п.). Сверяется по домену
      * primary email поставщика, регистронезависимо. Раздел ответственности:
-     * blocked_domains — доменный блок на ГЕНЕРАЦИИ; recipient_mailboxes.is_blocked —
-     * per-адресный блок на ОТПРАВКЕ; suppliers.is_active/notify_email — точечный.
+     * blocked_domains — доменный блок; recipient_mailboxes.is_blocked — per-адресный
+     * (см. excludeBlockedRecipients); suppliers.is_active/notify_email — точечный.
      *
      * @param \Illuminate\Database\Query\Builder $query
      */
@@ -216,6 +218,25 @@ class CampaignSupplierSelector
         $query->whereRaw(
             "NOT EXISTS (SELECT 1 FROM blocked_domains bd "
             . "WHERE bd.domain = SUBSTRING_INDEX(LOWER(s.email), '@', -1))"
+        );
+    }
+
+    /**
+     * Исключить поставщиков, чей email — в per-адресном блок-листе
+     * (reports.recipient_mailboxes.is_blocked=1): адреса, давшие хард-баунсы/спам-жалобу.
+     * Раньше этот блок отсекался ТОЛЬКО на отправке (диспетчер их скипал), из-за чего
+     * генератор продолжал штамповать письма на мёртвые ящики — они копились в pending
+     * навсегда (dead-weight). Теперь блок применяется и на ГЕНЕРАЦИИ: заблокированный
+     * адрес больше не попадает в рассылку в принципе. Сверка по нормализованному email
+     * (recipient_mailboxes.email хранится в lower-case), регистронезависимо.
+     *
+     * @param \Illuminate\Database\Query\Builder $query
+     */
+    private function excludeBlockedRecipients($query): void
+    {
+        $query->whereRaw(
+            "NOT EXISTS (SELECT 1 FROM recipient_mailboxes rm "
+            . "WHERE rm.is_blocked = 1 AND rm.email = LOWER(TRIM(s.email)))"
         );
     }
 
