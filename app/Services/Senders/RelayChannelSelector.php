@@ -67,13 +67,15 @@ class RelayChannelSelector
         }
 
         $route = [];
+        $peerName = (string) ($channel['peer_name'] ?? '');
         if (($channel['host'] ?? '') !== '') {
             $route['host'] = (string) $channel['host'];
             // Подмена host на IP → TLS peer_name должен остаться smtp.beget.com,
             // иначе проверка сертификата beget не сойдётся (как в dual-path direct).
-            $route['peer_name'] = (string) ($channel['peer_name'] ?? 'smtp.beget.com');
-        } elseif (($channel['peer_name'] ?? '') !== '') {
-            $route['peer_name'] = (string) $channel['peer_name'];
+            // normalize хранит пустой peer_name как '' (не null) → дефолт по !=='' .
+            $route['peer_name'] = $peerName !== '' ? $peerName : 'smtp.beget.com';
+        } elseif ($peerName !== '') {
+            $route['peer_name'] = $peerName;
         }
         if ((int) ($channel['port'] ?? 0) > 0) {
             $route['port'] = (int) $channel['port'];
