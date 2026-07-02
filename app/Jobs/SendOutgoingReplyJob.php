@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Reports\OutgoingReply;
 use App\Models\Reports\Sender;
 use App\Services\Senders\OutgoingReplySender;
+use App\Services\Senders\RelayChannelSelector;
 use App\Services\Senders\SenderBanContainment;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -91,7 +92,11 @@ class SendOutgoingReplyJob implements ShouldQueue
         }
 
         try {
-            $messageId = $sender->send($reply);
+            // Мультиканальность релея (Phase 3c): стабильный по sender_id канал
+            // (свой source-IP), только для beget-ящика. Пустой пул каналов → null.
+            $isBeget = ($senderModel->smtp_server === 'smtp.beget.com');
+            $route = (new RelayChannelSelector())->forSender((int) $senderModel->id, $isBeget);
+            $messageId = $sender->send($reply, $route);
 
             $this->saveToEmailMessages($reply, $messageId);
 

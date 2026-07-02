@@ -32,45 +32,51 @@ class QueuedEmailSender
         }
 
         $encryption = $sender->smtp_encryption ?: 'ssl';
-        $port = (int) ($sender->smtp_port ?: 465);
         $isBeget = ($sender->smtp_server === 'smtp.beget.com');
 
-        // dual-path: job передаёт прямой IP beget ТОЛЬКО для beget-ящика (коннект на IP,
-        // peer_name=smtp.beget.com, чтобы TLS-сертификат сошёлся). Для не-beget отправителя
+        // dual-path / мультиканальность (Phase 3c): job передаёт route ТОЛЬКО для
+        // beget-ящика (коннект на IP релея/прямой IP, peer_name=smtp.beget.com, чтобы
+        // TLS-сертификат сошёлся; опц. port и bindto источника). Для не-beget отправителя
         // подмену host игнорируем: иначе он полез бы на IP beget со своими кредами и упал
-        // бы на авторизации. По умолчанию — smtp_server самого отправителя.
+        // бы на авторизации. По умолчанию — smtp_server:smtp_port самого отправителя.
         $useDirect = $isBeget && is_array($route) && !empty($route['host']);
         $host = $useDirect ? (string) $route['host'] : $sender->smtp_server;
+        $port = (int) (($isBeget && is_array($route) && !empty($route['port']))
+            ? $route['port']
+            : ($sender->smtp_port ?: 465));
+        $bindTo = ($isBeget && is_array($route) && !empty($route['bindto'])) ? (string) $route['bindto'] : null;
         $transport = new EsmtpTransport($host, $port, $encryption === 'ssl');
 
         // ВАЖНО: опции потока ставим только через поток транспорта — на EsmtpTransport
-        // метода setStreamOptions нет.
+        // метода setStreamOptions нет. bindto (source_ip канала) применяем для ЛЮБОГО
+        // beget-пути (в т.ч. без подмены host), чтобы канал «только source_ip» не терялся.
+        $opts = [];
         if ($useDirect) {
-            $transport->getStream()->setStreamOptions([
-                'ssl' => [
-                    'peer_name' => (string) ($route['peer_name'] ?? 'smtp.beget.com'),
-                    'SNI_enabled' => true,
-                ],
-            ]);
+            $opts['ssl'] = [
+                'peer_name' => (string) ($route['peer_name'] ?? 'smtp.beget.com'),
+                'SNI_enabled' => true,
+            ];
         } elseif ($encryption === 'ssl' && !$isBeget) {
             // Не-beget провайдеры отдают ОБЩИЙ сертификат, не совпадающий с smtp.<домен>
             // (Sprinthost: CN=from.sh, SAN=*.from.sh). Терпим mismatch хостнейма —
             // verify_peer (CA-валидность) остаётся включён, TLS шифрует, но строгую
             // проверку имени отключаем, иначе ssl-коннект падает.
-            $transport->getStream()->setStreamOptions([
-                'ssl' => [
-                    'verify_peer_name' => false,
-                    'SNI_enabled' => true,
-                ],
-            ]);
+            $opts['ssl'] = [
+                'verify_peer_name' => false,
+                'SNI_enabled' => true,
+            ];
         } elseif ($encryption === 'tls') {
-            $transport->getStream()->setStreamOptions([
-                'ssl' => [
-                    'verify_peer' => false,
-                    'verify_peer_name' => false,
-                    'allow_self_signed' => true,
-                ],
-            ]);
+            $opts['ssl'] = [
+                'verify_peer' => false,
+                'verify_peer_name' => false,
+                'allow_self_signed' => true,
+            ];
+        }
+        if ($bindTo !== null) {
+            $opts['socket'] = ['bindto' => $bindTo . ':0'];
+        }
+        if ($opts !== []) {
+            $transport->getStream()->setStreamOptions($opts);
         }
 
         $transport->setUsername($sender->smtp_user);

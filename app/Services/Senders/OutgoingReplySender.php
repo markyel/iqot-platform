@@ -26,9 +26,11 @@ use Symfony\Component\Mime\Part\DataPart;
 class OutgoingReplySender
 {
     /**
+     * @param array{host?:string,port?:int,peer_name?:string,bindto?:string}|null $route
+     *        маршрут канала релея (Phase 3c) — только для beget-ящика
      * @return string Message-ID отправленного письма (в угловых скобках) для email_messages
      */
-    public function send(OutgoingReply $reply): string
+    public function send(OutgoingReply $reply, ?array $route = null): string
     {
         $sender = $reply->sender;
 
@@ -40,32 +42,48 @@ class OutgoingReplySender
         }
 
         $encryption = $sender->smtp_encryption ?: 'ssl';
-        $port = (int) ($sender->smtp_port ?: 465);
         $isBeget = ($sender->smtp_server === 'smtp.beget.com');
 
-        $transport = new EsmtpTransport($sender->smtp_server, $port, $encryption === 'ssl');
+        // Мультиканальность релея (Phase 3c): подмена host/port + bindto источника —
+        // только для beget-ящика (зеркало QueuedEmailSender).
+        $useDirect = $isBeget && is_array($route) && !empty($route['host']);
+        $host = $useDirect ? (string) $route['host'] : $sender->smtp_server;
+        $port = (int) (($isBeget && is_array($route) && !empty($route['port']))
+            ? $route['port']
+            : ($sender->smtp_port ?: 465));
+        $bindTo = ($isBeget && is_array($route) && !empty($route['bindto'])) ? (string) $route['bindto'] : null;
+
+        $transport = new EsmtpTransport($host, $port, $encryption === 'ssl');
 
         // ВАЖНО: опции потока ставим только через поток транспорта — на EsmtpTransport
         // метода setStreamOptions нет (зеркало логики QueuedEmailSender).
-        if ($encryption === 'ssl' && !$isBeget) {
+        $opts = [];
+        if ($useDirect) {
+            $opts['ssl'] = [
+                'peer_name' => (string) ($route['peer_name'] ?? 'smtp.beget.com'),
+                'SNI_enabled' => true,
+            ];
+        } elseif ($encryption === 'ssl' && !$isBeget) {
             // Не-beget провайдеры отдают ОБЩИЙ сертификат, не совпадающий с smtp.<домен>
             // (Sprinthost в окне parked/UNVERIFIED: CN=from.sh, SAN=*.from.sh). Терпим
             // mismatch хостнейма — verify_peer (CA-валидность) остаётся, TLS шифрует, но
             // строгую проверку имени отключаем, иначе ssl-коннект ответа падает.
-            $transport->getStream()->setStreamOptions([
-                'ssl' => [
-                    'verify_peer_name' => false,
-                    'SNI_enabled' => true,
-                ],
-            ]);
+            $opts['ssl'] = [
+                'verify_peer_name' => false,
+                'SNI_enabled' => true,
+            ];
         } elseif ($encryption === 'tls') {
-            $transport->getStream()->setStreamOptions([
-                'ssl' => [
-                    'verify_peer' => false,
-                    'verify_peer_name' => false,
-                    'allow_self_signed' => true,
-                ],
-            ]);
+            $opts['ssl'] = [
+                'verify_peer' => false,
+                'verify_peer_name' => false,
+                'allow_self_signed' => true,
+            ];
+        }
+        if ($bindTo !== null) {
+            $opts['socket'] = ['bindto' => $bindTo . ':0'];
+        }
+        if ($opts !== []) {
+            $transport->getStream()->setStreamOptions($opts);
         }
 
         $transport->setUsername($sender->smtp_user);

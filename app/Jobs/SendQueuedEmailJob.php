@@ -7,6 +7,7 @@ use App\Models\Reports\EmailQueue;
 use App\Models\Reports\RecipientMailbox;
 use App\Models\Reports\Sender;
 use App\Services\Senders\QueuedEmailSender;
+use App\Services\Senders\RelayChannelSelector;
 use App\Services\Senders\SenderBanContainment;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -138,6 +139,13 @@ class SendQueuedEmailJob implements ShouldQueue
                 $this->release(1);
                 return;
             }
+        }
+
+        // Мультиканальность релея (Phase 3c): если dual-path не задал маршрут, но
+        // настроены каналы — выбираем стабильный по sender_id канал (свой source-IP).
+        // Вне gap-блока: применяется и при выключенном глобальном троттле.
+        if ($smtpRoute === null) {
+            $smtpRoute = (new RelayChannelSelector())->forSender((int) $senderModel->id, $isBeget);
         }
 
         // Жёсткая пауза на ящик: атомарно «занимаем слот». Если рано — переносим

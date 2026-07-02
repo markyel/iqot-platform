@@ -132,11 +132,23 @@ return [
         'max_sub_batches' => (int) env('EMAILS_WARMUP_MAX_SUBBATCHES', 10), // максимум под-батчей на батч (2 AI-вызова каждый)
     ],
 
-    // Каналы отправки (Phase 3b): пул «релей + source-IP» для диверсификации репутации.
-    // Поддерживает «N IP на 1 релее» (разный source_ip, один host) и «N релеев» (разный
-    // host). Пусто → используется текущий одиночный релей (email_dispatch.*). Задаётся
-    // JSON в env EMAILS_RELAY_CHANNELS: [{"host":"45.146.167.20","port":8000,"source_ip":null,"weight":1}].
-    // На каждый source_ip нужен свой rDNS/PTR + запись в SPF.
+    // Каналы отправки (Phase 3c): пул egress-каналов для диверсификации исходящего IP
+    // (репутация общего релей-IP горит на всплеске → mail.ru спам-флаг на все ящики;
+    // лечится разными source-IP). Применяется ТОЛЬКО к beget-ящикам; привязка ящик→канал
+    // СТАБИЛЬНА по sender_id (когерентная per-IP репутация + равномерная нагрузка) —
+    // см. App\Services\Senders\RelayChannelSelector. Пусто → текущий одиночный путь
+    // (smtp.beget.com → /etc/hosts → релей :8000), полный backward-compat.
+    //
+    // Канал: {host, port, source_ip, peer_name, weight}. Два типа:
+    //   - proxy: host=IP релея, port=порт (релей слушает разные порты под разные egress-IP);
+    //            source_ip — документирует egress-IP этого порта (для SPF/rDNS). peer_name
+    //            по умолчанию smtp.beget.com (сертификат beget при коннекте на IP).
+    //   - direct: host=прямой IP beget, source_ip=внешний IP VDS (bindto сокета) — «N IP
+    //            на 1 VDS» (app→beget напрямую, mail.ru видит source_ip). peer_name=smtp.beget.com.
+    // Задаётся JSON в env EMAILS_RELAY_CHANNELS, напр.:
+    //   [{"host":"45.146.167.20","port":8000,"source_ip":"45.146.167.20","weight":1},
+    //    {"host":"45.146.167.20","port":8001,"source_ip":"45.146.167.21","weight":1}]
+    // На каждый source_ip нужен свой rDNS/PTR + запись в SPF доменов-отправителей.
     'email_relays' => [
         'channels' => json_decode((string) env('EMAILS_RELAY_CHANNELS', '[]'), true) ?: [],
     ],
