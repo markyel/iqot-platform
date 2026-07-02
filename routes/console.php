@@ -59,6 +59,14 @@ Schedule::command('emails:process-load-deferred')
     ->everyFifteenMinutes()
     ->withoutOverlapping();
 
+// Прогрев отправителей (Phase 3): суточный пересчёт senders.daily_limit — рампа за
+// успешный день / сброс+блок при бане. Флаг EMAILS_WARMUP_ENABLED (команда сама
+// проверяет). Раз в сутки рано утром по МСК (до рабочего окна рассылки).
+Schedule::command('emails:warmup-ramp')
+    ->dailyAt('04:30')
+    ->timezone('Europe/Moscow')
+    ->withoutOverlapping();
+
 // Приём почты: диспетчер опроса IMAP активных ящиков (замена n8n «Receive and
 // Route Emails v3»). Ответы приходят в любое время — без рабочего окна. Защита
 // от наложения: withoutOverlapping + Cache::lock на ящик внутри job.

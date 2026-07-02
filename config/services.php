@@ -119,6 +119,27 @@ return [
         'max_hold_hours' => (int) env('EMAILS_LOAD_DEFER_MAX_HOLD_HOURS', 48),
     ],
 
+    // Прогрев отправителей (Phase 3): новый/сброшенный ящик стартует с малого дневного
+    // лимита и растёт за успешные дни. Лимит гейтит ГЕНЕРАЦИЮ (не генерим больше, чем
+    // ящики могут отослать); большой батч бьётся на несколько ящиков. global_daily_cap —
+    // предохранитель на весь IP/платформу от нового всплеска. За флагом (по умолч. off).
+    'email_warmup' => [
+        'enabled' => (bool) env('EMAILS_WARMUP_ENABLED', false),
+        'start' => (int) env('EMAILS_WARMUP_START', 30),            // стартовый дневной лимит ящика
+        'step_pct' => (int) env('EMAILS_WARMUP_STEP_PCT', 20),      // +% за успешный день
+        'cap' => (int) env('EMAILS_WARMUP_CAP', 500),               // потолок дневного лимита ящика
+        'global_daily_cap' => (int) env('EMAILS_GLOBAL_DAILY_CAP', 10000), // потолок писем/сутки на всю платформу
+    ],
+
+    // Каналы отправки (Phase 3b): пул «релей + source-IP» для диверсификации репутации.
+    // Поддерживает «N IP на 1 релее» (разный source_ip, один host) и «N релеев» (разный
+    // host). Пусто → используется текущий одиночный релей (email_dispatch.*). Задаётся
+    // JSON в env EMAILS_RELAY_CHANNELS: [{"host":"45.146.167.20","port":8000,"source_ip":null,"weight":1}].
+    // На каждый source_ip нужен свой rDNS/PTR + запись в SPF.
+    'email_relays' => [
+        'channels' => json_decode((string) env('EMAILS_RELAY_CHANNELS', '[]'), true) ?: [],
+    ],
+
     // Двухэтапный таргетинг рассылки (#4): перед отправкой ищем позиции батча в
     // Яндексе (1 запрос на позицию, много результатов), делим пул на A (сайт нашёлся
     // → письмо со ссылками-намёками) и B (как раньше). Новые домены → discovery.
