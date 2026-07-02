@@ -438,11 +438,55 @@ class IncomingEmailRouter
             return;
         }
 
+        // Классифицируем ПРИЧИНУ недоставки по телу NDR. Блокируем получателя ТОЛЬКО
+        // при постоянной ошибке адресата (ящик не существует). Спам-реджект/репутация
+        // («550 spam message rejected» и т.п.) и временные отказы — это проблема НАШЕЙ
+        // доставляемости/отправителя, а НЕ вина получателя: живой поставщик не должен
+        // получать блок из-за того, что mail.ru забраковал наше письмо как спам.
+        // Сендер-сигнал (пометка spam) обрабатывается отдельно (см. sender-механизм).
+        $reason = $this->classifyBounceReason($email);
+        if ($reason !== 'permanent') {
+            \Illuminate\Support\Facades\Log::info('IncomingEmailRouter: bounce НЕ блокирует получателя', [
+                'to' => $failed,
+                'reason' => $reason,
+                'subject' => mb_substr($email->subject, 0, 80),
+            ]);
+            return;
+        }
+
         RecipientMailbox::recordBounce(
             $failed,
             $email->subject !== '' ? $email->subject : 'NDR',
             (int) config('services.email_dispatch.recipient_error_threshold', 3),
         );
+    }
+
+    /**
+     * Причина недоставки из тела NDR (+ вложения delivery-status/возвращённый оригинал):
+     *   - 'permanent'  — ящик получателя мёртв (user unknown / no such mailbox) → блок ок;
+     *   - 'spam'       — наше письмо отклонено как спам/по репутации → НЕ вина получателя;
+     *   - 'temporary'  — грейлист/переполнен/временный отказ → не блокируем;
+     *   - 'unknown'    — не распознали → консервативно НЕ блокируем.
+     * Порядок проверки: сначала постоянная ошибка адресата (она перекрывает всё).
+     */
+    private function classifyBounceReason(ParsedEmail $email): string
+    {
+        $h = mb_strtolower($email->bodyText . "\n" . $email->bodyHtml . "\n" . $email->subject);
+        foreach ($email->attachments as $att) {
+            $h .= "\n" . mb_strtolower((string) ($att['content'] ?? ''));
+        }
+
+        if (preg_match('/user unknown|no such user|no such mailbox|does not exist|mailbox unavailable|invalid recipient|recipient address rejected|user not found|550 5\.1\.1|нет такого (?:адреса|пользоват|ящик)|не существует|адрес не найден|неизвестн(?:ый|ому) адрес/u', $h)) {
+            return 'permanent';
+        }
+        if (preg_match('/spam|blacklist|black ?list|listed|reputation|policy reasons|abuse@|blocked using|\brbl\b|dnsbl|554[ -].*(reject|spam|policy)|спам|репутац|заблокирован/u', $h)) {
+            return 'spam';
+        }
+        if (preg_match('/greylist|grey ?list|\b451\b|4\.\d\.\d|try again|temporar|over.?quota|quota exceeded|mailbox full|временн|переполнен|превышен(?:а)? квота/u', $h)) {
+            return 'temporary';
+        }
+
+        return 'unknown';
     }
 
     /**
