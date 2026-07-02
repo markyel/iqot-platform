@@ -62,6 +62,9 @@ class GenerateCampaignJob implements ShouldQueue
     /** Сохранённая Яндекс-выдача для повтора (matchPool без нового поиска). */
     private array $retryFound = [];
 
+    /** Повтор = выпуск накопителя по загрузке (recipient_load) → таргетинг СВЕЖИЙ. */
+    private bool $loadRetry = false;
+
     public function __construct(
         private readonly array $requestIds,
         private readonly bool $dryRun = false,
@@ -220,6 +223,13 @@ class GenerateCampaignJob implements ShouldQueue
             return;
         }
 
+        // Накопительная отсрочка по загрузке получателей: тонкий анонимный батч в
+        // перегруженный пул откладываем — копим однородные позиции до target.
+        if ($this->shouldDeferForLoad($batch)) {
+            $this->deferBatchForLoad($batch);
+            return;
+        }
+
         $tokenGenerator->generate($batch);
         $bodyGenerator->generate($batch);
 
@@ -266,9 +276,10 @@ class GenerateCampaignJob implements ShouldQueue
         }
 
         try {
-            if ($this->deferredBatchId) {
-                // Повтор: переиспользуем сохранённую Яндекс-выдачу (без нового поиска),
-                // матчим с уже обогащённым пулом.
+            if ($this->deferredBatchId && !$this->loadRetry) {
+                // Повтор гейта качества: переиспользуем сохранённую Яндекс-выдачу (без
+                // нового поиска), матчим с уже обогащённым пулом. Для recipient_load
+                // (loadRetry) выдачи нет — таргетинг гоним СВЕЖИЙ (ветка else).
                 $svc = SupplierTargetingService::make();
                 $res = $svc->matchPool($this->retryFound, $batch->supplierIds)
                     + ['found' => $this->retryFound, 'searched_items' => count($this->retryFound) > 0 ? 1 : 0];
@@ -393,28 +404,139 @@ class GenerateCampaignJob implements ShouldQueue
     }
 
     /**
+     * Откладывать ли анонимный батч по загрузке получателей: тонкий (< target позиций)
+     * И пул заметно перегружен (доля адресатов с pending >= loaded_pending превышает
+     * loaded_fraction_pct%). Именные заявки НЕ откладываем. В retry-режиме — тоже нет.
+     */
+    private function shouldDeferForLoad(Batch $batch): bool
+    {
+        if ($this->deferredBatchId || $this->dryRun) {
+            return false;
+        }
+        if ($batch->isCustomerRequest) {
+            return false; // именные — клиентский приоритет, шлём сразу
+        }
+        if (!(bool) config('services.email_load_defer.enabled', false)) {
+            return false;
+        }
+        $target = max(1, (int) config('services.email_load_defer.target_items', 3));
+        if ((int) $batch->itemsCount >= $target) {
+            return false; // батч уже «полный» — не откладываем
+        }
+
+        $emails = $this->poolEmails($batch->suppliers);
+        if ($emails === []) {
+            return false;
+        }
+        $loaded = $this->countLoadedRecipients($emails);
+        $fraction = 100 * $loaded / count($emails);
+        $minFraction = (int) config('services.email_load_defer.loaded_fraction_pct', 10);
+
+        return $fraction > $minFraction;
+    }
+
+    /**
+     * Отложить анонимный батч как накопитель по загрузке (reason='recipient_load',
+     * status='accumulating'). Позже emails:process-load-deferred сгруппирует накопители
+     * по (product_type_id, domain_id) и выпустит, когда набралось target / пул разгружен /
+     * истёк max_hold.
+     */
+    private function deferBatchForLoad(Batch $batch): void
+    {
+        $itemIds = array_values(array_filter(array_map(static fn ($it) => (int) ($it['id'] ?? 0), $batch->items)));
+        if ($itemIds === []) {
+            return;
+        }
+        $ptid = !empty($batch->productTypeIds) ? (int) $batch->productTypeIds[0] : null;
+        $did = !empty($batch->domainIds) ? (int) $batch->domainIds[0] : null;
+
+        $deferredId = (int) DB::connection(self::CONN)->table('deferred_batches')->insertGetId([
+            'request_ids' => json_encode($batch->requestIds, JSON_UNESCAPED_UNICODE),
+            'item_ids' => json_encode($itemIds, JSON_UNESCAPED_UNICODE),
+            'sender_id' => (int) ($batch->sender['id'] ?? 0) ?: null,
+            'product_type_id' => $ptid,
+            'domain_id' => $did,
+            'found_domains' => json_encode([], JSON_UNESCAPED_UNICODE),
+            'candidates_total' => 0,
+            'candidates_done' => 0,
+            'status' => 'accumulating',
+            'reason' => 'recipient_load',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Log::info('GenerateCampaignJob: batch deferred (recipient_load)', [
+            'deferred_id' => $deferredId,
+            'items' => count($itemIds),
+            'product_type_id' => $ptid,
+            'domain_id' => $did,
+        ]);
+    }
+
+    /** Уникальные нормализованные email пула поставщиков. @param array<int,array<string,mixed>> $suppliers @return array<int,string> */
+    private function poolEmails(array $suppliers): array
+    {
+        $emails = [];
+        foreach ($suppliers as $s) {
+            $e = mb_strtolower(trim((string) ($s['email'] ?? '')));
+            if ($e !== '' && !in_array($e, $emails, true)) {
+                $emails[] = $e;
+            }
+        }
+        return $emails;
+    }
+
+    /** Сколько адресатов из пула «загружены» (pending >= loaded_pending). @param array<int,string> $emails */
+    private function countLoadedRecipients(array $emails): int
+    {
+        $threshold = max(1, (int) config('services.email_load_defer.loaded_pending', 10));
+        return DB::connection(self::CONN)->table('email_queue')
+            ->whereIn('to_email', $emails)
+            ->where('status', 'pending')
+            ->groupBy('to_email')
+            ->havingRaw('COUNT(*) >= ?', [$threshold])
+            ->get(['to_email'])
+            ->count();
+    }
+
+    /**
      * Повтор отложенного батча (гейт качества, attempt 2): discovery уже обогатил пул,
      * переиспользуем сохранённую Яндекс-выдачу, генерим БЕЗ гейта.
+     * Для reason='recipient_load' (loadRetry) — выпуск накопителя: свежий таргетинг,
+     * строка уже заклеймлена командой process-load-deferred в 'processing'.
      */
     private function handleRetry(): void
     {
         $row = DB::connection(self::CONN)->table('deferred_batches')
             ->where('id', $this->deferredBatchId)
-            ->whereIn('status', ['ready'])
             ->first();
         if (!$row) {
             return;
         }
-        // Клейм — чтобы повторный тик не взял тот же.
-        $claimed = DB::connection(self::CONN)->table('deferred_batches')
-            ->where('id', $row->id)->where('status', 'ready')
-            ->update(['status' => 'processing', 'updated_at' => now()]);
-        if ($claimed === 0) {
-            return;
+
+        $this->loadRetry = ((string) $row->reason === 'recipient_load');
+
+        if ($this->loadRetry) {
+            // Накопитель уже заклеймлен командой process-load-deferred в 'processing'.
+            if ((string) $row->status !== 'processing') {
+                return;
+            }
+            $this->retryFound = []; // выдачи нет — таргетинг пойдёт свежий
+        } else {
+            // Гейт качества: клеймим ready→processing (повторный тик не возьмёт тот же).
+            if ((string) $row->status !== 'ready') {
+                return;
+            }
+            $claimed = DB::connection(self::CONN)->table('deferred_batches')
+                ->where('id', $row->id)->where('status', 'ready')
+                ->update(['status' => 'processing', 'updated_at' => now()]);
+            if ($claimed === 0) {
+                return;
+            }
+            $this->retryFound = json_decode((string) $row->found_domains, true) ?: [];
         }
 
         try {
-            $this->retryFound = json_decode((string) $row->found_domains, true) ?: [];
             $itemIds = json_decode((string) $row->item_ids, true) ?: [];
             $items = $this->loadItemsByIds(array_map('intval', $itemIds));
             if ($items === []) {
@@ -450,7 +572,9 @@ class GenerateCampaignJob implements ShouldQueue
             DB::connection(self::CONN)->table('deferred_batches')->where('id', $row->id)->update(['status' => 'done', 'updated_at' => now()]);
             Log::info('GenerateCampaignJob: deferred retried', ['deferred_id' => $row->id, 'batches' => count($batches), 'ok' => $ok]);
         } catch (\Throwable $e) {
-            DB::connection(self::CONN)->table('deferred_batches')->where('id', $row->id)->update(['status' => 'ready', 'updated_at' => now()]);
+            // loadRetry вернуть в 'accumulating' (иначе retry-deferred подхватит как discovery).
+            DB::connection(self::CONN)->table('deferred_batches')->where('id', $row->id)
+                ->update(['status' => $this->loadRetry ? 'accumulating' : 'ready', 'updated_at' => now()]);
             Log::error('GenerateCampaignJob(retry): фатально', ['deferred_id' => $row->id, 'error' => mb_substr($e->getMessage(), 0, 400)]);
         }
     }

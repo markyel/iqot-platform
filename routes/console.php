@@ -51,6 +51,14 @@ Schedule::command('emails:retry-deferred')
     ->everyFifteenMinutes()
     ->withoutOverlapping();
 
+// Накопительная отсрочка по загрузке получателей (Version A): выпуск накопленных
+// анонимных батчей (reason='recipient_load'), когда набралось target однородных позиций
+// / пул разгрузился / истёк max_hold. Каждые 15 мин. Флаг EMAILS_LOAD_DEFER_ENABLED
+// (команда сама проверяет).
+Schedule::command('emails:process-load-deferred')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping();
+
 // Приём почты: диспетчер опроса IMAP активных ящиков (замена n8n «Receive and
 // Route Emails v3»). Ответы приходят в любое время — без рабочего окна. Защита
 // от наложения: withoutOverlapping + Cache::lock на ящик внутри job.

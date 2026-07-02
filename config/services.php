@@ -99,6 +99,21 @@ return [
         'gate_min_match_rate' => (int) env('EMAILS_POOL_MIN_MATCH_RATE', 25), // %
     ],
 
+    // Накопительная отсрочка по загрузке получателей (Version A). Тонкий АНОНИМНЫЙ батч
+    // (< target_items позиций), чей пул поставщиков заметно перегружен (доля адресатов с
+    // pending >= loaded_pending превышает loaded_fraction_pct%), откладывается в
+    // deferred_batches (reason='recipient_load', status='accumulating'). Команда
+    // emails:process-load-deferred копит однородные (тип+домен) позиции и выпускает батч,
+    // когда набралось >= target_items ЛИБО пул разгрузился ЛИБО прошло max_hold_hours.
+    // Именные заявки НЕ откладываются (клиентский приоритет). За флагом (по умолч. off).
+    'email_load_defer' => [
+        'enabled' => (bool) env('EMAILS_LOAD_DEFER_ENABLED', false),
+        'target_items' => (int) env('EMAILS_LOAD_DEFER_TARGET', 3),
+        'loaded_pending' => (int) env('EMAILS_LOAD_DEFER_LOADED_PENDING', 10),
+        'loaded_fraction_pct' => (int) env('EMAILS_LOAD_DEFER_FRACTION', 10), // %
+        'max_hold_hours' => (int) env('EMAILS_LOAD_DEFER_MAX_HOLD_HOURS', 48),
+    ],
+
     // Двухэтапный таргетинг рассылки (#4): перед отправкой ищем позиции батча в
     // Яндексе (1 запрос на позицию, много результатов), делим пул на A (сайт нашёлся
     // → письмо со ссылками-намёками) и B (как раньше). Новые домены → discovery.
