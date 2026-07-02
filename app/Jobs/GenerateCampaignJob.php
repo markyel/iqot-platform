@@ -11,7 +11,9 @@ use App\Services\Generate\CampaignPersister;
 use App\Services\Generate\CampaignSenderAssigner;
 use App\Services\Generate\CampaignSupplierSelector;
 use App\Services\Generate\CampaignTokenGenerator;
+use App\Services\Generate\SenderDailyCapacity;
 use App\Services\Generate\SupplierTargetingService;
+use App\Services\Generate\WarmupBatchSplitter;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -64,6 +66,15 @@ class GenerateCampaignJob implements ShouldQueue
 
     /** Повтор = выпуск накопителя по загрузке (recipient_load) → таргетинг СВЕЖИЙ. */
     private bool $loadRetry = false;
+
+    /** Повтор = выпуск отсрочки по капасити (sender_capacity / ban_containment). */
+    private bool $capacityRetry = false;
+
+    /** Пин пула: генерить ТОЛЬКО этим поставщикам (отсрочка по капасити / контейнмент бана). */
+    private ?array $onlySupplierIds = null;
+
+    /** Нарезка батча по остаткам дневных лимитов (Phase 3b, EMAILS_WARMUP_ENABLED). */
+    private ?WarmupBatchSplitter $splitter = null;
 
     public function __construct(
         private readonly array $requestIds,
@@ -126,7 +137,9 @@ class GenerateCampaignJob implements ShouldQueue
             }
 
             // Назначение ящиков-отправителей глобально за прогон (round-robin).
-            (new CampaignSenderAssigner())->assign($batches);
+            $assigner = new CampaignSenderAssigner();
+            $assigner->assign($batches);
+            $this->splitter = new WarmupBatchSplitter($assigner, new SenderDailyCapacity());
 
             $supplierSelector = new CampaignSupplierSelector();
             $tokenGenerator = new CampaignTokenGenerator(
@@ -204,10 +217,19 @@ class GenerateCampaignJob implements ShouldQueue
         }
 
         $suppliers = $supplierSelector->select($batch);
+
+        // Пин пула (повтор отсрочки по капасити / контейнмент бана): генерим ТОЛЬКО
+        // тем поставщикам, чьи письма были отложены/сняты — без дублей уже отправленным.
+        if ($this->onlySupplierIds !== null) {
+            $this->pinSuppliers($batch);
+            $suppliers = $batch->suppliers;
+        }
+
         if ($suppliers === []) {
             Log::info('GenerateCampaignJob: нет профильных поставщиков, пропуск батча', [
                 'request_ids' => $batch->requestIds,
                 'category' => $batch->category,
+                'pinned' => $this->onlySupplierIds !== null,
             ]);
             return;
         }
@@ -230,6 +252,39 @@ class GenerateCampaignJob implements ShouldQueue
             return;
         }
 
+        // Прогрев (Phase 3b): режем батч по остаткам дневных лимитов — под-батчи,
+        // каждый со своим отправителем/стилем/токеном/телом. Что не влезло в лимиты —
+        // отсрочка (sender_capacity) до освобождения капасити. В dry-run — старый путь
+        // (без записей в deferred_batches).
+        $plan = (!$this->dryRun && $this->splitter !== null) ? $this->splitter->split($batch) : null;
+        if ($plan === null) {
+            $this->generateAndPersist($batch, $tokenGenerator, $bodyGenerator, $emailBuilder, $persister);
+            return;
+        }
+
+        [$subs, $leftover] = $plan;
+        foreach ($subs as $sub) {
+            $this->generateAndPersist($sub, $tokenGenerator, $bodyGenerator, $emailBuilder, $persister);
+        }
+        if ($subs === []) {
+            // Капасити нет совсем — откладываем весь пул (включая волну 2).
+            $this->deferBatchForCapacity($batch, array_merge($batch->suppliers, $batch->expansionSuppliers));
+        } elseif ($leftover !== []) {
+            $this->deferBatchForCapacity($batch, $leftover);
+        }
+    }
+
+    /**
+     * Генерация и запись одного (под-)батча: токен и тело по стилю ЕГО отправителя,
+     * per-supplier HTML, persist, затем discovery по кандидатам (нужен batch_id).
+     */
+    private function generateAndPersist(
+        Batch $batch,
+        CampaignTokenGenerator $tokenGenerator,
+        CampaignBodyGenerator $bodyGenerator,
+        CampaignEmailBuilder $emailBuilder,
+        CampaignPersister $persister,
+    ): void {
         $tokenGenerator->generate($batch);
         $bodyGenerator->generate($batch);
 
@@ -265,6 +320,32 @@ class GenerateCampaignJob implements ShouldQueue
     }
 
     /**
+     * Оставить в батче только пин-набор поставщиков (only_supplier_ids отложенной
+     * строки): повтор отсрочки по капасити / контейнмент бана шлёт только тем, кому
+     * письмо было отложено или снято, — уже отправленным дублей не будет.
+     */
+    private function pinSuppliers(Batch $batch): void
+    {
+        $pin = array_flip(array_map('intval', $this->onlySupplierIds ?? []));
+
+        $batch->suppliers = array_values(array_filter(
+            $batch->suppliers,
+            static fn ($s) => isset($pin[(int) ($s['id'] ?? 0)])
+        ));
+        $batch->expansionSuppliers = array_values(array_filter(
+            $batch->expansionSuppliers,
+            static fn ($s) => isset($pin[(int) ($s['id'] ?? 0)])
+        ));
+        $batch->supplierIds = [];
+        foreach ($batch->suppliers as $s) {
+            $id = (int) ($s['id'] ?? 0);
+            if ($id > 0 && !in_array($id, $batch->supplierIds, true)) {
+                $batch->supplierIds[] = $id;
+            }
+        }
+    }
+
+    /**
      * #4 фаза 4a/4b: Яндекс-поиск позиций батча → группа A (сайт нашёлся) получает
      * found_urls для письма со ссылками-намёками; новые домены-кандидаты уходят в
      * фоновый discovery (анализ сайта + авто-добавление поставщика с таксономией).
@@ -276,10 +357,10 @@ class GenerateCampaignJob implements ShouldQueue
         }
 
         try {
-            if ($this->deferredBatchId && !$this->loadRetry) {
+            if ($this->deferredBatchId && !$this->loadRetry && !$this->capacityRetry) {
                 // Повтор гейта качества: переиспользуем сохранённую Яндекс-выдачу (без
-                // нового поиска), матчим с уже обогащённым пулом. Для recipient_load
-                // (loadRetry) выдачи нет — таргетинг гоним СВЕЖИЙ (ветка else).
+                // нового поиска), матчим с уже обогащённым пулом. Для recipient_load /
+                // sender_capacity выдачи нет — таргетинг гоним СВЕЖИЙ (ветка else).
                 $svc = SupplierTargetingService::make();
                 $res = $svc->matchPool($this->retryFound, $batch->supplierIds)
                     + ['found' => $this->retryFound, 'searched_items' => count($this->retryFound) > 0 ? 1 : 0];
@@ -473,6 +554,56 @@ class GenerateCampaignJob implements ShouldQueue
         ]);
     }
 
+    /**
+     * Отложить остаток батча по капасити (reason='sender_capacity',
+     * status='accumulating'): на этих поставщиков не хватило остатков дневных лимитов
+     * (или глобального потолка). Пин пула (only_supplier_ids) гарантирует, что повтор
+     * (emails:process-capacity-deferred → retry) сгенерит письма ТОЛЬКО им — без
+     * дублей уже обработанным. Позиции — все позиции батча (те же для всех адресатов).
+     *
+     * @param array<int,array<string,mixed>> $suppliers
+     */
+    private function deferBatchForCapacity(Batch $batch, array $suppliers, string $reason = 'sender_capacity'): void
+    {
+        if ($this->dryRun) {
+            return;
+        }
+        $supplierIds = [];
+        foreach ($suppliers as $s) {
+            $id = (int) ($s['id'] ?? 0);
+            if ($id > 0 && !in_array($id, $supplierIds, true)) {
+                $supplierIds[] = $id;
+            }
+        }
+        $itemIds = array_values(array_filter(array_map(static fn ($it) => (int) ($it['id'] ?? 0), $batch->items)));
+        if ($supplierIds === [] || $itemIds === []) {
+            return;
+        }
+
+        $deferredId = (int) DB::connection(self::CONN)->table('deferred_batches')->insertGetId([
+            'request_ids' => json_encode($batch->requestIds, JSON_UNESCAPED_UNICODE),
+            'item_ids' => json_encode($itemIds, JSON_UNESCAPED_UNICODE),
+            'sender_id' => (int) ($batch->sender['id'] ?? 0) ?: null,
+            'product_type_id' => !empty($batch->productTypeIds) ? (int) $batch->productTypeIds[0] : null,
+            'domain_id' => !empty($batch->domainIds) ? (int) $batch->domainIds[0] : null,
+            'only_supplier_ids' => json_encode($supplierIds, JSON_UNESCAPED_UNICODE),
+            'found_domains' => json_encode([], JSON_UNESCAPED_UNICODE),
+            'candidates_total' => 0,
+            'candidates_done' => 0,
+            'status' => 'accumulating',
+            'reason' => $reason,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Log::info('GenerateCampaignJob: batch deferred (capacity)', [
+            'deferred_id' => $deferredId,
+            'reason' => $reason,
+            'suppliers' => count($supplierIds),
+            'items' => count($itemIds),
+        ]);
+    }
+
     /** Уникальные нормализованные email пула поставщиков. @param array<int,array<string,mixed>> $suppliers @return array<int,string> */
     private function poolEmails(array $suppliers): array
     {
@@ -504,6 +635,9 @@ class GenerateCampaignJob implements ShouldQueue
      * переиспользуем сохранённую Яндекс-выдачу, генерим БЕЗ гейта.
      * Для reason='recipient_load' (loadRetry) — выпуск накопителя: свежий таргетинг,
      * строка уже заклеймлена командой process-load-deferred в 'processing'.
+     * Для reason='sender_capacity'/'ban_containment' (capacityRetry) — выпуск отсрочки
+     * по лимитам прогрева: свежий таргетинг, пин пула only_supplier_ids (письма только
+     * отложенным/снятым адресатам), клейм командой process-capacity-deferred.
      */
     private function handleRetry(): void
     {
@@ -515,13 +649,19 @@ class GenerateCampaignJob implements ShouldQueue
         }
 
         $this->loadRetry = ((string) $row->reason === 'recipient_load');
+        $this->capacityRetry = in_array((string) $row->reason, ['sender_capacity', 'ban_containment'], true);
 
-        if ($this->loadRetry) {
-            // Накопитель уже заклеймлен командой process-load-deferred в 'processing'.
+        if ($this->loadRetry || $this->capacityRetry) {
+            // Строка уже заклеймлена командой (process-load-deferred /
+            // process-capacity-deferred) в 'processing'.
             if ((string) $row->status !== 'processing') {
                 return;
             }
             $this->retryFound = []; // выдачи нет — таргетинг пойдёт свежий
+            if ($this->capacityRetry && !empty($row->only_supplier_ids)) {
+                $pin = array_values(array_filter(array_map('intval', (array) (json_decode((string) $row->only_supplier_ids, true) ?: []))));
+                $this->onlySupplierIds = $pin !== [] ? $pin : null;
+            }
         } else {
             // Гейт качества: клеймим ready→processing (повторный тик не возьмёт тот же).
             if ((string) $row->status !== 'ready') {
@@ -551,7 +691,9 @@ class GenerateCampaignJob implements ShouldQueue
 
             $grouper = new CampaignItemGrouper($categories, $useNewRouting, (int) ($cfg['items_per_batch'] ?? 5));
             $batches = $grouper->group($items);
-            (new CampaignSenderAssigner())->assign($batches);
+            $assigner = new CampaignSenderAssigner();
+            $assigner->assign($batches);
+            $this->splitter = new WarmupBatchSplitter($assigner, new SenderDailyCapacity());
 
             $supplierSelector = new CampaignSupplierSelector();
             $tokenGenerator = new CampaignTokenGenerator($client, (string) ($cfg['token_model'] ?? 'gpt-4o-mini'), (bool) ($cfg['token_use_ai'] ?? true));
@@ -572,9 +714,10 @@ class GenerateCampaignJob implements ShouldQueue
             DB::connection(self::CONN)->table('deferred_batches')->where('id', $row->id)->update(['status' => 'done', 'updated_at' => now()]);
             Log::info('GenerateCampaignJob: deferred retried', ['deferred_id' => $row->id, 'batches' => count($batches), 'ok' => $ok]);
         } catch (\Throwable $e) {
-            // loadRetry вернуть в 'accumulating' (иначе retry-deferred подхватит как discovery).
+            // loadRetry/capacityRetry вернуть в 'accumulating' (иначе retry-deferred
+            // подхватит как discovery).
             DB::connection(self::CONN)->table('deferred_batches')->where('id', $row->id)
-                ->update(['status' => $this->loadRetry ? 'accumulating' : 'ready', 'updated_at' => now()]);
+                ->update(['status' => ($this->loadRetry || $this->capacityRetry) ? 'accumulating' : 'ready', 'updated_at' => now()]);
             Log::error('GenerateCampaignJob(retry): фатально', ['deferred_id' => $row->id, 'error' => mb_substr($e->getMessage(), 0, 400)]);
         }
     }

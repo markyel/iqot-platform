@@ -67,6 +67,14 @@ Schedule::command('emails:warmup-ramp')
     ->timezone('Europe/Moscow')
     ->withoutOverlapping();
 
+// Выпуск отсрочек по капасити прогрева (Phase 3b): остатки батчей, не влезшие в
+// дневные лимиты (sender_capacity), и адресаты, снятые при бане ящика
+// (ban_containment), — перегенерация другими ящиками, когда лимиты освободились.
+// Каждые 30 мин. Флаг EMAILS_WARMUP_ENABLED (команда сама проверяет).
+Schedule::command('emails:process-capacity-deferred')
+    ->everyThirtyMinutes()
+    ->withoutOverlapping();
+
 // Приём почты: диспетчер опроса IMAP активных ящиков (замена n8n «Receive and
 // Route Emails v3»). Ответы приходят в любое время — без рабочего окна. Защита
 // от наложения: withoutOverlapping + Cache::lock на ящик внутри job.

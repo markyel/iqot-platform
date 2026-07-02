@@ -50,6 +50,26 @@ class CampaignSenderAssigner
     }
 
     /**
+     * Пул активных отправителей (для WarmupBatchSplitter: нарезка по остаткам лимитов).
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function senderPool(): array
+    {
+        return $this->loadSenderPool();
+    }
+
+    /**
+     * Полный профиль отправителя (для WarmupBatchSplitter: сендер под-батча).
+     *
+     * @return array<string,mixed>
+     */
+    public function fullSender(int $senderId): array
+    {
+        return $this->loadFullSender($senderId);
+    }
+
+    /**
      * @param array<int,array<string,mixed>> $pool
      * @param array<int,array<string,mixed>> $personal
      * @param array<int,array<string,mixed>> $shared

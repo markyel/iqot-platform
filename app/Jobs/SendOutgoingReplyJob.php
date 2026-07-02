@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Reports\OutgoingReply;
 use App\Models\Reports\Sender;
 use App\Services\Senders\OutgoingReplySender;
+use App\Services\Senders\SenderBanContainment;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -222,6 +223,10 @@ class SendOutgoingReplyJob implements ShouldQueue
             'block_reason' => mb_substr($reason, 0, 255),
             'last_block_at' => now(),
         ])->save();
+
+        // Контейнмент на лету: снять pending-письма ящика + отложить на переброс
+        // другими отправителями (Phase 3b, за флагом EMAILS_WARMUP_ENABLED).
+        SenderBanContainment::contain((int) $sender->id, 'mailbox_disabled');
     }
 
     /**
@@ -248,6 +253,11 @@ class SendOutgoingReplyJob implements ShouldQueue
         }
 
         $sender->forceFill($data)->save();
+
+        if (array_key_exists('is_active', $data)) {
+            // Деактивация по 3-й блокировке за сутки — контейнмент как при бане.
+            SenderBanContainment::contain((int) $sender->id, 'ratelimit_deactivated');
+        }
     }
 
     public function failed(\Throwable $exception): void

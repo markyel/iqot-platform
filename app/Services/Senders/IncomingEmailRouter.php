@@ -525,6 +525,9 @@ class IncomingEmailRouter
                     'sender_id' => $senderId,
                     'spam_reject_count' => $count,
                 ]);
+                // Контейнмент на лету: снять его pending-письма + отложить на переброс
+                // другими ящиками (Phase 3b, за флагом EMAILS_WARMUP_ENABLED).
+                SenderBanContainment::contain($senderId, 'spam_rejects');
             }
         }
     }

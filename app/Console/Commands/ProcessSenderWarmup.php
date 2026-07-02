@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\Senders\SenderBanContainment;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -91,6 +92,11 @@ class ProcessSenderWarmup extends Command
                 $this->line(sprintf("  sender#%d %s: %s (вчера отправлено %d)", $s->id, $s->email, $action, $sentYesterday));
             } else {
                 DB::connection(self::CONN)->table('senders')->where('id', $s->id)->update($update);
+                if ($action === 'block') {
+                    // Повторный бан → блок генерации: снять его pending-письма и
+                    // отложить на переброс другими отправителями (Phase 3b).
+                    SenderBanContainment::contain((int) $s->id, 'repeat_ban');
+                }
             }
         }
 

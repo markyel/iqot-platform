@@ -129,6 +129,7 @@ return [
         'step_pct' => (int) env('EMAILS_WARMUP_STEP_PCT', 20),      // +% за успешный день
         'cap' => (int) env('EMAILS_WARMUP_CAP', 500),               // потолок дневного лимита ящика
         'global_daily_cap' => (int) env('EMAILS_GLOBAL_DAILY_CAP', 10000), // потолок писем/сутки на всю платформу
+        'max_sub_batches' => (int) env('EMAILS_WARMUP_MAX_SUBBATCHES', 10), // максимум под-батчей на батч (2 AI-вызова каждый)
     ],
 
     // Каналы отправки (Phase 3b): пул «релей + source-IP» для диверсификации репутации.
