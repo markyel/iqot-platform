@@ -478,33 +478,29 @@ class CampaignEmailBuilder
      */
     private function renderTable(array $items, array $cfg, array $style, array $labels, array $columns, string $emptyVal, bool $showBorders): string
     {
-        $headerBg = $style['header_bg'] ?? '#2c5aa0';
-        $headerText = $style['header_text'] ?? '#ffffff';
-        $rowOdd = $style['row_odd'] ?? '#ffffff';
-        $rowEven = $style['row_even'] ?? '#f5f7fa';
-        $borderColor = $style['border_color'] ?? '#ddd';
+        // Плоская таблица (деливерабилити): без маркетинговой окраски — нет цветной
+        // шапки/полосок/внешних рамок. Только тонкие серые линии-разделители, как в
+        // обычном деловом письме. Цвета из config игнорируем намеренно (spam-фильтры
+        // не любят «баннерные» HTML-таблицы; чистый текст доходит лучше).
         $fontSize = $style['font_size'] ?? '10pt';
 
-        $borderStyle = $showBorders ? "1px solid {$borderColor}" : 'none';
-
-        $html = "<table style=\"width:100%;border-collapse:collapse;margin:20px 0;font-size:{$fontSize};border:{$borderStyle};\">";
+        $html = "<table style=\"width:100%;border-collapse:collapse;margin:16px 0;font-size:{$fontSize};\">";
 
         if (($cfg['show_header'] ?? null) !== false) {
-            $html .= "<thead><tr style=\"background:{$headerBg};color:{$headerText};\">";
+            $html .= '<thead><tr>';
             foreach ($columns as $col) {
                 $label = $labels[$col] ?? $this->getDefaultLabel((string) $col);
-                $html .= "<th style=\"padding:12px 8px;text-align:left;font-weight:bold;\">{$label}</th>";
+                $html .= "<th style=\"padding:6px 8px;text-align:left;font-weight:bold;border-bottom:2px solid #999;\">{$label}</th>";
             }
             $html .= '</tr></thead>';
         }
 
         $html .= '<tbody>';
         foreach ($items as $idx => $item) {
-            $bgColor = $idx % 2 === 0 ? $rowOdd : $rowEven;
-            $html .= "<tr style=\"background:{$bgColor};\">";
+            $html .= '<tr>';
             foreach ($columns as $col) {
                 $value = $this->getCellValue($item, (string) $col, $idx, $cfg, $style, $emptyVal);
-                $html .= "<td style=\"padding:10px 8px;border-bottom:1px solid #ddd;\">{$value}</td>";
+                $html .= "<td style=\"padding:6px 8px;border-bottom:1px solid #ddd;\">{$value}</td>";
             }
             $html .= '</tr>';
         }
@@ -577,19 +573,18 @@ class CampaignEmailBuilder
      */
     private function renderCards(array $items, array $cfg, array $style, array $labels, string $emptyVal): string
     {
-        $cardBg = $style['card_bg'] ?? '#ffffff';
-        $cardBorder = $style['card_border'] ?? '#1a3a5a';
-        $headerColor = $style['header_color'] ?? '#1a3a5a';
-        $labelColor = $style['label_color'] ?? '#666';
+        // Плоские «карточки» (деливерабилити): без цветной рамки/радиуса/цветного
+        // заголовка — обычный текстовый блок на позицию (жирное название + строки
+        // без цветных лейблов). Маркетинговую окраску из config игнорируем.
         $fontSize = $style['font_size'] ?? '10pt';
         $columns = $cfg['columns'] ?? ['name', 'brand', 'article', 'quantity'];
 
-        $html = "<div style=\"margin:20px 0;font-size:{$fontSize};\">";
+        $html = "<div style=\"margin:16px 0;font-size:{$fontSize};\">";
 
         foreach ($items as $idx => $item) {
-            $html .= "<div style=\"background:{$cardBg};border:2px solid {$cardBorder};border-radius:8px;padding:15px;margin:15px 0;\">";
+            $html .= '<div style="margin:12px 0;">';
             $itemName = $this->cleanValue($item['name'] ?? null, 'Товар');
-            $html .= "<h3 style=\"margin:0 0 12px 0;color:{$headerColor};font-size:14pt;\">" . ($idx + 1) . ". {$itemName}</h3>";
+            $html .= "<p style=\"margin:0 0 4px 0;font-weight:bold;\">" . ($idx + 1) . ". {$itemName}</p>";
 
             foreach ($columns as $col) {
                 if ($col === 'name' || $col === 'index') {
@@ -599,14 +594,14 @@ class CampaignEmailBuilder
 
                 if ($col === 'quantity') {
                     $val = '<strong>' . $this->formatQty($item['quantity'] ?? null, '1') . ' ' . $this->cleanValue($item['unit'] ?? null, 'шт') . '</strong>';
-                    $html .= "<p style=\"margin:5px 0;\"><span style=\"color:{$labelColor};\">{$label}:</span> {$val}</p>";
+                    $html .= "<p style=\"margin:2px 0 2px 14px;\">{$label}: {$val}</p>";
                 } elseif ($col === 'description') {
                     if ($this->hasValue($item['description'] ?? null)) {
-                        $html .= "<p style=\"margin:5px 0;\"><span style=\"color:{$labelColor};\">{$label}:</span> " . $this->cleanValue($item['description'] ?? null, $emptyVal) . '</p>';
+                        $html .= "<p style=\"margin:2px 0 2px 14px;\">{$label}: " . $this->cleanValue($item['description'] ?? null, $emptyVal) . '</p>';
                     }
                 } else {
                     if ($this->hasValue($item[$col] ?? null)) {
-                        $html .= "<p style=\"margin:5px 0;\"><span style=\"color:{$labelColor};\">{$label}:</span> " . $this->cleanValue($item[$col] ?? null, $emptyVal) . '</p>';
+                        $html .= "<p style=\"margin:2px 0 2px 14px;\">{$label}: " . $this->cleanValue($item[$col] ?? null, $emptyVal) . '</p>';
                     }
                 }
             }
@@ -956,7 +951,9 @@ class CampaignEmailBuilder
 
         switch ($type) {
             case 'static_header':
-                return "<div style=\"text-align:center;margin-bottom:20px;\">\n        <h1 style=\"color:{$headerColor};font-size:18pt;margin:0;\">" . ($block['content'] ?? '') . "</h1>\n      </div>";
+                // Плоский заголовок (деливерабилити): без центрированного цветного
+                // баннера-<h1> — обычная жирная строка, как в деловом письме.
+                return "<div style=\"margin:0 0 14px 0;\"><p style=\"margin:0;font-weight:bold;{$textStyles}\">" . ($block['content'] ?? '') . '</p></div>';
 
             case 'ai_greeting':
                 $greeting = $aiContent['greeting'] ?: $this->getFallbackGreeting($block['tone'] ?? null);
