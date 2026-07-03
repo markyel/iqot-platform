@@ -99,6 +99,13 @@ class SupplierReplyPersister
             ]);
     }
 
+    /**
+     * Исходное письмо очереди для пары (батч, поставщик). Может вернуть NULL:
+     * поставщик опознан по адресу отправителя (IncomingEmailRouter::findSupplierByEmail),
+     * а не по email_queue.token — тогда строки очереди для этой пары нет. Колонка
+     * request_item_responses.email_queue_id nullable именно под этот кейс
+     * (миграция 2026_07_03_120000): оффер сохраняем без исходного письма очереди.
+     */
     private function resolveEmailQueueId(int $batchId, int $supplierId): ?int
     {
         $row = DB::connection(self::CONN)->table('email_queue')
