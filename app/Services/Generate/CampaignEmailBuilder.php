@@ -971,9 +971,10 @@ class CampaignEmailBuilder
                 return "<div style=\"margin:15px 0;{$textStyles}white-space:pre-line;\">" . ($block['content'] ?? '') . '</div>';
 
             case 'requirements_box':
+                // Плоско: без цветной плашки и левой цветной полосы — обычный абзац.
                 $boxContent = (string) ($block['content'] ?? '');
                 $boxContent = str_replace("\n", '<br>', $boxContent);
-                return "<div style=\"background:#f5f7fa;border-left:4px solid {$headerColor};padding:15px;margin:20px 0;{$textStyles}\">\n        {$boxContent}\n      </div>";
+                return "<div style=\"margin:16px 0;{$textStyles}\">{$boxContent}</div>";
 
             case 'ai_closing':
                 $closing = $aiContent['closing'] ?: 'Буду признателен за оперативный ответ.';
@@ -990,7 +991,8 @@ class CampaignEmailBuilder
                 }
                 $innLine = !empty($organization['inn']) ? "ИНН: {$organization['inn']}" : '';
                 $legal = $organization['legal_address'] ?? '';
-                return "<div style=\"background:#f5f5f5;padding:15px;margin-top:20px;font-size:9pt;color:#666;text-align:center;\">\n        <strong>{$organization['name']}</strong><br>\n        {$innLine}<br>\n        {$legal}\n      </div>";
+                // Плоско: без серой плашки/центрирования — обычная мелкая подпись-футер.
+                return "<div style=\"margin-top:16px;font-size:9pt;color:#666;\">\n        <strong>{$organization['name']}</strong><br>\n        {$innLine}<br>\n        {$legal}\n      </div>";
 
             case 'token':
                 return "<div style=\"margin-top:20px;\"><p style=\"margin:0;color:#ffffff;font-size:1px;line-height:1px;mso-hide:all;\">Ref: {$token}</p></div>";
