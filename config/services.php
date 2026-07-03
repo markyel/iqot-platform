@@ -151,6 +151,8 @@ return [
         'reenable_min_sent' => (int) env('EMAILS_SPAM_GUARD_REENABLE_MIN_SENT', 10), // объём для ВОЗВРАТА (мягкий)
         'disable_rate_pct' => (float) env('EMAILS_SPAM_GUARD_DISABLE_PCT', 15),   // порог доли спам-реджекта
         'dead_rate_pct' => (float) env('EMAILS_SPAM_GUARD_DEAD_PCT', 10),         // порог доли мёртвых адресов (страховка)
+        'today_disable_pct' => (float) env('EMAILS_SPAM_GUARD_TODAY_PCT', 25),    // порог доли спама за ТЕКУЩИЕ сутки (ловит резкий всплеск)
+        'today_min_sent' => (int) env('EMAILS_SPAM_GUARD_TODAY_MIN_SENT', 30),    // мин. отправок сегодня для дневного триггера
         'reenable_rate_pct' => (float) env('EMAILS_SPAM_GUARD_REENABLE_PCT', 8),
     ],
 

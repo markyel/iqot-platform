@@ -51,19 +51,22 @@ class SpamRejectGuard extends Command
         $disablePct = (float) ($cfg['disable_rate_pct'] ?? 15);
         $reenablePct = (float) ($cfg['reenable_rate_pct'] ?? 8);
         $deadPct = (float) ($cfg['dead_rate_pct'] ?? 10);
+        // Дневной триггер: резкий всплеск за ТЕКУЩИЕ сутки, который 3-дневное среднее
+        // ещё размазывает под порог — ловим сразу (иначе ящик жжёт репутацию до
+        // следующего дня, пока окно не «догонит»).
+        $todayPct = (float) ($cfg['today_disable_pct'] ?? 25);
+        $todayMinSent = max(1, (int) ($cfg['today_min_sent'] ?? 30));
         $dry = (bool) $this->option('dry-run');
         $since = now()->subDays($windowDays);
+        $todayStart = now('Europe/Moscow')->startOfDay()->utc();
 
-        // Отправлено за окно по ящику.
-        $sent = [];
-        foreach (DB::connection(self::CONN)->table('email_queue')
-            ->whereNotNull('sent_at')->where('sent_at', '>=', $since)
-            ->selectRaw('sender_id, COUNT(*) n')->groupBy('sender_id')->get() as $r) {
-            $sent[(int) $r->sender_id] = (int) $r->n;
-        }
+        // Отправлено за окно и за СЕГОДНЯ (МСК) по ящику.
+        $sent = $this->sentBySender($since);
+        $sentToday = $this->sentBySender($todayStart);
 
-        // Проблемные бунсы за окно по ящику: спам + мёртвые адреса.
+        // Проблемные бунсы: за окно (спам+мёртвые) и спам за сегодня.
         [$spam, $dead] = $this->bounceStatsBySender($since);
+        [$spamToday] = $this->bounceStatsBySender($todayStart);
 
         // Кандидаты — активные на приём ящики.
         $senders = DB::connection(self::CONN)->table('senders')
@@ -73,50 +76,68 @@ class SpamRejectGuard extends Command
         $disabled = 0; $reenabled = 0; $skipped = 0;
         foreach ($senders as $s) {
             $sid = (int) $s->id;
-            $sw = $sent[$sid] ?? 0;
             $isDisabled = (int) $s->sending_disabled === 1;
-            $minForThis = $isDisabled ? $reenableMinSent : $minSent;
-            if ($sw < $minForThis) {
+            $sw = $sent[$sid] ?? 0;
+            $st = $sentToday[$sid] ?? 0;
+            $minForWindow = $isDisabled ? $reenableMinSent : $minSent;
+            $hasWindow = $sw >= $minForWindow;
+            $hasToday = $st >= $todayMinSent;
+            if (!$hasWindow && !$hasToday) {
                 $skipped++;
-                continue; // мало данных — не судим
+                continue; // мало данных ни за окно, ни за сегодня
             }
-            $sp = $spam[$sid] ?? 0;
-            $pm = $dead[$sid] ?? 0;
-            $spamRate = 100 * $sp / $sw;
-            $deadRate = 100 * $pm / $sw;
 
-            $overSpam = $spamRate >= $disablePct;
-            $overDead = $deadRate >= $deadPct;
+            $spamRate = ($hasWindow && $sw > 0) ? 100 * ($spam[$sid] ?? 0) / $sw : 0.0;
+            $deadRate = ($hasWindow && $sw > 0) ? 100 * ($dead[$sid] ?? 0) / $sw : 0.0;
+            $todayRate = ($hasToday && $st > 0) ? 100 * ($spamToday[$sid] ?? 0) / $st : 0.0;
 
-            if (!$isDisabled && ($overSpam || $overDead)) {
+            $overSpam = $hasWindow && $spamRate >= $disablePct;
+            $overDead = $hasWindow && $deadRate >= $deadPct;
+            $overToday = $hasToday && $todayRate >= $todayPct;
+
+            if (!$isDisabled && ($overSpam || $overDead || $overToday)) {
                 $why = [];
-                if ($overSpam) $why[] = sprintf('spam %.1f%% (%d/%d)', $spamRate, $sp, $sw);
-                if ($overDead) $why[] = sprintf('dead %.1f%% (%d/%d)', $deadRate, $pm, $sw);
+                if ($overSpam) $why[] = sprintf('spam %.1f%% (%d/%d, окно)', $spamRate, $spam[$sid] ?? 0, $sw);
+                if ($overDead) $why[] = sprintf('dead %.1f%% (%d/%d, окно)', $deadRate, $dead[$sid] ?? 0, $sw);
+                if ($overToday) $why[] = sprintf('today %.1f%% (%d/%d)', $todayRate, $spamToday[$sid] ?? 0, $st);
                 $reason = implode(', ', $why);
                 $this->line(sprintf('  ОТКЛЮЧИТЬ #%d %s: %s', $sid, $s->email, $reason));
                 if (!$dry) {
                     $flipped = DB::connection(self::CONN)->table('senders')->where('id', $sid)->where('sending_disabled', 0)
                         ->update(['sending_disabled' => 1, 'last_block_at' => now(), 'block_reason' => mb_substr($reason, 0, 255), 'updated_at' => now()]);
                     if ($flipped) {
-                        SenderBanContainment::contain($sid, $overDead && !$overSpam ? 'dead_rate' : 'spam_rate');
-                        Log::warning('SpamRejectGuard: sender отключён', ['sender_id' => $sid, 'spam_rate' => round($spamRate, 1), 'dead_rate' => round($deadRate, 1), 'sent' => $sw]);
+                        SenderBanContainment::contain($sid, ($overDead && !$overSpam && !$overToday) ? 'dead_rate' : 'spam_rate');
+                        Log::warning('SpamRejectGuard: sender отключён', ['sender_id' => $sid, 'spam_rate' => round($spamRate, 1), 'today_rate' => round($todayRate, 1), 'dead_rate' => round($deadRate, 1)]);
                     }
                 }
                 $disabled++;
-            } elseif ($isDisabled && $spamRate < $reenablePct && $deadRate < $deadPct) {
-                $this->line(sprintf('  ВЕРНУТЬ  #%d %s: spam %.1f%%, dead %.1f%% (%d)', $sid, $s->email, $spamRate, $deadRate, $sw));
+            } elseif ($isDisabled && $hasWindow && $spamRate < $reenablePct && $deadRate < $deadPct && $todayRate < $disablePct) {
+                // Возврат: окно чистое И сегодня не полыхает.
+                $this->line(sprintf('  ВЕРНУТЬ  #%d %s: spam %.1f%%, dead %.1f%%, today %.1f%% (%d)', $sid, $s->email, $spamRate, $deadRate, $todayRate, $sw));
                 if (!$dry) {
                     DB::connection(self::CONN)->table('senders')->where('id', $sid)->where('sending_disabled', 1)
                         ->update(['sending_disabled' => 0, 'spam_reject_count' => 0, 'updated_at' => now()]);
-                    Log::info('SpamRejectGuard: sender возвращён', ['sender_id' => $sid, 'spam_rate' => round($spamRate, 1), 'dead_rate' => round($deadRate, 1)]);
+                    Log::info('SpamRejectGuard: sender возвращён', ['sender_id' => $sid, 'spam_rate' => round($spamRate, 1)]);
                 }
                 $reenabled++;
             }
         }
 
-        $this->info(sprintf('Гвард%s: отключено %d, возвращено %d, пропущено %d. Окно=%dд, min_sent=%d, spam>=%.0f%%, dead>=%.0f%%, возврат<%.0f%%.',
-            $dry ? ' [dry-run]' : '', $disabled, $reenabled, $skipped, $windowDays, $minSent, $disablePct, $deadPct, $reenablePct));
+        $this->info(sprintf('Гвард%s: отключено %d, возвращено %d, пропущено %d. Окно=%dд spam>=%.0f%%/dead>=%.0f%%, СЕГОДНЯ spam>=%.0f%% (мин %d), возврат<%.0f%%.',
+            $dry ? ' [dry-run]' : '', $disabled, $reenabled, $skipped, $windowDays, $disablePct, $deadPct, $todayPct, $todayMinSent, $reenablePct));
         return self::SUCCESS;
+    }
+
+    /** @return array<int,int> sender_id => отправлено с $since. */
+    private function sentBySender(\DateTimeInterface $since): array
+    {
+        $out = [];
+        foreach (DB::connection(self::CONN)->table('email_queue')
+            ->whereNotNull('sent_at')->where('sent_at', '>=', $since)
+            ->selectRaw('sender_id, COUNT(*) n')->groupBy('sender_id')->get() as $r) {
+            $out[(int) $r->sender_id] = (int) $r->n;
+        }
+        return $out;
     }
 
     /**
