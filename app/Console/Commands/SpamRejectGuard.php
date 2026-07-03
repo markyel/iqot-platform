@@ -46,6 +46,10 @@ class SpamRejectGuard extends Command
 
         $windowDays = max(1, (int) ($cfg['window_days'] ?? 3));
         $minSent = max(1, (int) ($cfg['min_sent'] ?? 30));
+        // Возврат — низкорисковая операция (если ящик всё ещё плохой, следующий прогон
+        // снова отключит), поэтому судим по мягкому порогу объёма: вытягиваем ошибочно
+        // отключённые ящики, которые после отключения почти перестали слать.
+        $reenableMinSent = max(1, (int) ($cfg['reenable_min_sent'] ?? 10));
         $disablePct = (float) ($cfg['disable_rate_pct'] ?? 15);
         $reenablePct = (float) ($cfg['reenable_rate_pct'] ?? 8);
         $dry = (bool) $this->option('dry-run');
@@ -71,14 +75,17 @@ class SpamRejectGuard extends Command
         foreach ($senders as $s) {
             $sid = (int) $s->id;
             $sw = $sent[$sid] ?? 0;
-            if ($sw < $minSent) {
+            $isDisabled = (int) $s->sending_disabled === 1;
+            // Порог объёма асимметричный: строгий для отключения, мягкий для возврата.
+            $minForThis = $isDisabled ? $reenableMinSent : $minSent;
+            if ($sw < $minForThis) {
                 $skipped++;
                 continue; // мало данных — не судим (оставляем как есть)
             }
             $sp = $spam[$sid] ?? 0;
             $rate = 100 * $sp / $sw;
 
-            if ((int) $s->sending_disabled === 0 && $rate >= $disablePct) {
+            if (!$isDisabled && $rate >= $disablePct) {
                 $this->line(sprintf('  ОТКЛЮЧИТЬ #%d %s: %.1f%% (%d/%d)', $sid, $s->email, $rate, $sp, $sw));
                 if (!$dry) {
                     $flipped = DB::connection(self::CONN)->table('senders')->where('id', $sid)->where('sending_disabled', 0)
@@ -89,7 +96,7 @@ class SpamRejectGuard extends Command
                     }
                 }
                 $disabled++;
-            } elseif ((int) $s->sending_disabled === 1 && $rate < $reenablePct) {
+            } elseif ($isDisabled && $rate < $reenablePct) {
                 $this->line(sprintf('  ВЕРНУТЬ  #%d %s: %.1f%% (%d/%d)', $sid, $s->email, $rate, $sp, $sw));
                 if (!$dry) {
                     DB::connection(self::CONN)->table('senders')->where('id', $sid)->where('sending_disabled', 1)

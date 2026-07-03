@@ -141,7 +141,8 @@ return [
     'email_spam_guard' => [
         'enabled' => (bool) env('EMAILS_SPAM_GUARD_ENABLED', false),
         'window_days' => (int) env('EMAILS_SPAM_GUARD_WINDOW_DAYS', 3),
-        'min_sent' => (int) env('EMAILS_SPAM_GUARD_MIN_SENT', 30),
+        'min_sent' => (int) env('EMAILS_SPAM_GUARD_MIN_SENT', 30),          // объём для ОТКЛЮЧЕНИЯ (строгий)
+        'reenable_min_sent' => (int) env('EMAILS_SPAM_GUARD_REENABLE_MIN_SENT', 10), // объём для ВОЗВРАТА (мягкий)
         'disable_rate_pct' => (float) env('EMAILS_SPAM_GUARD_DISABLE_PCT', 15),
         'reenable_rate_pct' => (float) env('EMAILS_SPAM_GUARD_REENABLE_PCT', 8),
     ],
