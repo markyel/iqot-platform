@@ -80,6 +80,17 @@ class SendOutgoingReplyJob implements ShouldQueue
             return;
         }
 
+        // Защита боевого IP (relay-only): не-релейный отправитель ушёл бы напрямую с
+        // основного IP — ответ terminal failed.
+        if ((bool) config('services.email_dispatch.relay_only', false)
+            && !in_array((string) $senderModel->smtp_server, (array) config('services.email_dispatch.relay_hosts', ['smtp.beget.com']), true)) {
+            $reply->update(['status' => 'failed', 'error_message' => 'relay-only: не-релейный отправитель (защита боевого IP)']);
+            Log::warning('SendOutgoingReplyJob: не-релейный отправитель заблокирован (relay-only)', [
+                'outgoing_reply_id' => $reply->id, 'sender_id' => $senderModel->id, 'smtp' => $senderModel->smtp_server,
+            ]);
+            return;
+        }
+
         // Жёсткая пауза на ящик (общая с массовой рассылкой): атомарно «занимаем слот».
         $delay = max(1, (int) ($senderModel->send_delay_seconds ?: 2));
         if (!$this->reserveSlot($senderModel->id, $delay)) {

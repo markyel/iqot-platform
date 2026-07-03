@@ -74,6 +74,14 @@ return [
         'dual_smtp_enabled' => (bool) env('EMAILS_SMTP_DUAL_ENABLED', false),
         'direct_smtp_host' => env('EMAILS_DIRECT_SMTP_HOST', '185.78.30.58'),
 
+        // ЗАЩИТА БОЕВОГО IP: слать только через релеи. Отправитель с smtp_server НЕ из
+        // whitelist relay_hosts коннектится напрямую с основного IP прода — блокируем на
+        // отправке (письмо/ответ). Whitelist = провайдеры, для которых поднят релей
+        // (сейчас только beget через /etc/hosts→релей + каналы). Пополнять при добавлении
+        // релей-прокси для нового провайдера.
+        'relay_only' => (bool) env('EMAILS_RELAY_ONLY', true),
+        'relay_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env('EMAILS_RELAY_HOSTS', 'smtp.beget.com'))))),
+
         // Адаптивный пейсинг по получателю (to_email): чтобы не задолбить поставщика
         // пачкой. На каждом тике интервал между письмами одному получателю =
         // clamp(остаток_рабочего_окна / pending_получателю, MIN, MAX). Низкая

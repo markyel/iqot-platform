@@ -94,6 +94,18 @@ class SendQueuedEmailJob implements ShouldQueue
             return;
         }
 
+        // ЗАЩИТА БОЕВОГО IP (relay-only): слать только через релеи. Не-релейный отправитель
+        // (smtp_server не в whitelist relay_hosts) коннектится НАПРЯМУЮ с основного IP прода
+        // — блокируем письмо terminal, чтобы основной IP не светился в отправке. Структурный
+        // барьер: даже если такой ящик вернут в генерацию, письмо с боевого не уйдёт.
+        if ($this->blockedByRelayOnly($senderModel)) {
+            $email->update(['status' => 'cancelled', 'error_message' => 'relay-only: не-релейный отправитель (защита боевого IP)']);
+            Log::warning('SendQueuedEmailJob: не-релейный отправитель заблокирован (relay-only)', [
+                'email_queue_id' => $email->id, 'sender_id' => $senderModel->id, 'smtp' => $senderModel->smtp_server,
+            ]);
+            return;
+        }
+
         // АНТИ-БАН ТРОТТЛ к SMTP-хосту — ПЕР-СЕРВЕРНЫЙ. Хостер банит IP за высокую
         // параллельность/частоту с одного адреса, но этот лимит — у КАЖДОГО провайдера
         // свой (разные IP/домены). Поэтому ключ гейта — по smtp_server отправителя:
@@ -379,6 +391,20 @@ class SendQueuedEmailJob implements ShouldQueue
      * Ретрай бесполезен (тот же пароль) и опасен (бан исходящего IP за 5 failed-auth).
      * Зеркало ветки 550 «sending is disabled» в SendOutgoingReplyJob.
      */
+    /**
+     * relay-only: отправитель НЕ маршрутизируется через релей (его smtp_server не в
+     * whitelist), значит уйдёт напрямую с боевого IP → блокируем. Whitelist пополняется,
+     * когда для провайдера поднят релей-прокси.
+     */
+    private function blockedByRelayOnly(Sender $sender): bool
+    {
+        if (!(bool) config('services.email_dispatch.relay_only', false)) {
+            return false;
+        }
+        $hosts = (array) config('services.email_dispatch.relay_hosts', ['smtp.beget.com']);
+        return !in_array((string) $sender->smtp_server, $hosts, true);
+    }
+
     private function deactivateSenderAuth(Sender $sender, string $reason): void
     {
         $sender->forceFill([
