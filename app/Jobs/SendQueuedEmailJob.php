@@ -271,6 +271,27 @@ class SendQueuedEmailJob implements ShouldQueue
             return;
         }
 
+        // 550 «sending is disabled» — ЯЩИК-ОТПРАВИТЕЛЬ отключён провайдером (beget),
+        // НЕ вина получателя. Как в SendOutgoingReplyJob: деактивируем отправитель +
+        // контейнмент (снять/перебросить его pending-письма), письмо — terminal error
+        // без ретрая. Получателя НЕ штрафуем (recordFailure), иначе живой адрес попадёт
+        // в блок-лист из-за нашего отключённого ящика (баг, ловившийся на проде).
+        $isDeadMailbox = (bool) preg_match('/sending is disabled for mailbox|message sending is disabled|sending is disabled/i', $message);
+        if ($isDeadMailbox) {
+            $this->deactivateSenderDisabled($sender, $message);
+            $email->update([
+                'status' => 'error',
+                'error_message' => $message,
+                'retry_count' => (int) $email->retry_count + 1,
+            ]);
+            Log::error('SendQueuedEmailJob: sender mailbox disabled → deactivated + contained', [
+                'email_queue_id' => $email->id,
+                'sender_id' => $sender->id,
+                'error' => $message,
+            ]);
+            return;
+        }
+
         // Транзиентные ошибки ТРАНСПОРТА (коннект/таймаут/DNS/сеть) — проблема
         // инфраструктуры отправителя или SMTP-хоста, НЕ получателя. Их нельзя
         // вешать на ящик получателя: при недоступности smtp-сервера (бан IP,
@@ -369,6 +390,22 @@ class SendQueuedEmailJob implements ShouldQueue
         // Контейнмент на лету: снять pending-письма ящика + отложить на переброс
         // другими отправителями (Phase 3b, за флагом EMAILS_WARMUP_ENABLED).
         SenderBanContainment::contain((int) $sender->id, 'auth_failure');
+    }
+
+    /**
+     * Деактивация отправителя при 550 «sending is disabled» (ящик отключён провайдером
+     * beget). Ретрай бесполезен (тем же ящиком снова 550). Зеркало SendOutgoingReplyJob.
+     */
+    private function deactivateSenderDisabled(Sender $sender, string $reason): void
+    {
+        $sender->forceFill([
+            'is_active' => false,
+            'last_block_at' => now(),
+            'block_reason' => mb_substr('sending disabled: ' . $reason, 0, 255),
+        ])->save();
+
+        // Контейнмент на лету: снять pending-письма ящика + отложить на переброс.
+        SenderBanContainment::contain((int) $sender->id, 'mailbox_disabled');
     }
 
     public function failed(\Throwable $exception): void
