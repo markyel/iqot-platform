@@ -55,9 +55,10 @@ return [
         // (письма ему больше не ставятся в очередь). Успех сбрасывает счётчик.
         'recipient_error_threshold' => (int) env('EMAILS_RECIPIENT_ERROR_THRESHOLD', 3),
 
-        // Сколько спам-реджектов (наше письмо забраковано как спам сервером получателя)
-        // накопит ОТПРАВИТЕЛЬ, прежде чем его отключат для генерации (sending_disabled=1,
-        // но is_active=1 — приём продолжается). Накопительный счётчик senders.spam_reject_count.
+        // (устар.) Абсолютный порог spam_reject_count для отключения из IncomingEmailRouter.
+        // Больше НЕ используется для отключения — оно вынесено в emails:spam-reject-guard
+        // (по ДОЛЕ за окно, корректная атрибуция). Счётчик spam_reject_count теперь просто
+        // копится (для видимости), а гасит/возвращает ящики гвард ниже (email_spam_guard).
         'sender_spam_threshold' => (int) env('EMAILS_SENDER_SPAM_THRESHOLD', 5),
 
         // ГЛОБАЛЬНЫЙ минимальный интервал (сек) между ЛЮБЫМИ двумя отправками всей
@@ -130,6 +131,19 @@ return [
         'cap' => (int) env('EMAILS_WARMUP_CAP', 500),               // потолок дневного лимита ящика
         'global_daily_cap' => (int) env('EMAILS_GLOBAL_DAILY_CAP', 10000), // потолок писем/сутки на всю платформу
         'max_sub_batches' => (int) env('EMAILS_WARMUP_MAX_SUBBATCHES', 10), // максимум под-батчей на батч (2 AI-вызова каждый)
+    ],
+
+    // Гвард спам-реджекта отправителей (emails:spam-reject-guard): отключение по ДОЛЕ,
+    // а не по абсолютному счётчику. Считает окно window_days: доля = спам-реджекты /
+    // отправлено (только при отправлено >= min_sent). >= disable_rate_pct → отключить;
+    // отключённый с долей < reenable_rate_pct → вернуть (гистерезис, авто-восстановление).
+    // Атрибуция спама — по ящику, на чей IMAP пришёл NDR (реальный отправитель). За флагом.
+    'email_spam_guard' => [
+        'enabled' => (bool) env('EMAILS_SPAM_GUARD_ENABLED', false),
+        'window_days' => (int) env('EMAILS_SPAM_GUARD_WINDOW_DAYS', 3),
+        'min_sent' => (int) env('EMAILS_SPAM_GUARD_MIN_SENT', 30),
+        'disable_rate_pct' => (float) env('EMAILS_SPAM_GUARD_DISABLE_PCT', 15),
+        'reenable_rate_pct' => (float) env('EMAILS_SPAM_GUARD_REENABLE_PCT', 8),
     ],
 
     // Каналы отправки (Phase 3c): пул egress-каналов для диверсификации исходящего IP

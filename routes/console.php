@@ -75,6 +75,13 @@ Schedule::command('emails:process-capacity-deferred')
     ->everyThirtyMinutes()
     ->withoutOverlapping();
 
+// Гвард спам-реджекта: отключение/возврат отправителей по ДОЛЕ спам-реджекта за окно
+// (корректная атрибуция по ящику, на чей IMAP пришёл NDR). Каждые 2 часа.
+// Флаг EMAILS_SPAM_GUARD_ENABLED (команда сама проверяет).
+Schedule::command('emails:spam-reject-guard')
+    ->everyTwoHours()
+    ->withoutOverlapping();
+
 // Приём почты: диспетчер опроса IMAP активных ящиков (замена n8n «Receive and
 // Route Emails v3»). Ответы приходят в любое время — без рабочего окна. Защита
 // от наложения: withoutOverlapping + Cache::lock на ящик внутри job.
