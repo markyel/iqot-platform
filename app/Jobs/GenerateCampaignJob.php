@@ -11,6 +11,7 @@ use App\Services\Generate\CampaignPersister;
 use App\Services\Generate\CampaignSenderAssigner;
 use App\Services\Generate\CampaignSupplierSelector;
 use App\Services\Generate\CampaignTokenGenerator;
+use App\Services\Generate\RelatedItemsClusterer;
 use App\Services\Generate\SenderDailyCapacity;
 use App\Services\Generate\SupplierTargetingService;
 use App\Services\Generate\WarmupBatchSplitter;
@@ -76,6 +77,15 @@ class GenerateCampaignJob implements ShouldQueue
     /** Нарезка батча по остаткам дневных лимитов (Phase 3b, EMAILS_WARMUP_ENABLED). */
     private ?WarmupBatchSplitter $splitter = null;
 
+    /** LLM-склейка родственных сирот к заявке-якорю (EMAILS_LOAD_CLUSTER_ENABLED). */
+    private ?RelatedItemsClusterer $orphanClusterer = null;
+
+    /** @var array<int,string> кэш названий доменов (application_domains). */
+    private array $domainNameCache = [];
+
+    /** @var array<int,string>|null кэш названий product_types. */
+    private ?array $ptNames = null;
+
     public function __construct(
         private readonly array $requestIds,
         private readonly bool $dryRun = false,
@@ -140,6 +150,7 @@ class GenerateCampaignJob implements ShouldQueue
             $assigner = new CampaignSenderAssigner();
             $assigner->assign($batches);
             $this->splitter = new WarmupBatchSplitter($assigner, new SenderDailyCapacity());
+            $this->orphanClusterer = $this->makeClusterer($client, $cfg);
 
             $supplierSelector = new CampaignSupplierSelector();
             $tokenGenerator = new CampaignTokenGenerator(
@@ -215,6 +226,13 @@ class GenerateCampaignJob implements ShouldQueue
             ]);
             return;
         }
+
+        // Смежные категории: заявка-якорь притягивает родственные отложенные сироты
+        // (LLM решает «с того же объекта»). До подбора поставщиков — чтобы объединённые
+        // product_type попали в выборку пула. Только нормальный путь (не retry/пин/dry-run,
+        // анонимные, NEW-routing). Сборка сирот ускоряет набор target и делает письмо
+        // цельным RFQ на объект.
+        $this->absorbRelatedOrphans($batch);
 
         $suppliers = $supplierSelector->select($batch);
 
@@ -631,6 +649,157 @@ class GenerateCampaignJob implements ShouldQueue
     }
 
     /**
+     * Смежные категории: заявка-якорь притягивает родственные ОТЛОЖЕННЫЕ сироты того же
+     * домена (LLM решает «с того же объекта»). Приклеенные позиции вливаются в батч
+     * (items + itemsCount + requestIds ∪ + productTypeIds ∪ → шире пул поставщиков), а их
+     * строки deferred_batches закрываются (accumulating→done). Сироты НЕ ждут друг друга —
+     * цепляются к живым заявкам. За флагом; нормальный путь, анонимные, NEW-routing.
+     */
+    private function absorbRelatedOrphans(Batch $batch): void
+    {
+        if ($this->orphanClusterer === null || $this->dryRun || $this->deferredBatchId
+            || $this->onlySupplierIds !== null || $batch->isCustomerRequest) {
+            return;
+        }
+        $domainId = !empty($batch->domainIds) ? (int) $batch->domainIds[0] : 0;
+        if ($domainId <= 0 || $batch->items === []) {
+            return;
+        }
+
+        $orphanRows = DB::connection(self::CONN)->table('deferred_batches')
+            ->where('reason', 'recipient_load')->where('status', 'accumulating')->where('domain_id', $domainId)
+            ->get(['id', 'item_ids', 'request_ids']);
+        if ($orphanRows->isEmpty()) {
+            return;
+        }
+
+        // item_id → строки; исключаем позиции СВОИХ заявок (батч — это они и есть).
+        $ownReq = array_flip(array_map('intval', $batch->requestIds));
+        $itemToRow = [];
+        $orphanItemIds = [];
+        foreach ($orphanRows as $row) {
+            $rReq = (array) (json_decode((string) $row->request_ids, true) ?: []);
+            foreach ($rReq as $rq) {
+                if (isset($ownReq[(int) $rq])) {
+                    continue 2;
+                }
+            }
+            foreach ((array) (json_decode((string) $row->item_ids, true) ?: []) as $iid) {
+                $iid = (int) $iid;
+                if ($iid > 0) { $orphanItemIds[] = $iid; $itemToRow[$iid][] = (int) $row->id; }
+            }
+        }
+        $orphanItemIds = array_values(array_unique($orphanItemIds));
+        if ($orphanItemIds === []) {
+            return;
+        }
+
+        $typeNames = $this->productTypeNames();
+        $cand = [];
+        foreach ($this->loadItemsByIds($orphanItemIds) as $it) {
+            $cand[] = ['id' => (int) $it['id'], 'name' => $it['name'] ?? '', 'brand' => $it['brand'] ?? '',
+                'article' => $it['article'] ?? '', 'type' => $typeNames[(int) ($it['product_type_id'] ?? 0)] ?? ''];
+        }
+        if ($cand === []) {
+            return;
+        }
+        $anchor = [];
+        foreach ($batch->items as $it) {
+            $anchor[] = ['name' => $it['name'] ?? '', 'brand' => $it['brand'] ?? '', 'article' => $it['article'] ?? '',
+                'type' => $typeNames[(int) ($it['product_type_id'] ?? 0)] ?? ''];
+        }
+
+        $picked = $this->orphanClusterer->pick($anchor, $cand, $this->loadDomainName($domainId));
+        if ($picked === []) {
+            return;
+        }
+
+        // Строки-источники выбранных позиций — заклеймить (accumulating→done, анти-гонка).
+        $rowsToClaim = [];
+        foreach ($picked as $iid) {
+            foreach ($itemToRow[$iid] ?? [] as $rid) {
+                $rowsToClaim[$rid] = true;
+            }
+        }
+        $claimed = [];
+        foreach (array_keys($rowsToClaim) as $rid) {
+            $ok = DB::connection(self::CONN)->table('deferred_batches')->where('id', $rid)->where('status', 'accumulating')
+                ->update(['status' => 'done', 'reason' => 'recipient_load:clustered_into_new', 'updated_at' => now()]);
+            if ($ok) {
+                $claimed[] = $rid;
+            }
+        }
+        if ($claimed === []) {
+            return; // гонка — другой прогон забрал
+        }
+
+        // Позиции заклеймленных строк целиком (строки тонкие) → влить в батч.
+        $absorbIds = [];
+        foreach ($orphanRows as $row) {
+            if (in_array((int) $row->id, $claimed, true)) {
+                foreach ((array) (json_decode((string) $row->item_ids, true) ?: []) as $iid) {
+                    $absorbIds[] = (int) $iid;
+                }
+            }
+        }
+        $absorbItems = $this->loadItemsByIds(array_values(array_unique(array_filter($absorbIds))));
+        if ($absorbItems === []) {
+            return;
+        }
+
+        $existing = array_flip(array_map(static fn ($x) => (int) ($x['id'] ?? 0), $batch->items));
+        foreach ($absorbItems as $it) {
+            $id = (int) $it['id'];
+            if (!isset($existing[$id])) {
+                $batch->items[] = $it;
+                $existing[$id] = 1;
+                $rq = (int) ($it['request_id'] ?? 0);
+                if ($rq > 0 && !in_array($rq, $batch->requestIds, true)) $batch->requestIds[] = $rq;
+                $pt = (int) ($it['product_type_id'] ?? 0);
+                if ($pt > 0 && !in_array($pt, $batch->productTypeIds, true)) $batch->productTypeIds[] = $pt;
+            }
+        }
+        $batch->itemsCount = count($batch->items);
+
+        Log::info('GenerateCampaignJob: приклеены родственные сироты (смежные категории)', [
+            'domain_id' => $domainId,
+            'absorbed_items' => count($absorbItems),
+            'claimed_rows' => $claimed,
+            'items_count' => $batch->itemsCount,
+            'product_types' => $batch->productTypeIds,
+        ]);
+    }
+
+    /** @return array<int,string> product_type_id => name (кэш). */
+    private function productTypeNames(): array
+    {
+        if ($this->ptNames === null) {
+            $this->ptNames = DB::connection(self::CONN)->table('product_types')
+                ->pluck('name', 'id')->map(static fn ($v) => (string) $v)->all();
+        }
+        return $this->ptNames;
+    }
+
+    private function loadDomainName(int $id): string
+    {
+        if (!array_key_exists($id, $this->domainNameCache)) {
+            $this->domainNameCache[$id] = (string) (DB::connection(self::CONN)->table('application_domains')
+                ->where('id', $id)->value('name') ?? '');
+        }
+        return $this->domainNameCache[$id];
+    }
+
+    /** @param array<string,mixed> $cfg */
+    private function makeClusterer(OpenAIClassifierClient $client, array $cfg): ?RelatedItemsClusterer
+    {
+        if (!(bool) config('services.email_load_defer.cluster_enabled', false)) {
+            return null;
+        }
+        $model = (string) config('services.email_load_defer.cluster_model', (string) ($cfg['token_model'] ?? 'gpt-4o-mini'));
+        return new RelatedItemsClusterer($client, $model);
+    }
+
+    /**
      * Повтор отложенного батча (гейт качества, attempt 2): discovery уже обогатил пул,
      * переиспользуем сохранённую Яндекс-выдачу, генерим БЕЗ гейта.
      * Для reason='recipient_load' (loadRetry) — выпуск накопителя: свежий таргетинг,
@@ -694,6 +863,7 @@ class GenerateCampaignJob implements ShouldQueue
             $assigner = new CampaignSenderAssigner();
             $assigner->assign($batches);
             $this->splitter = new WarmupBatchSplitter($assigner, new SenderDailyCapacity());
+            $this->orphanClusterer = $this->makeClusterer($client, $cfg);
 
             $supplierSelector = new CampaignSupplierSelector();
             $tokenGenerator = new CampaignTokenGenerator($client, (string) ($cfg['token_model'] ?? 'gpt-4o-mini'), (bool) ($cfg['token_use_ai'] ?? true));

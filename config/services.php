@@ -118,6 +118,12 @@ return [
         'loaded_pending' => (int) env('EMAILS_LOAD_DEFER_LOADED_PENDING', 10),
         'loaded_fraction_pct' => (int) env('EMAILS_LOAD_DEFER_FRACTION', 10), // %
         'max_hold_hours' => (int) env('EMAILS_LOAD_DEFER_MAX_HOLD_HOURS', 48),
+        // Смежные категории (LLM-склейка): заявка-якорь притягивает родственные отложенные
+        // сироты того же домена (позиции с того же объекта/агрегата — ролик+замок+отводка
+        // одного лифта) в одну сборную заявку. Решает LLM (1 вызов на батч с сиротами),
+        // без хардкода таксономии. Сироты цепляются к живым заявкам, а не ждут друг друга.
+        'cluster_enabled' => (bool) env('EMAILS_LOAD_CLUSTER_ENABLED', false),
+        'cluster_model' => env('EMAILS_LOAD_CLUSTER_MODEL', 'gpt-4o-mini'),
     ],
 
     // Прогрев отправителей (Phase 3): новый/сброшенный ящик стартует с малого дневного
