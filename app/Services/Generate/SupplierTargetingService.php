@@ -69,12 +69,183 @@ class SupplierTargetingService
             return $empty;
         }
 
-        // 1) Поиск: собираем сырые найденные домены (для матчинга и переиспользования).
+        // 1) Глобальный поиск позиций → домены (волна 1 + новые домены для discovery).
         $found = $this->searchItems($items, $searched);
-        // 2) Матч с пулом.
+        // 2) Матч с пулом: tier1 (кто ранжируется глобально по товару) + candidates.
         $match = $this->matchPool($found, $poolSupplierIds);
+        $tier1 = $match['tier1'];
 
-        return $match + ['found' => $found, 'searched_items' => $searched];
+        // 3) Волна 2 «добор пула»: по пул-поставщикам НЕ из tier1 делаем site:-OR запрос
+        //    (у кого из пула есть страница под контекст заявки — за пару запросов, не
+        //    по одному на сайт). found_urls волны 2 цитируют ПОЗИЦИЮ заявки (item_name).
+        $site = $this->matchPoolBySite($items, $poolSupplierIds, $tier1);
+
+        // found_urls волны 2 добавляем в groupA (classifyByTier навесит их на tier2).
+        $groupA = $match['groupA'];
+        foreach ($site['groupA'] as $sid => $hits) {
+            if (!isset($groupA[$sid])) {
+                $groupA[$sid] = $hits;
+            }
+        }
+
+        return [
+            'groupA' => $groupA,
+            'candidates' => $match['candidates'],
+            'tier1' => $tier1,
+            'tier2' => $site['tier2'],
+            'found' => $found,
+            'searched_items' => $searched,
+        ];
+    }
+
+    /**
+     * Волна 2 «добор пула»: по пул-поставщикам НЕ из tier1 (топ по confidence/rating, до
+     * wave2_pool_cap) делаем Яндекс-запрос `<термин позиций> (site:d1 | … | site:dK)` —
+     * за 1 запрос на чанк из K доменов находим, у кого из пула есть страница под контекст
+     * заявки. Ссылку кладём в found_urls, но ЦИТИРУЕМ в письме позицию заявки (item_name).
+     *
+     * @param array<int,array<string,mixed>> $items
+     * @param array<int> $poolSupplierIds
+     * @param array<int> $excludeIds уже попавшие в волну 1 (tier1)
+     * @return array{tier2:array<int>, groupA:array<int,array<int,array{url:string,item_id:int,item_name:string}>>}
+     */
+    private function matchPoolBySite(array $items, array $poolSupplierIds, array $excludeIds): array
+    {
+        $empty = ['tier2' => [], 'groupA' => []];
+        if (!(bool) config('services.email_pool.waves_v2', false)) {
+            return $empty;
+        }
+        $cap = max(0, (int) config('services.email_pool.wave2_pool_cap', 45));
+        $chunkSize = max(1, (int) config('services.email_pool.wave2_site_chunk', 15));
+        if ($cap <= 0) {
+            return $empty;
+        }
+
+        $maxQueries = max(1, (int) config('services.email_pool.wave2_max_site_queries', 12));
+        $maxItems = max(1, (int) config('services.email_pretarget.max_items_per_batch', 10));
+
+        // Пул НЕ из волны 1, с доменом, топ по confidence/rating, до cap уникальных доменов.
+        $exclude = array_flip(array_map('intval', $excludeIds));
+        $ids = array_values(array_filter(
+            array_map('intval', $poolSupplierIds),
+            static fn ($id) => $id > 0 && !isset($exclude[$id])
+        ));
+        if ($ids === []) {
+            return $empty;
+        }
+        $rows = DB::connection(self::CONN)->table('suppliers')
+            ->whereIn('id', $ids)
+            ->orderByDesc('profile_confidence')
+            ->orderByDesc('rating')
+            ->get(['id', 'website', 'email']);
+
+        $domToId = [];
+        $remaining = []; // host => true, ещё не совпавшие домены пула (по убыв. confidence)
+        foreach ($rows as $r) {
+            $host = $this->supplierHost($r);
+            if ($host === '' || isset($domToId[$host])) {
+                continue;
+            }
+            $domToId[$host] = (int) $r->id;
+            $remaining[$host] = true;
+            if (count($remaining) >= $cap) {
+                break;
+            }
+        }
+        if ($remaining === []) {
+            return $empty;
+        }
+
+        // Per-позиция: термин КАЖДОЙ позиции гоним по ещё не совпавшим доменам. Матч →
+        // цитируем ЭТУ позицию и убираем домен из дальнейших проходов. Потолок запросов.
+        $tier2 = [];
+        $groupA = [];
+        $queries = 0;
+        foreach (array_slice(array_values($items), 0, $maxItems) as $item) {
+            if ($remaining === [] || $queries >= $maxQueries) {
+                break;
+            }
+            $term = $this->siteSearchTerm($item);
+            if ($term === '') {
+                continue;
+            }
+            foreach (array_chunk(array_keys($remaining), $chunkSize) as $chunk) {
+                if ($queries >= $maxQueries || !$this->reserveDailyBudget()) {
+                    break;
+                }
+                $queries++;
+                $siteOr = '(' . implode(' | ', array_map(static fn ($d) => 'site:' . $d, $chunk)) . ')';
+                foreach ($this->search->multiSearch([$term . ' ' . $siteOr]) as $r) {
+                    $host = $this->matchChunkHost(
+                        $this->normHost($r['domain'] ?: (string) parse_url($r['url'], PHP_URL_HOST)),
+                        $chunk
+                    );
+                    if ($host === null || !isset($remaining[$host])) {
+                        continue;
+                    }
+                    $sid = $domToId[$host];
+                    $groupA[$sid] = [[
+                        'url' => (string) $r['url'],
+                        'item_id' => (int) ($item['id'] ?? 0),
+                        'item_name' => (string) ($item['name'] ?? ''),
+                    ]];
+                    $tier2[] = $sid;
+                    unset($remaining[$host]); // совпал → в следующих позициях не проверяем
+                }
+            }
+        }
+
+        return ['tier2' => array_values(array_unique($tier2)), 'groupA' => $groupA];
+    }
+
+    /** Термин для site:-запроса из позиции: 2 значимых слова названия (без чисел/единиц). */
+    private function siteSearchTerm(array $item): string
+    {
+        $name = trim((string) ($item['name'] ?? ''));
+        if ($name === '') {
+            return trim((string) ($item['brand'] ?? ''));
+        }
+        $words = preg_split('/[\s,;\/()]+/u', $name, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $sig = array_values(array_filter($words, static fn ($w) => mb_strlen($w) >= 4 && !preg_match('/^[\d.,]+$/u', $w)));
+        $take = array_slice($sig !== [] ? $sig : $words, 0, 2);
+
+        return trim(implode(' ', $take));
+    }
+
+    /** Домен поставщика для site:-запроса: website, иначе домен email (не фри-почта). */
+    private function supplierHost(object $r): string
+    {
+        if (!empty($r->website)) {
+            $h = $this->normHost((string) (parse_url((string) $r->website, PHP_URL_HOST) ?: $r->website));
+            if ($h !== '') {
+                return $h;
+            }
+        }
+        if (!empty($r->email) && preg_match('/@([\w.-]+)$/', (string) $r->email, $m)) {
+            $h = $this->normHost($m[1]);
+            if ($h !== '' && !preg_match('/(mail\.|gmail|yandex\.|bk\.ru|list\.ru|inbox\.|rambler)/', $h)) {
+                return $h;
+            }
+        }
+
+        return '';
+    }
+
+    /** Хост результата → домен из чанка (точно или по базовому домену), иначе null. */
+    private function matchChunkHost(string $host, array $chunk): ?string
+    {
+        if ($host === '') {
+            return null;
+        }
+        if (in_array($host, $chunk, true)) {
+            return $host;
+        }
+        $base = $this->baseDomain($host);
+        if (in_array($base, $chunk, true)) {
+            return $base;
+        }
+
+        return null;
     }
 
     /**
@@ -87,26 +258,16 @@ class SupplierTargetingService
     {
         $searched = 0;
         $maxItems = max(1, (int) config('services.email_pretarget.max_items_per_batch', 10));
-        $light = (bool) config('services.email_pool.waves_v2', false);
         $items = array_slice(array_values($items), 0, $maxItems);
         $found = [];
 
         foreach ($items as $item) {
-            // Резервируем дневной бюджет ПОКАЖДО и берём только оплаченные запросы.
-            $toRun = [];
-            $kindByQuery = [];
-            foreach ($this->buildQueries($item, $light) as $qk) {
-                if (!$this->reserveDailyBudget()) {
-                    break;
-                }
-                $toRun[] = $qk['q'];
-                $kindByQuery[$qk['q']] = $qk['kind'];
-            }
-            if ($toRun === []) {
+            $query = $this->primaryQuery($item);
+            if ($query === '' || !$this->reserveDailyBudget()) {
                 continue;
             }
-            $searched++; // счётчик — по ПОЗИЦИЯМ (для гейта «таргетинг отработал?»), не по запросам
-            foreach ($this->search->multiSearch($toRun) as $r) {
+            $searched++;
+            foreach ($this->search->multiSearch([$query]) as $r) {
                 $host = $this->normHost($r['domain'] ?: (string) parse_url($r['url'], PHP_URL_HOST));
                 if ($host === '' || !$this->allowedHost($host)) {
                     continue;
@@ -116,7 +277,7 @@ class SupplierTargetingService
                     'url' => $r['url'],
                     'item_id' => (int) ($item['id'] ?? 0),
                     'item_name' => (string) ($item['name'] ?? ''),
-                    'kind' => $kindByQuery[$r['query'] ?? ''] ?? 'primary',
+                    'kind' => 'primary',
                     'product_type_id' => isset($item['product_type_id']) ? (int) $item['product_type_id'] : null,
                     'domain_id' => isset($item['domain_id']) ? (int) $item['domain_id'] : null,
                 ];
@@ -181,47 +342,19 @@ class SupplierTargetingService
         return ['groupA' => $groupA, 'candidates' => $candidates, 'tier1' => $tier1, 'tier2' => $tier2];
     }
 
-    /**
-     * Поисковые запросы из позиции с пометкой «сила» матча:
-     *   - primary: бренд+артикул+название (узкий, точный) — даёт tier1 (горячие).
-     *   - light (за флагом waves_v2): только артикул / только название (широкий) —
-     *     совпавшие ТОЛЬКО по ним = tier2 (тёплые). primary идёт ПЕРВЫМ: при дедупе URL
-     *     в multiSearch совпавший и там и там URL сохранит kind=primary (→ tier1).
-     *
-     * @return array<int,array{q:string,kind:string}>
-     */
-    private function buildQueries(array $item, bool $light): array
+    /** Основной запрос позиции (глобальный): бренд+артикул+название+коммерческий хвост.
+     *  Ловит поставщиков, которые ХОРОШО ранжируются по точному товару → волна 1
+     *  (tier1, горячие) + новые домены → discovery. Волну 2 «добор пула» даёт
+     *  matchPoolBySite (site:-OR по доменам пула), а не облегчённые глобальные запросы. */
+    private function primaryQuery(array $item): string
     {
-        $brand = trim((string) ($item['brand'] ?? ''));
-        $article = trim((string) ($item['article'] ?? ''));
-        $name = trim((string) ($item['name'] ?? ''));
+        $parts = array_values(array_filter([
+            trim((string) ($item['brand'] ?? '')),
+            trim((string) ($item['article'] ?? '')),
+            trim((string) ($item['name'] ?? '')),
+        ], static fn ($v) => $v !== ''));
 
-        $primaryParts = array_values(array_filter([$brand, $article, $name], static fn ($v) => $v !== ''));
-        $out = [];
-        if ($primaryParts !== []) {
-            $out[] = ['q' => implode(' ', $primaryParts) . ' купить поставщик', 'kind' => 'primary'];
-        }
-        if ($light) {
-            if ($article !== '') {
-                $out[] = ['q' => $article . ' купить', 'kind' => 'light'];
-            }
-            if ($name !== '') {
-                $out[] = ['q' => $name . ' купить', 'kind' => 'light'];
-            }
-        }
-
-        // Дедуп одинаковых строк запроса (первое вхождение — с его kind).
-        $seen = [];
-        $dedup = [];
-        foreach ($out as $o) {
-            if (isset($seen[$o['q']])) {
-                continue;
-            }
-            $seen[$o['q']] = true;
-            $dedup[] = $o;
-        }
-
-        return $dedup;
+        return $parts === [] ? '' : implode(' ', $parts) . ' купить поставщик';
     }
 
     /** host => supplier_id по домену website И email пула (у многих website пуст,
