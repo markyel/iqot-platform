@@ -82,6 +82,25 @@ return [
         'relay_only' => (bool) env('EMAILS_RELAY_ONLY', true),
         'relay_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env('EMAILS_RELAY_HOSTS', 'smtp.beget.com'))))),
 
+        // ГЕНЕРИК-ТРАНСПORT ЧЕРЕЗ МИКРОСЕРВИС РЕЛЕЯ (universal-email-service, FastAPI :8000).
+        // Вместо Symfony Mailer → socat (per-domain туннель) шлём HTTP POST /send на релей,
+        // передавая smtp_server/креды ящика + тело/вложения; SMTP наружу делает релей с
+        // СВОИМ IP (боевой IP не светится, ноль per-domain настройки). За флагом.
+        //   via_microservice — мастер-флаг (по умолч. off → текущий socat-путь).
+        //   microservice_url — база релея с микросервисом (без /send), напр. http://45.146.167.20:8000
+        //   microservice_api_key — X-API-Key (совпадает с API_KEY в .env релея).
+        //   microservice_sender_ids — БЕЛЫЙ СПИСОК sender_id для обкатки (пусто → все ящики).
+        //     На тест ставим один id; убедились — очищаем, чтобы шли все.
+        //   microservice_timeout — таймаут HTTP-запроса к релею (сек).
+        'via_microservice' => (bool) env('EMAILS_SEND_VIA_MICROSERVICE', false),
+        'microservice_url' => rtrim((string) env('EMAILS_MICROSERVICE_URL', ''), '/'),
+        'microservice_api_key' => (string) env('EMAILS_MICROSERVICE_API_KEY', ''),
+        'microservice_sender_ids' => array_values(array_filter(array_map(
+            'intval',
+            array_filter(array_map('trim', explode(',', (string) env('EMAILS_MICROSERVICE_SENDER_IDS', ''))), 'strlen')
+        ))),
+        'microservice_timeout' => (int) env('EMAILS_MICROSERVICE_TIMEOUT', 60),
+
         // Адаптивный пейсинг по получателю (to_email): чтобы не задолбить поставщика
         // пачкой. На каждом тике интервал между письмами одному получателю =
         // clamp(остаток_рабочего_окна / pending_получателю, MIN, MAX). Низкая

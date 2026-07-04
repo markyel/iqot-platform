@@ -34,6 +34,32 @@ class QueuedEmailSender
         $encryption = $sender->smtp_encryption ?: 'ssl';
         $isBeget = ($sender->smtp_server === 'smtp.beget.com');
 
+        // ГЕНЕРИК-ТРАНСПОРТ через микросервис релея (за флагом via_microservice, опц.
+        // белый список sender_id). Релей сам коннектится к SMTP-провайдеру ящика со
+        // своим IP — боевой IP прода не светится, ноль per-domain туннелей. Скрытый
+        // трекинг-токен уже вшит в body_html (CampaignEmailBuilder) — доп. заголовки не
+        // нужны. Не beget-ssl → verify_cert=false (провайдеры с общим сертификатом).
+        $relayMailer = new RelayHttpMailer();
+        if ($relayMailer->handlesSender((int) $email->sender_id)) {
+            $fromName = trim(preg_replace('/["\'`\\\\]/', '', (string) ($sender->sender_full_name ?: $sender->sender_name ?: '')));
+            $relayMailer->send([
+                'smtp_server' => (string) $sender->smtp_server,
+                'smtp_port' => (int) ($sender->smtp_port ?: 465),
+                'smtp_user' => (string) $sender->smtp_user,
+                'smtp_password' => (string) $sender->smtp_password,
+                'smtp_encryption' => $encryption,
+                'from_email' => (string) ($email->from_email ?: $sender->email),
+                'from_name' => $fromName !== '' ? $fromName : null,
+                'to_email' => (string) $email->to_email,
+                'subject' => (string) $email->subject,
+                'body_html' => (string) ($email->body_html ?? ''),
+                'attachments' => $this->microserviceAttachments($email->batch_id),
+                'verify_cert' => ($encryption === 'ssl' && $isBeget),
+            ]);
+
+            return;
+        }
+
         // dual-path / мультиканальность (Phase 3c): job передаёт route ТОЛЬКО для
         // beget-ящика (коннект на IP релея/прямой IP, peer_name=smtp.beget.com, чтобы
         // TLS-сертификат сошёлся; опц. port и bindto источника). Для не-beget отправителя
@@ -134,5 +160,24 @@ class QueuedEmailSender
         }
 
         return $attachments;
+    }
+
+    /**
+     * Вложения батча в формате микросервиса (/send): base64-контент + имя + MIME.
+     *
+     * @return array<int, array{filename:string, content:string, content_type:string}>
+     */
+    private function microserviceAttachments($batchId): array
+    {
+        $out = [];
+        foreach ($this->attachmentsFor($batchId) as $att) {
+            $out[] = [
+                'filename' => $att['name'],
+                'content' => base64_encode($att['data']),
+                'content_type' => $att['mime'],
+            ];
+        }
+
+        return $out;
     }
 }

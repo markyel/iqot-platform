@@ -44,6 +44,49 @@ class OutgoingReplySender
         $encryption = $sender->smtp_encryption ?: 'ssl';
         $isBeget = ($sender->smtp_server === 'smtp.beget.com');
 
+        $fromName = trim(preg_replace('/["\'`\\\\]/', '', (string) ($sender->sender_full_name ?: $sender->sender_name ?: '')));
+        $fromEmail = $reply->from_email ?: $sender->email;
+
+        // Свой Message-ID генерим ЗАРАНЕЕ (нужен и для микросервиса, и для прямого пути) —
+        // возвращаем вызывающему для записи в email_messages (дедуп беседы на приёме).
+        $domain = $this->domainFor($fromEmail);
+        $messageId = bin2hex(random_bytes(16)) . '@' . $domain;
+
+        // ГЕНЕРИК-ТРАНСПОРТ через микросервис релея (за флагом via_microservice). Threading
+        // (In-Reply-To/References) и свой Message-ID передаём кастомными заголовками — /send
+        // их поддерживает (доработано). Значения in_reply_to/references хранятся уже с <>.
+        $relayMailer = new RelayHttpMailer();
+        if ($relayMailer->handlesSender((int) $reply->sender_id)) {
+            $payload = [
+                'smtp_server' => (string) $sender->smtp_server,
+                'smtp_port' => (int) ($sender->smtp_port ?: 465),
+                'smtp_user' => (string) $sender->smtp_user,
+                'smtp_password' => (string) $sender->smtp_password,
+                'smtp_encryption' => $encryption,
+                'from_email' => (string) $fromEmail,
+                'from_name' => $fromName !== '' ? $fromName : null,
+                'to_email' => (string) $reply->to_email,
+                'subject' => (string) $reply->subject,
+                'body_html' => (string) ($reply->body_html ?? ''),
+                'body_text' => (string) ($reply->body_text ?? '') ?: null,
+                'attachments' => $this->microserviceAttachments((int) $reply->id),
+                'message_id' => '<' . $messageId . '>',
+                'verify_cert' => ($encryption === 'ssl' && $isBeget),
+            ];
+            $inReplyTo = trim((string) ($reply->in_reply_to ?? ''));
+            if ($inReplyTo !== '') {
+                $payload['in_reply_to'] = $inReplyTo;
+            }
+            $references = trim((string) ($reply->references_header ?? ''));
+            if ($references !== '') {
+                $payload['references'] = $references;
+            }
+
+            $relayMailer->send($payload);
+
+            return '<' . $messageId . '>';
+        }
+
         // Мультиканальность релея (Phase 3c): подмена host/port + bindto источника —
         // только для beget-ящика (зеркало QueuedEmailSender).
         $useDirect = $isBeget && is_array($route) && !empty($route['host']);
@@ -91,13 +134,7 @@ class OutgoingReplySender
 
         $mailer = new Mailer($transport);
 
-        $fromName = trim(preg_replace('/["\'`\\\\]/', '', (string) ($sender->sender_full_name ?: $sender->sender_name ?: '')));
-        $fromEmail = $reply->from_email ?: $sender->email;
-
-        // Генерим Message-ID сами (раньше его возвращал микросервис → email_messages).
-        $domain = $this->domainFor($fromEmail);
-        $messageId = bin2hex(random_bytes(16)) . '@' . $domain;
-
+        // $fromName / $fromEmail / $messageId уже вычислены выше (нужны и для микросервиса).
         $message = (new Email())
             ->from($fromName !== '' ? new Address($fromEmail, $fromName) : new Address($fromEmail))
             ->to($reply->to_email)
@@ -168,5 +205,24 @@ class OutgoingReplySender
         }
 
         return $attachments;
+    }
+
+    /**
+     * Вложения ответа в формате микросервиса (/send): base64-контент + имя + MIME.
+     *
+     * @return array<int, array{filename:string, content:string, content_type:string}>
+     */
+    private function microserviceAttachments(int $replyId): array
+    {
+        $out = [];
+        foreach ($this->attachmentsFor($replyId) as $att) {
+            $out[] = [
+                'filename' => $att['name'],
+                'content' => base64_encode($att['data']),
+                'content_type' => $att['mime'],
+            ];
+        }
+
+        return $out;
     }
 }
