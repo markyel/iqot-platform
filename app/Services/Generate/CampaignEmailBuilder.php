@@ -183,8 +183,12 @@ class CampaignEmailBuilder
             $seen[$key] = true;
             $safeUrl = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
             $name = htmlspecialchars(trim((string) ($f['item_name'] ?? '')), ENT_QUOTES, 'UTF-8');
-            $label = $name !== '' ? $name : $safeUrl;
-            $lines[] = "{$label} — <a href=\"{$safeUrl}\" style=\"color:{$linkColor};\">{$safeUrl}</a>";
+            // Цитируем ПОЗИЦИЮ заявки и делаем её ссылкой на страницу поставщика (сырой
+            // длинный URL текстом не показываем — читается естественнее и менее «спамно»).
+            $host = htmlspecialchars(preg_replace('#^www\.#', '', (string) (parse_url($url, PHP_URL_HOST) ?: '')), ENT_QUOTES, 'UTF-8');
+            $label = $name !== '' ? $name : ($host !== '' ? $host : $safeUrl);
+            $suffix = $host !== '' ? " (<a href=\"{$safeUrl}\" style=\"color:{$linkColor};\">{$host}</a>)" : '';
+            $lines[] = "«{$label}»{$suffix}";
             if (count($seen) >= 6) {
                 break;
             }
