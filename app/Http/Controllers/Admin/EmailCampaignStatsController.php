@@ -190,15 +190,17 @@ class EmailCampaignStatsController extends Controller
             ->join('request_item_responses as rir', 'rir.request_item_id', '=', 'ri.id')
             ->join('email_queue as eq', 'eq.id', '=', 'rir.email_queue_id')
             ->join('email_batches as b', 'b.id', '=', 'eq.batch_id')
+            ->leftJoin('senders as s', 's.id', '=', 'b.sender_id')
             ->whereIn('ri.request_id', $reqIds)
             ->where('eq.status', '<>', 'cancelled')
             ->selectRaw('ri.request_id rid, eq.batch_id bid, b.created_at bcreated, b.status bstatus,
+                         b.sender_id, s.email sender_email,
                          eq.wave, count(distinct eq.id) cnt')
-            ->groupBy('ri.request_id', 'eq.batch_id', 'b.created_at', 'b.status', 'eq.wave')
+            ->groupBy('ri.request_id', 'eq.batch_id', 'b.created_at', 'b.status', 'b.sender_id', 's.email', 'eq.wave')
             ->orderBy('eq.batch_id')
             ->get();
 
-        // rid → wave-итоги; rid → батчи [{id,created,status,w1,w2,w3,total}].
+        // rid → wave-итоги; rid → батчи [{id,created,status,sender,w1,w2,w3,total}].
         $waveByReq = [];
         $batchesByReq = [];
         foreach ($batchRows as $r) {
@@ -210,6 +212,7 @@ class EmailCampaignStatsController extends Controller
             if (!isset($batchesByReq[$rid][$bid])) {
                 $batchesByReq[$rid][$bid] = [
                     'id' => $bid, 'created' => $r->bcreated, 'status' => $r->bstatus,
+                    'sender' => $r->sender_email ?: ('#' . (int) $r->sender_id),
                     'w1' => 0, 'w2' => 0, 'w3' => 0, 'total' => 0,
                 ];
             }

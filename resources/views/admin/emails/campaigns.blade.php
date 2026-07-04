@@ -111,12 +111,13 @@
                             <div class="table-container" style="margin: var(--space-2) 0 var(--space-2) var(--space-4);">
                                 <table class="table">
                                     <thead>
-                                        <tr><th>Батч</th><th>Создан</th><th>В1</th><th>В2</th><th>В3</th><th>Всего</th><th>Статус</th></tr>
+                                        <tr><th>Батч</th><th>Ящик отправки</th><th>Создан</th><th>В1</th><th>В2</th><th>В3</th><th>Всего</th><th>Статус</th></tr>
                                     </thead>
                                     <tbody>
                                         @forelse ($r['batches'] as $b)
                                             <tr>
                                                 <td>#{{ $b['id'] }}</td>
+                                                <td style="font-size: var(--text-sm);">{{ $b['sender'] }}</td>
                                                 <td style="color: var(--color-text-muted); font-size: var(--text-sm);">{{ $b['created'] ? \Illuminate\Support\Carbon::parse($b['created'])->timezone('Europe/Moscow')->format('d.m H:i') : '—' }}</td>
                                                 <td>{{ $b['w1'] }}</td>
                                                 <td>{{ $b['w2'] }}</td>
@@ -125,7 +126,7 @@
                                                 <td style="font-size: var(--text-sm); color: var(--color-text-muted);">{{ $b['status'] }}</td>
                                             </tr>
                                         @empty
-                                            <tr><td colspan="7" style="color: var(--color-text-muted);">Нет батчей.</td></tr>
+                                            <tr><td colspan="8" style="color: var(--color-text-muted);">Нет батчей.</td></tr>
                                         @endforelse
                                     </tbody>
                                 </table>
