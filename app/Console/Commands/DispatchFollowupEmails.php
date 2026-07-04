@@ -39,14 +39,21 @@ class DispatchFollowupEmails extends Command
         }
 
         $delayDays = max(0, (int) config('services.email_pool.followup_delay_days', 2));
-        $minResponses = max(1, (int) config('services.email_pool.followup_min_responses', 3));
+        // Waves-v2: держится ХОЛОДНАЯ волна 3 (несовпавшие в Яндексе), метрика отклика —
+        // полученные КП (request_item_responses с ценой) < wave3_min_offers. Legacy:
+        // держится волна 2 (пул расширения), метрика — ответившие письма очереди.
+        $wavesV2 = (bool) config('services.email_pool.waves_v2', false);
+        $heldWave = $wavesV2 ? 3 : 2;
+        $minResponses = $wavesV2
+            ? max(1, (int) config('services.email_pool.wave3_min_offers', 4))
+            : max(1, (int) config('services.email_pool.followup_min_responses', 3));
         $cutoff = now()->subDays($delayDays);
 
-        // Батчи-кандидаты: с придержанной волной 2 ИЛИ с необработанными discovery,
+        // Батчи-кандидаты: с придержанной холодной волной ИЛИ с необработанными discovery,
         // созданные достаточно давно.
         $held = DB::connection(self::CONN)->table('email_queue as q')
             ->join('email_batches as b', 'b.id', '=', 'q.batch_id')
-            ->where('q.wave', 2)->where('q.status', 'pending')->where('q.scheduled_at', '>=', self::HELD_THRESHOLD)
+            ->where('q.wave', $heldWave)->where('q.status', 'pending')->where('q.scheduled_at', '>=', self::HELD_THRESHOLD)
             ->where('b.created_at', '<=', $cutoff)
             ->distinct()->pluck('q.batch_id')->all();
         $disc = DB::connection(self::CONN)->table('campaign_discoveries as cd')
@@ -67,13 +74,15 @@ class DispatchFollowupEmails extends Command
         $builder = new CampaignEmailBuilder();
 
         foreach ($batchIds as $batchId) {
-            $responses = DB::connection(self::CONN)->table('email_queue')
-                ->where('batch_id', $batchId)
-                ->whereIn('status', ['replied', 'reply_processed', 'in_conversation'])
-                ->count();
+            $responses = $wavesV2
+                ? $this->offersForBatch($batchId)
+                : DB::connection(self::CONN)->table('email_queue')
+                    ->where('batch_id', $batchId)
+                    ->whereIn('status', ['replied', 'reply_processed', 'in_conversation'])
+                    ->count();
 
             $heldQ = fn () => DB::connection(self::CONN)->table('email_queue')
-                ->where('batch_id', $batchId)->where('wave', 2)->where('status', 'pending')
+                ->where('batch_id', $batchId)->where('wave', $heldWave)->where('status', 'pending')
                 ->where('scheduled_at', '>=', self::HELD_THRESHOLD);
 
             if ($responses >= $minResponses) {
@@ -97,6 +106,30 @@ class DispatchFollowupEmails extends Command
 
         $this->info("Батчей: " . count($batchIds) . " | отпущено: {$released} | новых (discovery): {$enriched} | отменено: {$cancelled}");
         return self::SUCCESS;
+    }
+
+    /**
+     * Число полученных КП по батчу (waves-v2 метрика для холодной волны 3): сколько
+     * РАЗНЫХ поставщиков дали ценовой ответ по позициям батча — request_item_responses
+     * с ценой (price_per_unit / total_price) по request_item_id из батча.
+     */
+    private function offersForBatch(int $batchId): int
+    {
+        $itemIds = json_decode(
+            (string) (DB::connection(self::CONN)->table('email_batches')->where('id', $batchId)->value('request_items') ?? '[]'),
+            true
+        ) ?: [];
+        if ($itemIds === []) {
+            return 0;
+        }
+
+        return (int) DB::connection(self::CONN)->table('request_item_responses')
+            ->whereIn('request_item_id', $itemIds)
+            ->where(function ($q) {
+                $q->whereNotNull('price_per_unit')->orWhereNotNull('total_price');
+            })
+            ->distinct()
+            ->count('supplier_id');
     }
 
     /**
