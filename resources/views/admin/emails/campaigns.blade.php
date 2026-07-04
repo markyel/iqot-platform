@@ -91,7 +91,8 @@
                     <thead>
                         <tr>
                             <th>Заявка</th><th>Статус</th><th>Позиций</th><th>Позиций с КП</th>
-                            <th>Охвачено поставщиков</th><th>Дали КП</th><th>Обновлена</th>
+                            <th>Разослано писем</th><th title="горячие · тёплые · холодные">В1 · В2 · В3</th>
+                            <th>Дали КП</th><th>Обновлена</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -110,7 +111,14 @@
                                 </td>
                                 <td>{{ $r['items'] }}</td>
                                 <td style="color: {{ $r['items_with_offers'] > 0 ? 'var(--color-success)' : 'var(--color-text-muted)' }};">{{ $r['items_with_offers'] }} / {{ $r['items'] }}</td>
-                                <td>{{ number_format($r['suppliers'], 0, '.', ' ') }}</td>
+                                <td>{{ number_format($r['wave1'] + $r['wave2'] + $r['wave3'], 0, '.', ' ') }}</td>
+                                <td style="white-space: nowrap;">
+                                    <span title="В1 горячие">{{ $r['wave1'] }}</span>
+                                    <span style="color: var(--color-text-muted);">·</span>
+                                    <span title="В2 тёплые">{{ $r['wave2'] }}</span>
+                                    <span style="color: var(--color-text-muted);">·</span>
+                                    <span title="В3 холодные" style="color: var(--color-text-muted);">{{ $r['wave3'] }}</span>
+                                </td>
                                 <td style="color: var(--color-success);"><strong>{{ $r['offers'] }}</strong></td>
                                 <td style="color: var(--color-text-muted); font-size: var(--text-sm);">
                                     {{ $r['updated_at'] ? \Illuminate\Support\Carbon::parse($r['updated_at'])->timezone('Europe/Moscow')->format('d.m H:i') : '—' }}

@@ -182,9 +182,26 @@ class EmailCampaignStatsController extends Controller
             ->get()
             ->keyBy('rid');
 
+        // Разосланных писем по волнам на заявку: distinct email_queue (одно письмо покрывает
+        // несколько позиций) через request_item_responses.email_queue_id → email_queue.wave.
+        // Отменённые (cancelled) не считаем — это не разосланные.
+        $waveRows = $db->table('request_items as ri')
+            ->join('request_item_responses as rir', 'rir.request_item_id', '=', 'ri.id')
+            ->join('email_queue as eq', 'eq.id', '=', 'rir.email_queue_id')
+            ->whereIn('ri.request_id', $reqIds)
+            ->where('eq.status', '<>', 'cancelled')
+            ->selectRaw('ri.request_id rid, eq.wave, count(distinct eq.id) cnt')
+            ->groupBy('ri.request_id', 'eq.wave')
+            ->get();
+        $waveByReq = [];
+        foreach ($waveRows as $wr) {
+            $waveByReq[(int) $wr->rid][(int) $wr->wave] = (int) $wr->cnt;
+        }
+
         $out = [];
         foreach ($requests as $r) {
             $a = $agg->get($r->id);
+            $wc = $waveByReq[(int) $r->id] ?? [];
             $out[] = [
                 'id' => (int) $r->id,
                 'number' => $r->request_number ?: ('#' . $r->id),
@@ -194,6 +211,9 @@ class EmailCampaignStatsController extends Controller
                 'items_with_offers' => (int) $r->items_with_offers,
                 'suppliers' => (int) ($a->suppliers ?? 0),
                 'offers' => (int) ($a->offers ?? 0),
+                'wave1' => (int) ($wc[1] ?? 0),
+                'wave2' => (int) ($wc[2] ?? 0),
+                'wave3' => (int) ($wc[3] ?? 0),
                 'updated_at' => $r->updated_at,
             ];
         }
