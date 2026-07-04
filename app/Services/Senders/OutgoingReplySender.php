@@ -55,8 +55,9 @@ class OutgoingReplySender
         // ГЕНЕРИК-ТРАНСПОРТ через микросервис релея (за флагом via_microservice). Threading
         // (In-Reply-To/References) и свой Message-ID передаём кастомными заголовками — /send
         // их поддерживает (доработано). Значения in_reply_to/references хранятся уже с <>.
+        // ТОЛЬКО beget (не-beget ящики пиньены под socat) — зеркало QueuedEmailSender.
         $relayMailer = new RelayHttpMailer();
-        if ($relayMailer->handlesSender((int) $reply->sender_id)) {
+        if ($isBeget && $relayMailer->handlesSender((int) $reply->sender_id)) {
             $payload = [
                 'smtp_server' => (string) $sender->smtp_server,
                 'smtp_port' => (int) ($sender->smtp_port ?: 465),
@@ -71,7 +72,7 @@ class OutgoingReplySender
                 'body_text' => (string) ($reply->body_text ?? '') ?: null,
                 'attachments' => $this->microserviceAttachments((int) $reply->id),
                 'message_id' => '<' . $messageId . '>',
-                'verify_cert' => ($encryption === 'ssl' && $isBeget),
+                'verify_cert' => true, // beget: сертификат smtp.beget.com сходится
             ];
             $inReplyTo = trim((string) ($reply->in_reply_to ?? ''));
             if ($inReplyTo !== '') {
@@ -82,7 +83,7 @@ class OutgoingReplySender
                 $payload['references'] = $references;
             }
 
-            $relayMailer->send($payload);
+            $relayMailer->send($payload, (int) $reply->id);
 
             return '<' . $messageId . '>';
         }

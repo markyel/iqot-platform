@@ -87,12 +87,19 @@ return [
         // передавая smtp_server/креды ящика + тело/вложения; SMTP наружу делает релей с
         // СВОИМ IP (боевой IP не светится, ноль per-domain настройки). За флагом.
         //   via_microservice — мастер-флаг (по умолч. off → текущий socat-путь).
-        //   microservice_url — база релея с микросервисом (без /send), напр. http://45.146.167.20:8000
-        //   microservice_api_key — X-API-Key (совпадает с API_KEY в .env релея).
-        //   microservice_sender_ids — БЕЛЫЙ СПИСОК sender_id для обкатки (пусто → все ящики).
+        //   microservice_urls — ПУЛ релеев (JSON), напр.
+        //     [{"url":"http://45.146.167.20:8000","weight":1},{"url":"http://155.212.185.101:8000","weight":1}]
+        //     (можно и CSV/массив строк). RelayHttpMailer раскладывает отправку per-send по
+        //     всему пулу (по id письма/ответа, взвешенно) + failover на СЛЕДУЮЩИЙ релей при
+        //     недоступности узла (только connect-ошибка релея, НЕ SMTP-ошибка). Применяется
+        //     ТОЛЬКО к beget-ящикам (не-beget пинятся под socat и идут своим путём).
+        //   microservice_url — одиночный релей (fallback, если microservice_urls пуст).
+        //   microservice_api_key — X-API-Key (совпадает с API_KEY в .env релеев).
+        //   microservice_sender_ids — БЕЛЫЙ СПИСОК sender_id для обкатки (пусто → все beget-ящики).
         //     На тест ставим один id; убедились — очищаем, чтобы шли все.
         //   microservice_timeout — таймаут HTTP-запроса к релею (сек).
         'via_microservice' => (bool) env('EMAILS_SEND_VIA_MICROSERVICE', false),
+        'microservice_urls' => json_decode((string) env('EMAILS_MICROSERVICE_URLS', '[]'), true) ?: [],
         'microservice_url' => rtrim((string) env('EMAILS_MICROSERVICE_URL', ''), '/'),
         'microservice_api_key' => (string) env('EMAILS_MICROSERVICE_API_KEY', ''),
         'microservice_sender_ids' => array_values(array_filter(array_map(

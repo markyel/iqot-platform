@@ -38,9 +38,10 @@ class QueuedEmailSender
         // белый список sender_id). Релей сам коннектится к SMTP-провайдеру ящика со
         // своим IP — боевой IP прода не светится, ноль per-domain туннелей. Скрытый
         // трекинг-токен уже вшит в body_html (CampaignEmailBuilder) — доп. заголовки не
-        // нужны. Не beget-ssl → verify_cert=false (провайдеры с общим сертификатом).
+        // нужны. ТОЛЬКО beget: не-beget ящики (wwwsend) в БД пиньены под socat
+        // (smtp_port=2465 — порт релея, не реального сервера) → идут своим путём.
         $relayMailer = new RelayHttpMailer();
-        if ($relayMailer->handlesSender((int) $email->sender_id)) {
+        if ($isBeget && $relayMailer->handlesSender((int) $email->sender_id)) {
             $fromName = trim(preg_replace('/["\'`\\\\]/', '', (string) ($sender->sender_full_name ?: $sender->sender_name ?: '')));
             $relayMailer->send([
                 'smtp_server' => (string) $sender->smtp_server,
@@ -54,8 +55,8 @@ class QueuedEmailSender
                 'subject' => (string) $email->subject,
                 'body_html' => (string) ($email->body_html ?? ''),
                 'attachments' => $this->microserviceAttachments($email->batch_id),
-                'verify_cert' => ($encryption === 'ssl' && $isBeget),
-            ]);
+                'verify_cert' => true, // beget: сертификат smtp.beget.com сходится
+            ], (int) $email->id);
 
             return;
         }
