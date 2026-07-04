@@ -270,6 +270,11 @@ class GenerateCampaignJob implements ShouldQueue
             return;
         }
 
+        // Waves-v2: делим пул на 3 волны по ТЕМПЕРАТУРЕ Яндекс-матча (tier1→горячая/сразу,
+        // tier2→тёплая/+1день, tier3→холодная/held). До сплиттера — он режет по лимитам
+        // только горячую волну 1 (tier2/tier3 держатся, лимит сегодня не расходуют).
+        $this->classifyByTier($batch, $res);
+
         // Прогрев (Phase 3b): режем батч по остаткам дневных лимитов — под-батчи,
         // каждый со своим отправителем/стилем/токеном/телом. Что не влезло в лимиты —
         // отсрочка (sender_capacity) до освобождения капасити. В dry-run — старый путь
@@ -285,11 +290,56 @@ class GenerateCampaignJob implements ShouldQueue
             $this->generateAndPersist($sub, $tokenGenerator, $bodyGenerator, $emailBuilder, $persister);
         }
         if ($subs === []) {
-            // Капасити нет совсем — откладываем весь пул (включая волну 2).
-            $this->deferBatchForCapacity($batch, array_merge($batch->suppliers, $batch->expansionSuppliers));
+            // Капасити нет совсем — откладываем весь пул (волна 2 + холодная волна 3).
+            $this->deferBatchForCapacity($batch, array_merge($batch->suppliers, $batch->expansionSuppliers, $batch->coldSuppliers));
         } elseif ($leftover !== []) {
             $this->deferBatchForCapacity($batch, $leftover);
         }
+    }
+
+    /**
+     * Waves-v2: делит пул батча на 3 волны по «температуре» Яндекс-матча (результат
+     * таргетинга $res: tier1/tier2). При выключенном флаге — no-op (деление по размеру
+     * оставляет CampaignSupplierSelector). На входе $batch->suppliers = ВЕСЬ пул (select
+     * при waves_v2 не режет). На выходе: suppliers=tier1 (горячие), expansionSuppliers=
+     * tier2 (тёплые), coldSuppliers=tier3 (холодные, не совпали). found_urls (для
+     * персонализации) навешиваются горячим и тёплым.
+     */
+    private function classifyByTier(Batch $batch, ?array $res): void
+    {
+        if (!(bool) config('services.email_pool.waves_v2', false) || $this->onlySupplierIds !== null) {
+            return; // флаг off ИЛИ пин-набор (капасити/контейнмент) — деление не трогаем
+        }
+
+        $tier1 = array_flip(array_map('intval', (array) ($res['tier1'] ?? [])));
+        $tier2 = array_flip(array_map('intval', (array) ($res['tier2'] ?? [])));
+        $groupA = (array) ($res['groupA'] ?? []);
+
+        $hot = [];
+        $warm = [];
+        $cold = [];
+        foreach ($batch->suppliers as $sup) {
+            $sid = (int) ($sup['id'] ?? 0);
+            if ($sid > 0 && !empty($groupA[$sid])) {
+                $sup['found_urls'] = $groupA[$sid];
+            }
+            if (isset($tier1[$sid])) {
+                $hot[] = $sup;
+            } elseif (isset($tier2[$sid])) {
+                $warm[] = $sup;
+            } else {
+                $cold[] = $sup;
+            }
+        }
+
+        $batch->suppliers = $hot;
+        $batch->expansionSuppliers = $warm;
+        $batch->coldSuppliers = $cold;
+
+        Log::info('GenerateCampaignJob: waves-v2 тиры', [
+            'request_ids' => $batch->requestIds,
+            'hot' => count($hot), 'warm' => count($warm), 'cold' => count($cold),
+        ]);
     }
 
     /**
@@ -306,7 +356,8 @@ class GenerateCampaignJob implements ShouldQueue
         $tokenGenerator->generate($batch);
         $bodyGenerator->generate($batch);
 
-        // Волна 1 (шлём сразу) + волна 2 (пул расширения, держится до досыла).
+        // Волна 1 (сразу) + волна 2 (тёплые/расширение, +delay или held) + волна 3
+        // (холодные, waves-v2, held до followup). Persister ставит scheduled_at по wave.
         $emails = [];
         foreach ($batch->suppliers as $supplier) {
             $e = $emailBuilder->build($batch, $supplier);
@@ -316,6 +367,11 @@ class GenerateCampaignJob implements ShouldQueue
         foreach ($batch->expansionSuppliers as $supplier) {
             $e = $emailBuilder->build($batch, $supplier);
             $e['wave'] = 2;
+            $emails[] = $e;
+        }
+        foreach ($batch->coldSuppliers as $supplier) {
+            $e = $emailBuilder->build($batch, $supplier);
+            $e['wave'] = 3;
             $emails[] = $e;
         }
 
@@ -428,7 +484,11 @@ class GenerateCampaignJob implements ShouldQueue
     private function shouldDefer(Batch $batch, ?array $res): bool
     {
         // Повтор (attempt 2) — гейт НЕ применяем (генерим без оглядки на порог).
-        if ($this->deferredBatchId || $this->dryRun || !(bool) config('services.email_pool.gate_enabled', false)) {
+        // Waves-v2: гейт качества не нужен — «холодная» волна 3 (несовпавшие) держится и
+        // релизится followup'ом при малом отклике, что и есть discovery-first по смыслу.
+        if ($this->deferredBatchId || $this->dryRun
+            || (bool) config('services.email_pool.waves_v2', false)
+            || !(bool) config('services.email_pool.gate_enabled', false)) {
             return false;
         }
         if (!is_array($res) || (int) ($res['searched_items'] ?? 0) === 0) {

@@ -89,11 +89,22 @@ class CampaignPersister
                 }
 
                 $token = (string) ($email['tracking_token'] ?? '');
-                // Волна 2 (пул расширения) держится: status=pending, но scheduled_at в
-                // далёком будущем — диспетчер берёт только scheduled_at <= NOW(), поэтому
-                // не тронет, пока follow-up не «отпустит» (scheduled_at=now) или не отменит.
+                // scheduled_at по волне. Диспетчер берёт только scheduled_at <= NOW().
+                //   В1: сразу (now).
+                //   В2: legacy — held (пул расширения, отпускает followup); waves-v2 —
+                //       тёплые, ступенчато через wave2_delay_days (уйдут сами, без гейта).
+                //   В3 (waves-v2): холодные — held до followup (релиз при малом отклике КП).
                 $wave = (int) ($email['wave'] ?? 1);
-                $scheduledAt = $wave === 2 ? self::HELD_UNTIL : now();
+                $wavesV2 = (bool) config('services.email_pool.waves_v2', false);
+                if ($wave === 3) {
+                    $scheduledAt = self::HELD_UNTIL;
+                } elseif ($wave === 2) {
+                    $scheduledAt = $wavesV2
+                        ? now()->addDays(max(0, (int) config('services.email_pool.wave2_delay_days', 1)))
+                        : self::HELD_UNTIL;
+                } else {
+                    $scheduledAt = now();
+                }
                 $emailQueueId = (int) DB::connection(self::CONN)->table('email_queue')->insertGetId([
                     'batch_id' => $batchId,
                     'token' => $token,

@@ -31,9 +31,17 @@ class CampaignSupplierSelector
 
         $suppliers = array_map(static fn ($r) => (array) $r, $rows);
 
-        // Адаптивный двухволновой пул: при сверх-большом пуле волна 1 = ужесточённый
-        // поднабор, остальное → пул расширения (волна 2, досыл при малом отклике).
-        [$wave1, $expansion] = $this->splitPool($batch, $suppliers);
+        if ((bool) config('services.email_pool.waves_v2', false)) {
+            // Waves-v2: НЕ режем по размеру. Весь пул → suppliers, а деление на волны по
+            // ТЕМПЕРАТУРЕ Яндекс-матча делает GenerateCampaignJob::classifyByTier ПОСЛЕ
+            // таргетинга (нужен весь пул в supplierIds, чтобы классифицировать всех).
+            $wave1 = $suppliers;
+            $expansion = [];
+        } else {
+            // Legacy: при сверх-большом пуле волна 1 = ужесточённый поднабор, остальное
+            // → пул расширения (волна 2, досыл при малом отклике).
+            [$wave1, $expansion] = $this->splitPool($batch, $suppliers);
+        }
 
         // Дозаполняем батч профильным списком (его потребляют CampaignEmailBuilder
         // и CampaignPersister: per-supplier письма + email_batches.supplier_ids).

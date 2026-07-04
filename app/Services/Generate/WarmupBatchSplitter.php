@@ -75,6 +75,7 @@ class WarmupBatchSplitter
 
         $leftover = array_slice($wave1, $offset);
         $this->distributeExpansion($batch, $subs);
+        $this->distributeCold($batch, $subs);
 
         // Discovery-кандидаты Яндекс-таргетинга — только первому под-батчу
         // (иначе одни и те же домены уйдут в discovery по разу на под-батч).
@@ -142,6 +143,7 @@ class WarmupBatchSplitter
             : $this->assigner->fullSender($senderId);
         $sub->suppliers = array_values($suppliers);
         $sub->expansionSuppliers = [];
+        $sub->coldSuppliers = [];
         $sub->discoveryCandidates = [];
         $sub->supplierIds = [];
         foreach ($sub->suppliers as $s) {
@@ -174,6 +176,23 @@ class WarmupBatchSplitter
         $n = count($subs);
         foreach (array_values($batch->expansionSuppliers) as $i => $supplier) {
             $subs[$i % $n]->expansionSuppliers[] = $supplier;
+        }
+    }
+
+    /**
+     * Холодная волна 3 (waves-v2, held, лимит сегодня не расходует) — round-robin по
+     * под-батчам, зеркало distributeExpansion.
+     *
+     * @param array<int,Batch> $subs
+     */
+    private function distributeCold(Batch $batch, array $subs): void
+    {
+        if ($subs === [] || $batch->coldSuppliers === []) {
+            return;
+        }
+        $n = count($subs);
+        foreach (array_values($batch->coldSuppliers) as $i => $supplier) {
+            $subs[$i % $n]->coldSuppliers[] = $supplier;
         }
     }
 }
