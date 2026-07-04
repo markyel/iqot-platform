@@ -182,20 +182,39 @@ class EmailCampaignStatsController extends Controller
             ->get()
             ->keyBy('rid');
 
-        // Разосланных писем по волнам на заявку: distinct email_queue (одно письмо покрывает
-        // несколько позиций) через request_item_responses.email_queue_id → email_queue.wave.
-        // Отменённые (cancelled) не считаем — это не разосланные.
-        $waveRows = $db->table('request_items as ri')
+        // Разосланных писем по волнам, С РАЗБИВКОЙ ПО БАТЧАМ: заявка бьётся на много батчей
+        // (по типу товара/кросс-заявочно/повторные прогоны), лимит wave1=150 — НА БАТЧ.
+        // distinct email_queue (одно письмо на неск. позиций) через rir.email_queue_id.
+        // Отменённые не считаем. Счётчики scoped на позиции ЭТОЙ заявки.
+        $batchRows = $db->table('request_items as ri')
             ->join('request_item_responses as rir', 'rir.request_item_id', '=', 'ri.id')
             ->join('email_queue as eq', 'eq.id', '=', 'rir.email_queue_id')
+            ->join('email_batches as b', 'b.id', '=', 'eq.batch_id')
             ->whereIn('ri.request_id', $reqIds)
             ->where('eq.status', '<>', 'cancelled')
-            ->selectRaw('ri.request_id rid, eq.wave, count(distinct eq.id) cnt')
-            ->groupBy('ri.request_id', 'eq.wave')
+            ->selectRaw('ri.request_id rid, eq.batch_id bid, b.created_at bcreated, b.status bstatus,
+                         eq.wave, count(distinct eq.id) cnt')
+            ->groupBy('ri.request_id', 'eq.batch_id', 'b.created_at', 'b.status', 'eq.wave')
+            ->orderBy('eq.batch_id')
             ->get();
+
+        // rid → wave-итоги; rid → батчи [{id,created,status,w1,w2,w3,total}].
         $waveByReq = [];
-        foreach ($waveRows as $wr) {
-            $waveByReq[(int) $wr->rid][(int) $wr->wave] = (int) $wr->cnt;
+        $batchesByReq = [];
+        foreach ($batchRows as $r) {
+            $rid = (int) $r->rid;
+            $w = (int) $r->wave;
+            $cnt = (int) $r->cnt;
+            $waveByReq[$rid][$w] = ($waveByReq[$rid][$w] ?? 0) + $cnt;
+            $bid = (int) $r->bid;
+            if (!isset($batchesByReq[$rid][$bid])) {
+                $batchesByReq[$rid][$bid] = [
+                    'id' => $bid, 'created' => $r->bcreated, 'status' => $r->bstatus,
+                    'w1' => 0, 'w2' => 0, 'w3' => 0, 'total' => 0,
+                ];
+            }
+            $batchesByReq[$rid][$bid]['w' . $w] = $cnt;
+            $batchesByReq[$rid][$bid]['total'] += $cnt;
         }
 
         $out = [];
@@ -214,6 +233,7 @@ class EmailCampaignStatsController extends Controller
                 'wave1' => (int) ($wc[1] ?? 0),
                 'wave2' => (int) ($wc[2] ?? 0),
                 'wave3' => (int) ($wc[3] ?? 0),
+                'batches' => array_values($batchesByReq[$r->id] ?? []),
                 'updated_at' => $r->updated_at,
             ];
         }

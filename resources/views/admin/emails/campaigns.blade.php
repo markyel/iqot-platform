@@ -87,48 +87,54 @@
         <div class="card">
             <div class="card-header"><h3 class="card-title">Активные заявки ({{ count($data['requests']) }})</h3></div>
             <div class="table-container">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Заявка</th><th>Статус</th><th>Позиций</th><th>Позиций с КП</th>
-                            <th>Разослано писем</th><th title="горячие · тёплые · холодные">В1 · В2 · В3</th>
-                            <th>Дали КП</th><th>Обновлена</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse ($data['requests'] as $r)
-                            <tr>
-                                <td>
-                                    <strong>{{ $r['number'] }}</strong>
-                                    @if ($r['title'])
-                                        <div style="color: var(--color-text-muted); font-size: var(--text-sm);">{{ \Illuminate\Support\Str::limit($r['title'], 60) }}</div>
-                                    @endif
-                                </td>
-                                <td>
-                                    <span class="badge {{ $r['status'] === 'responses_received' ? 'badge-success' : 'badge-primary' }}">
-                                        {{ $r['status'] === 'responses_received' ? 'есть ответы' : 'разослано' }}
-                                    </span>
-                                </td>
-                                <td>{{ $r['items'] }}</td>
-                                <td style="color: {{ $r['items_with_offers'] > 0 ? 'var(--color-success)' : 'var(--color-text-muted)' }};">{{ $r['items_with_offers'] }} / {{ $r['items'] }}</td>
-                                <td>{{ number_format($r['wave1'] + $r['wave2'] + $r['wave3'], 0, '.', ' ') }}</td>
-                                <td style="white-space: nowrap;">
-                                    <span title="В1 горячие">{{ $r['wave1'] }}</span>
-                                    <span style="color: var(--color-text-muted);">·</span>
-                                    <span title="В2 тёплые">{{ $r['wave2'] }}</span>
-                                    <span style="color: var(--color-text-muted);">·</span>
-                                    <span title="В3 холодные" style="color: var(--color-text-muted);">{{ $r['wave3'] }}</span>
-                                </td>
-                                <td style="color: var(--color-success);"><strong>{{ $r['offers'] }}</strong></td>
-                                <td style="color: var(--color-text-muted); font-size: var(--text-sm);">
-                                    {{ $r['updated_at'] ? \Illuminate\Support\Carbon::parse($r['updated_at'])->timezone('Europe/Moscow')->format('d.m H:i') : '—' }}
-                                </td>
-                            </tr>
-                        @empty
-                            <tr><td colspan="6" style="color: var(--color-text-muted);">Нет активных заявок.</td></tr>
-                        @endforelse
-                    </tbody>
-                </table>
+                <div style="padding: 0 var(--space-4) var(--space-2);">
+                    @forelse ($data['requests'] as $r)
+                        <details style="border-bottom: 1px solid var(--color-border); padding: var(--space-3) 0;">
+                            <summary style="cursor: pointer; display: flex; gap: var(--space-4); align-items: center; flex-wrap: wrap;">
+                                <strong style="min-width: 200px;">{{ $r['number'] }}</strong>
+                                <span class="badge {{ $r['status'] === 'responses_received' ? 'badge-success' : 'badge-primary' }}">
+                                    {{ $r['status'] === 'responses_received' ? 'есть ответы' : 'разослано' }}
+                                </span>
+                                <span style="color: var(--color-text-muted); font-size: var(--text-sm);">{{ $r['items'] }} поз · {{ $r['items_with_offers'] }} с КП</span>
+                                <span title="разослано писем всего">✉ {{ number_format($r['wave1'] + $r['wave2'] + $r['wave3'], 0, '.', ' ') }}</span>
+                                <span style="white-space: nowrap;" title="В1 горячие · В2 тёплые · В3 холодные">
+                                    В1&nbsp;{{ $r['wave1'] }} · В2&nbsp;{{ $r['wave2'] }} · <span style="color: var(--color-text-muted);">В3&nbsp;{{ $r['wave3'] }}</span>
+                                </span>
+                                <span style="color: var(--color-success);"><strong>КП&nbsp;{{ $r['offers'] }}</strong></span>
+                                <span style="color: var(--color-text-muted); font-size: var(--text-sm); margin-left: auto;">
+                                    {{ count($r['batches']) }} батч. · обн {{ $r['updated_at'] ? \Illuminate\Support\Carbon::parse($r['updated_at'])->timezone('Europe/Moscow')->format('d.m H:i') : '—' }}
+                                </span>
+                            </summary>
+                            @if ($r['title'])
+                                <div style="color: var(--color-text-muted); font-size: var(--text-sm); margin: var(--space-2) 0 0 var(--space-4);">{{ \Illuminate\Support\Str::limit($r['title'], 90) }}</div>
+                            @endif
+                            <div class="table-container" style="margin: var(--space-2) 0 var(--space-2) var(--space-4);">
+                                <table class="table">
+                                    <thead>
+                                        <tr><th>Батч</th><th>Создан</th><th>В1</th><th>В2</th><th>В3</th><th>Всего</th><th>Статус</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        @forelse ($r['batches'] as $b)
+                                            <tr>
+                                                <td>#{{ $b['id'] }}</td>
+                                                <td style="color: var(--color-text-muted); font-size: var(--text-sm);">{{ $b['created'] ? \Illuminate\Support\Carbon::parse($b['created'])->timezone('Europe/Moscow')->format('d.m H:i') : '—' }}</td>
+                                                <td>{{ $b['w1'] }}</td>
+                                                <td>{{ $b['w2'] }}</td>
+                                                <td style="color: var(--color-text-muted);">{{ $b['w3'] }}</td>
+                                                <td><strong>{{ $b['total'] }}</strong></td>
+                                                <td style="font-size: var(--text-sm); color: var(--color-text-muted);">{{ $b['status'] }}</td>
+                                            </tr>
+                                        @empty
+                                            <tr><td colspan="7" style="color: var(--color-text-muted);">Нет батчей.</td></tr>
+                                        @endforelse
+                                    </tbody>
+                                </table>
+                            </div>
+                        </details>
+                    @empty
+                        <p style="color: var(--color-text-muted); padding: var(--space-4) 0;">Нет активных заявок.</p>
+                    @endforelse
+                </div>
             </div>
         </div>
     @endif
