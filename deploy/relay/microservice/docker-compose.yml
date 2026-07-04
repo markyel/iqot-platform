@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  universal-email-service:
+    build: .
+    container_name: universal-email-service
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    
+    # Environment
+    environment:
+      - TZ=Europe/Moscow
+      - PYTHONUNBUFFERED=1
+      # X-API-Key авторизация /send /receive /test-* /html-to-pdf* (см. .env рядом).
+      # Fail-closed: без ключа эндпоинты отдают 503.
+      - API_KEY=${API_KEY:-}
+    
+    # Healthcheck
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # Logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

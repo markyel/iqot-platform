@@ -16,3 +16,6 @@ storage/framework/views/*
 storage/framework/sessions/*
 bootstrap/cache/packages.php
 bootstrap/cache/services.php
+
+# Секрет релей-микросервиса (API_KEY) — не коммитить
+deploy/relay/microservice/.env
