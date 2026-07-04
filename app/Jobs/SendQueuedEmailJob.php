@@ -8,6 +8,7 @@ use App\Models\Reports\RecipientMailbox;
 use App\Models\Reports\Sender;
 use App\Services\Senders\QueuedEmailSender;
 use App\Services\Senders\RelayChannelSelector;
+use App\Services\Senders\RelayHttpMailer;
 use App\Services\Senders\SenderBanContainment;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -399,6 +400,11 @@ class SendQueuedEmailJob implements ShouldQueue
     private function blockedByRelayOnly(Sender $sender): bool
     {
         if (!(bool) config('services.email_dispatch.relay_only', false)) {
+            return false;
+        }
+        // Уходит через микросервис релея (RelayHttpMailer) — это и ЕСТЬ релей (прод делает
+        // только HTTP, SMTP наружу с IP релея) → разрешаем независимо от whitelist smtp_server.
+        if ((new RelayHttpMailer())->handlesSender((int) $sender->id)) {
             return false;
         }
         $hosts = (array) config('services.email_dispatch.relay_hosts', ['smtp.beget.com']);

@@ -6,6 +6,7 @@ use App\Models\Reports\OutgoingReply;
 use App\Models\Reports\Sender;
 use App\Services\Senders\OutgoingReplySender;
 use App\Services\Senders\RelayChannelSelector;
+use App\Services\Senders\RelayHttpMailer;
 use App\Services\Senders\SenderBanContainment;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -81,8 +82,10 @@ class SendOutgoingReplyJob implements ShouldQueue
         }
 
         // Защита боевого IP (relay-only): не-релейный отправитель ушёл бы напрямую с
-        // основного IP — ответ terminal failed.
+        // основного IP — ответ terminal failed. Уходящий через микросервис (RelayHttpMailer)
+        // — это релей → разрешаем независимо от whitelist smtp_server.
         if ((bool) config('services.email_dispatch.relay_only', false)
+            && !(new RelayHttpMailer())->handlesSender((int) $senderModel->id)
             && !in_array((string) $senderModel->smtp_server, (array) config('services.email_dispatch.relay_hosts', ['smtp.beget.com']), true)) {
             $reply->update(['status' => 'failed', 'error_message' => 'relay-only: не-релейный отправитель (защита боевого IP)']);
             Log::warning('SendOutgoingReplyJob: не-релейный отправитель заблокирован (relay-only)', [

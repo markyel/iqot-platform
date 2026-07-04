@@ -35,13 +35,13 @@ class QueuedEmailSender
         $isBeget = ($sender->smtp_server === 'smtp.beget.com');
 
         // ГЕНЕРИК-ТРАНСПОРТ через микросервис релея (за флагом via_microservice, опц.
-        // белый список sender_id). Релей сам коннектится к SMTP-провайдеру ящика со
-        // своим IP — боевой IP прода не светится, ноль per-domain туннелей. Скрытый
-        // трекинг-токен уже вшит в body_html (CampaignEmailBuilder) — доп. заголовки не
-        // нужны. ТОЛЬКО beget: не-beget ящики (wwwsend) в БД пиньены под socat
-        // (smtp_port=2465 — порт релея, не реального сервера) → идут своим путём.
+        // белый список sender_id). Провайдер-НЕЗАВИСИМ: релей сам коннектится к
+        // smtp_server:smtp_port ящика со своим IP — боевой IP прода не светится, ноль
+        // per-domain туннелей. Скрытый трекинг-токен уже вшит в body_html
+        // (CampaignEmailBuilder). verify_cert=false для не-beget (общий/несовпадающий
+        // сертификат провайдера, напр. wwwsend/sprinthost) — зеркало прямого ssl-пути.
         $relayMailer = new RelayHttpMailer();
-        if ($isBeget && $relayMailer->handlesSender((int) $email->sender_id)) {
+        if ($relayMailer->handlesSender((int) $email->sender_id)) {
             $fromName = trim(preg_replace('/["\'`\\\\]/', '', (string) ($sender->sender_full_name ?: $sender->sender_name ?: '')));
             $relayMailer->send([
                 'smtp_server' => (string) $sender->smtp_server,
@@ -55,7 +55,7 @@ class QueuedEmailSender
                 'subject' => (string) $email->subject,
                 'body_html' => (string) ($email->body_html ?? ''),
                 'attachments' => $this->microserviceAttachments($email->batch_id),
-                'verify_cert' => true, // beget: сертификат smtp.beget.com сходится
+                'verify_cert' => ($encryption === 'ssl' && $isBeget),
             ], (int) $email->id);
 
             return;

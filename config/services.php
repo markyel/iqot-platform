@@ -91,8 +91,10 @@ return [
         //     [{"url":"http://45.146.167.20:8000","weight":1},{"url":"http://155.212.185.101:8000","weight":1}]
         //     (можно и CSV/массив строк). RelayHttpMailer раскладывает отправку per-send по
         //     всему пулу (по id письма/ответа, взвешенно) + failover на СЛЕДУЮЩИЙ релей при
-        //     недоступности узла (только connect-ошибка релея, НЕ SMTP-ошибка). Применяется
-        //     ТОЛЬКО к beget-ящикам (не-beget пинятся под socat и идут своим путём).
+        //     недоступности узла (только connect-ошибка релея, НЕ SMTP-ошибка). ПРОВАЙДЕР-
+        //     НЕЗАВИСИМ: релей коннектится к smtp_server:port ЛЮБОГО провайдера (beget,
+        //     wwwsend/sprinthost и т.д.) — per-domain socat больше не нужен. verify_cert по
+        //     провайдеру (false для не-beget: общий/несовпадающий сертификат).
         //   microservice_url — одиночный релей (fallback, если microservice_urls пуст).
         //   microservice_api_key — X-API-Key (совпадает с API_KEY в .env релеев).
         //   microservice_sender_ids — БЕЛЫЙ СПИСОК sender_id для обкатки (пусто → все beget-ящики).
