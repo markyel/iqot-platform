@@ -132,6 +132,18 @@ return [
         'followup_delay_days' => (int) env('EMAILS_POOL_FOLLOWUP_DELAY_DAYS', 2),
         'followup_min_responses' => (int) env('EMAILS_POOL_FOLLOWUP_MIN_RESPONSES', 3),
 
+        // ВОЛНЫ V2 (мастер-флаг, по умолч. off → текущее деление по размеру пула). ON:
+        // деление на 3 волны по «температуре» Яндекс-матча вместо размера пула —
+        //   В1 (tier1) сразу: поставщик совпал по ОСНОВНОМУ запросу (бренд+артикул+название);
+        //   В2 (tier2) +1 день: совпал ТОЛЬКО по облегчённым запросам (артикул/название);
+        //   В3 (tier3) held: не совпал ни по одному → холодная, релиз при КП<4 (followup).
+        // Флаг также включает облегчённые Яндекс-запросы в SupplierTargetingService.
+        'waves_v2' => (bool) env('EMAILS_WAVES_V2', false),
+        // Метрика холодной В3 (followup): порог полученных КП по заявке (< → шлём В3).
+        'wave3_min_offers' => (int) env('EMAILS_WAVE3_MIN_OFFERS', 4),
+        // Задержка (дни) перед отправкой тёплой В2 (tier2) относительно генерации.
+        'wave2_delay_days' => (int) env('EMAILS_WAVE2_DELAY_DAYS', 1),
+
         // Гейт качества волны 1 (discovery-first): если пул батча < min_pool ИЛИ доля
         // найденных Яндексом < min_match_rate% — откладываем генерацию батча, гоним
         // discovery по кандидатам, и повторяем когда discovery готов (переиспользуя
