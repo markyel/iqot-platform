@@ -92,11 +92,12 @@
                         <details style="border-bottom: 1px solid var(--color-border); padding: var(--space-3) 0;">
                             <summary style="cursor: pointer; display: flex; gap: var(--space-4); align-items: center; flex-wrap: wrap;">
                                 <strong style="min-width: 200px;">{{ $r['number'] }}</strong>
-                                <span class="badge {{ $r['status'] === 'responses_received' ? 'badge-success' : 'badge-primary' }}">
-                                    {{ $r['status'] === 'responses_received' ? 'есть ответы' : 'разослано' }}
-                                </span>
+                                <span class="badge {{ $r['state']['class'] }}">{{ $r['state']['label'] }}</span>
                                 <span style="color: var(--color-text-muted); font-size: var(--text-sm);">{{ $r['items'] }} поз · {{ $r['items_with_offers'] }} с КП</span>
-                                <span title="разослано писем всего">✉ {{ number_format($r['wave1'] + $r['wave2'] + $r['wave3'], 0, '.', ' ') }}</span>
+                                <span style="font-size: var(--text-sm);" title="отправлено / в очереди / придержано (резерв волн)">
+                                    ✉ <span style="color: var(--color-success);">{{ number_format($r['sent'], 0, '.', ' ') }}</span>
+                                    отпр · {{ number_format($r['pending'], 0, '.', ' ') }} в очер@if ($r['held'] > 0) · <span style="color: var(--color-text-muted);">{{ number_format($r['held'], 0, '.', ' ') }} резерв</span>@endif
+                                </span>
                                 <span style="white-space: nowrap;" title="В1 горячие · В2 тёплые · В3 холодные">
                                     В1&nbsp;{{ $r['wave1'] }} · В2&nbsp;{{ $r['wave2'] }} · <span style="color: var(--color-text-muted);">В3&nbsp;{{ $r['wave3'] }}</span>
                                 </span>

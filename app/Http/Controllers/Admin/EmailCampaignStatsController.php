@@ -200,6 +200,25 @@ class EmailCampaignStatsController extends Controller
             ->orderBy('eq.batch_id')
             ->get();
 
+        // Реальное состояние отправки по email_queue (requests.status='emails_sent'
+        // ставится при ГЕНЕРАЦИИ, не при реальной отправке — потому статус может врать:
+        // письма ещё pending, а заявка уже «разослано»). Считаем sent/pending/replied.
+        $statusAgg = $db->table('request_items as ri')
+            ->join('request_item_responses as rir', 'rir.request_item_id', '=', 'ri.id')
+            ->join('email_queue as eq', 'eq.id', '=', 'rir.email_queue_id')
+            ->whereIn('ri.request_id', $reqIds)
+            ->selectRaw(
+                "ri.request_id rid,
+                 count(distinct case when eq.status = 'sent' then eq.id end) sent,
+                 count(distinct case when eq.status = 'pending' and eq.scheduled_at < ? then eq.id end) pending,
+                 count(distinct case when eq.status = 'pending' and eq.scheduled_at >= ? then eq.id end) held,
+                 count(distinct case when eq.status in ('replied','reply_processed','in_conversation') then eq.id end) replied",
+                [self::HELD, self::HELD]
+            )
+            ->groupBy('ri.request_id')
+            ->get()
+            ->keyBy('rid');
+
         // rid → wave-итоги; rid → батчи [{id,created,status,sender,w1,w2,w3,total}].
         $waveByReq = [];
         $batchesByReq = [];
@@ -223,16 +242,40 @@ class EmailCampaignStatsController extends Controller
         $out = [];
         foreach ($requests as $r) {
             $a = $agg->get($r->id);
+            $s = $statusAgg->get($r->id);
             $wc = $waveByReq[(int) $r->id] ?? [];
+            $offers = (int) ($a->offers ?? 0);
+            $sent = (int) ($s->sent ?? 0);
+            $pending = (int) ($s->pending ?? 0);
+            $held = (int) ($s->held ?? 0);
+            $replied = (int) ($s->replied ?? 0);
+
+            // Реальное состояние (не сырой requests.status): есть ответы > отправляется >
+            // в очереди. «emails_sent» в БД = сгенерировано, а не доставлено.
+            if ($offers > 0 || $replied > 0) {
+                $state = ['label' => 'есть ответы', 'class' => 'badge-success'];
+            } elseif ($sent > 0 && $pending > 0) {
+                $state = ['label' => 'отправляется', 'class' => 'badge-primary'];
+            } elseif ($sent > 0) {
+                $state = ['label' => 'разослано', 'class' => 'badge-primary'];
+            } else {
+                $state = ['label' => 'в очереди', 'class' => 'badge-warning'];
+            }
+
             $out[] = [
                 'id' => (int) $r->id,
                 'number' => $r->request_number ?: ('#' . $r->id),
                 'title' => $r->title,
-                'status' => $r->status,
+                'db_status' => $r->status,
+                'state' => $state,
                 'items' => (int) $r->total_items,
                 'items_with_offers' => (int) $r->items_with_offers,
                 'suppliers' => (int) ($a->suppliers ?? 0),
-                'offers' => (int) ($a->offers ?? 0),
+                'offers' => $offers,
+                'sent' => $sent,
+                'pending' => $pending,
+                'held' => $held,
+                'replied' => $replied,
                 'wave1' => (int) ($wc[1] ?? 0),
                 'wave2' => (int) ($wc[2] ?? 0),
                 'wave3' => (int) ($wc[3] ?? 0),
