@@ -234,6 +234,9 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
     // Статистика приёма входящих писем (Laravel-пайплайн IncomingEmailRouter)
     Route::get('/emails/receive-stats', [\App\Http\Controllers\Admin\ReceiveEmailStatsController::class, 'index'])->name('emails.receive-stats');
 
+    // Ход выполнения заявок: активные заявки, волны рассылки, ответы/отказы
+    Route::get('/emails/campaigns', [\App\Http\Controllers\Admin\EmailCampaignStatsController::class, 'index'])->name('emails.campaigns');
+
     // Диагностика
     Route::get('/diagnostics', [\App\Http\Controllers\Admin\DiagnosticsController::class, 'index'])->name('diagnostics.index');
     Route::post('/diagnostics/test-parse', [\App\Http\Controllers\Admin\DiagnosticsController::class, 'testParse'])->name('diagnostics.test-parse');

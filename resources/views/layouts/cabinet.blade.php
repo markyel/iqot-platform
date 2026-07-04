@@ -468,6 +468,12 @@
                             <span class="sidebar-item-tooltip">Отправители</span>
                         </a>
 
+                        <a href="{{ route('admin.emails.campaigns') }}" class="sidebar-item {{ request()->routeIs('admin.emails.campaigns') ? 'active' : '' }}">
+                            <i data-lucide="clipboard-list" class="sidebar-item-icon"></i>
+                            <span class="sidebar-item-text">Ход заявок</span>
+                            <span class="sidebar-item-tooltip">Ход выполнения заявок</span>
+                        </a>
+
                         <a href="{{ route('admin.emails.stats') }}" class="sidebar-item {{ request()->routeIs('admin.emails.stats') ? 'active' : '' }}">
                             <i data-lucide="bar-chart-3" class="sidebar-item-icon"></i>
                             <span class="sidebar-item-text">Очередь рассылки</span>
