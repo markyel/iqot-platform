@@ -971,10 +971,12 @@ class CampaignEmailBuilder
                 return "<div style=\"margin:15px 0;{$textStyles}white-space:pre-line;\">" . ($block['content'] ?? '') . '</div>';
 
             case 'requirements_box':
-                // Плоско: без цветной плашки и левой цветной полосы — обычный абзац.
-                $boxContent = (string) ($block['content'] ?? '');
-                $boxContent = str_replace("\n", '<br>', $boxContent);
-                return "<div style=\"margin:16px 0;{$textStyles}\">{$boxContent}</div>";
+                // ЕСТЕСТВЕННОСТЬ: статический нумерованный чек-лист «Ожидаемая информация
+                // в КП: 1. Цена… 5. Техдокументация» дублировал просьбу из ai_closing
+                // (цена/сроки/условия) и делал письмо похожим на форму. Убран — просьбу о
+                // цене/сроках/условиях несёт естественная фраза в closing (решение
+                // пользователя 2026-07-05). Блок оставлен в шаблонах, но не рендерится.
+                return '';
 
             case 'ai_closing':
                 $closing = $aiContent['closing'] ?: 'Буду признателен за оперативный ответ.';
