@@ -101,6 +101,16 @@ class DispatchPendingEmails extends Command
         $totalCapHit = 0;
         $reserved = []; // нормализованный to_email => уже отдали письмо в этом тике
 
+        // Плоский список созревших получателей — загоняем его в SQL-выборку по
+        // ящику (см. ниже), чтобы LIMIT считал уже готовых кандидатов, а не
+        // «первые N писем подряд». Иначе фронт очереди, забитый остывающими
+        // получателями с длинным хвостом писем, голодит созревших глубже.
+        $eligibleKeys = array_keys($eligibleRecipients);
+        if ($eligibleKeys === []) {
+            $this->info('Dispatched: 0 (нет созревших получателей на этот тик)');
+            return self::SUCCESS;
+        }
+
         foreach ($senders as $sender) {
             if ($dispatched >= $limit) {
                 break;
@@ -109,7 +119,9 @@ class DispatchPendingEmails extends Command
             $delaySec = max(1, (int) ($sender->send_delay_seconds ?: 2));
             // Сколько ящик успеет отправить до следующего тика (+1 в запас от простоя).
             $perSenderCap = (int) ceil($tick / $delaySec) + 1;
-            // Берём с запасом: часть кандидатов отсеется пейсингом по получателю.
+            // Берём по ОДНОМУ письму на созревшего получателя (GROUP BY), с буфером
+            // +50 на случай, что часть получателей уже заняты другим ящиком в этом
+            // тике ($reserved). Фильтр зрелости — whereIn по eligibleKeys ДО лимита.
             $fetch = $perSenderCap + 50;
 
             $rows = DB::connection('reports')->table('email_queue')
@@ -123,6 +135,9 @@ class DispatchPendingEmails extends Command
                             ->whereRaw('scheduled_at <= NOW()');
                     });
                 })
+                // Только СОЗРЕВШИЕ получатели (пейсинг) — фильтр ДО лимита, иначе
+                // окно из первых N писем забивают остывающие и созревшие голодают.
+                ->whereIn(DB::raw('LOWER(to_email)'), $eligibleKeys)
                 // Не выбирать письма заблокированным получателям (см. выше).
                 ->whereNotExists(function ($q) {
                     $q->select(DB::raw(1))
@@ -130,11 +145,12 @@ class DispatchPendingEmails extends Command
                         ->whereColumn('rm.email', DB::raw('LOWER(email_queue.to_email)'))
                         ->where('rm.is_blocked', 1);
                 })
-                ->orderByRaw("CASE WHEN status = 'pending' THEN 0 ELSE 1 END")
-                ->orderByDesc('priority')
-                ->orderBy('scheduled_at')
+                // По одному письму на получателя (самое приоритетное/старое из его хвоста).
+                ->groupBy(DB::raw('LOWER(to_email)'))
+                ->orderByRaw('MAX(priority) DESC')
+                ->orderByRaw('MIN(scheduled_at) ASC')
                 ->limit($fetch)
-                ->get(['id', 'to_email']);
+                ->get([DB::raw('MIN(id) as id'), DB::raw('LOWER(to_email) as to_email')]);
 
             $accum = 0;
             $sentThisSender = 0;
