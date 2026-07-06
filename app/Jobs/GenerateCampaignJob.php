@@ -74,6 +74,10 @@ class GenerateCampaignJob implements ShouldQueue
     /** Пин пула: генерить ТОЛЬКО этим поставщикам (отсрочка по капасити / контейнмент бана). */
     private ?array $onlySupplierIds = null;
 
+    /** Волна пина (waves-v2): перегенерённые письма получают ЭТУ волну (В3 → held-резерв
+     *  остаётся held, не превращается в немедленную В1). null → волна 1 (legacy). */
+    private ?int $pinnedWave = null;
+
     /** Нарезка батча по остаткам дневных лимитов (Phase 3b, EMAILS_WARMUP_ENABLED). */
     private ?WarmupBatchSplitter $splitter = null;
 
@@ -278,8 +282,10 @@ class GenerateCampaignJob implements ShouldQueue
         // Прогрев (Phase 3b): режем батч по остаткам дневных лимитов — под-батчи,
         // каждый со своим отправителем/стилем/токеном/телом. Что не влезло в лимиты —
         // отсрочка (sender_capacity) до освобождения капасити. В dry-run — старый путь
-        // (без записей в deferred_batches).
-        $plan = (!$this->dryRun && $this->splitter !== null) ? $this->splitter->split($batch) : null;
+        // (без записей в deferred_batches). Перегенерация held/отложенной волны (пин В2/В3)
+        // сплиттер НЕ режет — эти волны сегодняшнюю капасити не расходуют (уйдут позже/held).
+        $skipSplit = $this->onlySupplierIds !== null && $this->pinnedWave !== null && $this->pinnedWave !== 1;
+        $plan = (!$this->dryRun && !$skipSplit && $this->splitter !== null) ? $this->splitter->split($batch) : null;
         if ($plan === null) {
             $this->generateAndPersist($batch, $tokenGenerator, $bodyGenerator, $emailBuilder, $persister);
             return;
@@ -290,10 +296,14 @@ class GenerateCampaignJob implements ShouldQueue
             $this->generateAndPersist($sub, $tokenGenerator, $bodyGenerator, $emailBuilder, $persister);
         }
         if ($subs === []) {
-            // Капасити нет совсем — откладываем весь пул (волна 2 + холодная волна 3).
-            $this->deferBatchForCapacity($batch, array_merge($batch->suppliers, $batch->expansionSuppliers, $batch->coldSuppliers));
+            // Капасити нет совсем — откладываем весь пул, СОХРАНЯЯ волну каждого тира
+            // (В1 горячие / В2 тёплые / В3 холодные-held), чтобы при выпуске волна не сбилась.
+            $this->deferBatchForCapacity($batch, $batch->suppliers, 'sender_capacity', 1);
+            $this->deferBatchForCapacity($batch, $batch->expansionSuppliers, 'sender_capacity', 2);
+            $this->deferBatchForCapacity($batch, $batch->coldSuppliers, 'sender_capacity', 3);
         } elseif ($leftover !== []) {
-            $this->deferBatchForCapacity($batch, $leftover);
+            // leftover — это горячая волна 1, не влезшая в дневные лимиты.
+            $this->deferBatchForCapacity($batch, $leftover, 'sender_capacity', 1);
         }
     }
 
@@ -358,10 +368,13 @@ class GenerateCampaignJob implements ShouldQueue
 
         // Волна 1 (сразу) + волна 2 (тёплые/расширение, +delay или held) + волна 3
         // (холодные, waves-v2, held до followup). Persister ставит scheduled_at по wave.
+        // При пине (контейнмент/капасити) волну НЕ переклассифицируем — ставим сохранённую
+        // (В3 остаётся held-резервом). Обычный путь — волна 1 (горячие/tier1).
+        $suppliersWave = $this->onlySupplierIds !== null ? ($this->pinnedWave ?? 1) : 1;
         $emails = [];
         foreach ($batch->suppliers as $supplier) {
             $e = $emailBuilder->build($batch, $supplier);
-            $e['wave'] = 1;
+            $e['wave'] = $suppliersWave;
             $emails[] = $e;
         }
         foreach ($batch->expansionSuppliers as $supplier) {
@@ -641,7 +654,7 @@ class GenerateCampaignJob implements ShouldQueue
      *
      * @param array<int,array<string,mixed>> $suppliers
      */
-    private function deferBatchForCapacity(Batch $batch, array $suppliers, string $reason = 'sender_capacity'): void
+    private function deferBatchForCapacity(Batch $batch, array $suppliers, string $reason = 'sender_capacity', int $wave = 1): void
     {
         if ($this->dryRun) {
             return;
@@ -665,6 +678,7 @@ class GenerateCampaignJob implements ShouldQueue
             'product_type_id' => !empty($batch->productTypeIds) ? (int) $batch->productTypeIds[0] : null,
             'domain_id' => !empty($batch->domainIds) ? (int) $batch->domainIds[0] : null,
             'only_supplier_ids' => json_encode($supplierIds, JSON_UNESCAPED_UNICODE),
+            'wave' => $wave > 0 ? $wave : 1,
             'found_domains' => json_encode([], JSON_UNESCAPED_UNICODE),
             'candidates_total' => 0,
             'candidates_done' => 0,
@@ -890,6 +904,8 @@ class GenerateCampaignJob implements ShouldQueue
             if ($this->capacityRetry && !empty($row->only_supplier_ids)) {
                 $pin = array_values(array_filter(array_map('intval', (array) (json_decode((string) $row->only_supplier_ids, true) ?: []))));
                 $this->onlySupplierIds = $pin !== [] ? $pin : null;
+                // Сохранённая волна пина: перегенерим той же волной (В3 остаётся held).
+                $this->pinnedWave = isset($row->wave) && $row->wave !== null ? (int) $row->wave : null;
             }
         } else {
             // Гейт качества: клеймим ready→processing (повторный тик не возьмёт тот же).

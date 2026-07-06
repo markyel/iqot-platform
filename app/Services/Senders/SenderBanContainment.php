@@ -74,22 +74,27 @@ class SenderBanContainment
             ->whereIn('id', $candidateIds)
             ->where('status', 'cancelled')
             ->where('error_message', $marker)
-            ->get(['batch_id', 'supplier_id']);
+            ->get(['batch_id', 'supplier_id', 'wave']);
 
-        // Группируем снятых адресатов по батчу → отложка на регенерацию.
-        $byBatch = [];
+        // Группируем снятых адресатов по (батч × ВОЛНА) → отложка на регенерацию с
+        // сохранением волны: холодная В3 (held-резерв) переезжает на другой ящик, но
+        // ОСТАЁТСЯ В3 (held), а не превращается в немедленную В1.
+        $byBatchWave = [];
         foreach ($rows as $r) {
             $batchId = (int) $r->batch_id;
             $supplierId = (int) $r->supplier_id;
-            if ($batchId > 0 && $supplierId > 0 && !in_array($supplierId, $byBatch[$batchId] ?? [], true)) {
-                $byBatch[$batchId][] = $supplierId;
+            $wave = (int) ($r->wave ?? 1) ?: 1;
+            if ($batchId > 0 && $supplierId > 0 && !in_array($supplierId, $byBatchWave[$batchId][$wave] ?? [], true)) {
+                $byBatchWave[$batchId][$wave][] = $supplierId;
             }
         }
 
         $deferred = 0;
-        foreach ($byBatch as $batchId => $supplierIds) {
-            if ($this->deferBatch($senderId, $batchId, $supplierIds, $trigger)) {
-                $deferred++;
+        foreach ($byBatchWave as $batchId => $byWave) {
+            foreach ($byWave as $wave => $supplierIds) {
+                if ($this->deferBatch($senderId, $batchId, $supplierIds, $trigger, (int) $wave)) {
+                    $deferred++;
+                }
             }
         }
 
@@ -104,7 +109,7 @@ class SenderBanContainment
     /**
      * @param array<int,int> $supplierIds
      */
-    private function deferBatch(int $senderId, int $batchId, array $supplierIds, string $trigger): bool
+    private function deferBatch(int $senderId, int $batchId, array $supplierIds, string $trigger, int $wave = 1): bool
     {
         $batch = DB::connection(self::CONN)->table('email_batches')
             ->where('id', $batchId)
@@ -135,6 +140,7 @@ class SenderBanContainment
             'product_type_id' => (int) ($first->product_type_id ?? 0) ?: null,
             'domain_id' => (int) ($first->domain_id ?? 0) ?: null,
             'only_supplier_ids' => json_encode(array_values($supplierIds), JSON_UNESCAPED_UNICODE),
+            'wave' => $wave > 0 ? $wave : 1,
             'found_domains' => json_encode([], JSON_UNESCAPED_UNICODE),
             'candidates_total' => 0,
             'candidates_done' => 0,
