@@ -33,10 +33,11 @@ class CampaignEmailBuilder
         ];
 
         // Информация об отправителе.
-        $senderName = ($sender['sender_name'] ?? null) ?: 'Отдел закупок';
+        $senderName = $this->realName($sender['sender_name'] ?? null) ?? 'Отдел закупок';
         $senderEmail = $sender['email'] ?? null;
         $senderPhone = $sender['phone'] ?? null;
-        $senderFullName = ($sender['sender_full_name'] ?? null) ?: (($sender['sender_name'] ?? null) ?: $senderName);
+        $senderFullName = $this->realName($sender['sender_full_name'] ?? null)
+            ?? ($this->realName($sender['sender_name'] ?? null) ?? $senderName);
         $senderPosition = $sender['position'] ?? null; // в Get Sender нет → null
 
         $senderOrganization = null;
@@ -217,6 +218,19 @@ class CampaignEmailBuilder
      * DB хранит quantity как decimal(_,3), сырой рендер «20.000» поставщик читает
      * как 20 000 — поэтому убираем незначащие нули и дробную часть у целых.
      */
+    /**
+     * Имя отправителя или null, если пусто/плейсхолдер импорта («Не указано», «—»,
+     * «n/a», «нет данных»). Чтобы такие литералы не утекали в подпись письма.
+     */
+    private function realName(mixed $v): ?string
+    {
+        $s = trim((string) ($v ?? ''));
+        if ($s === '' || preg_match('/^(—|-{1,2}|n\/?a|не\s*указан\w*|нет\s*данных|null)$/iu', $s)) {
+            return null;
+        }
+        return $s;
+    }
+
     private function formatQty(mixed $val, string $emptyVal = self::EMPTY_VAL): string
     {
         $s = $this->cleanValue($val, $emptyVal);
@@ -833,7 +847,8 @@ class CampaignEmailBuilder
 
         $linkColor = $style['link_color'] ?? $textColor;
 
-        $fullName = ($senderData['sender_full_name'] ?? null) ?: (($senderData['sender_name'] ?? null) ?: 'Имя не указано');
+        $fullName = $this->realName($senderData['sender_full_name'] ?? null)
+            ?? ($this->realName($senderData['sender_name'] ?? null) ?? 'Отдел закупок');
         $phone = $senderData['phone'] ?? null;
         $email = $senderData['email'] ?? null;
         $position = $senderData['position'] ?? null;
