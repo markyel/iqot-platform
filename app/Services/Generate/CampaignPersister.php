@@ -79,6 +79,8 @@ class CampaignPersister
 
             // 3. Insert Email Queue + Insert Item Responses на каждого поставщика.
             $queueIds = [];
+            // Ротация ящиков: один ЯЩИК не пишет одному поставщику чаще, чем раз в N дней.
+            $senderWindow = max(0, (int) config('services.email_generate.sender_recipient_days', 7));
             foreach ($emails as $email) {
                 if (!is_array($email)) {
                     continue;
@@ -93,6 +95,16 @@ class CampaignPersister
                 // пересобираем, докрывая только НЕ разосланных, не тревожа получивших.
                 $itemIds = $this->itemIds($email['request_item_ids'] ?? []);
                 if ($this->alreadyContacted($itemIds, $supplierId)) {
+                    continue;
+                }
+
+                // РОТАЦИЯ ЯЩИКОВ: этот ЯЩИК не должен писать одному поставщику чаще, чем
+                // раз в senderWindow дней. Батч-ротация ровная, НО универсальный дилер
+                // попадает в разные батчи ОДНОГО ящика (по 1 батчу/прогон за день) →
+                // получал пачку писем с одного ящика («спам»). Поставщика покроют ДРУГИЕ
+                // ящики (в их батчах) — суммарный темп рассылки не страдает.
+                if ($senderWindow > 0
+                    && $this->senderEmailedRecently((int) ($email['sender_id'] ?? 0), (string) ($email['to_email'] ?? ''), $senderWindow)) {
                     continue;
                 }
 
@@ -181,6 +193,26 @@ class CampaignPersister
             ->where('r.supplier_id', $supplierId)
             ->whereIn('r.request_item_id', $itemIds)
             ->whereIn('q.status', ['sent', 'opened', 'replied', 'reply_processed', 'in_conversation', 'completed'])
+            ->exists();
+    }
+
+    /**
+     * Писал ли ЭТОТ ящик ЭТОМУ поставщику за последние $days дней (ротация ящиков).
+     * Считаем pending/в полёте/sent — чтобы и в одном прогоне второй батч того же ящика
+     * не задублировал адресата. cancelled/failed НЕ считаются.
+     */
+    private function senderEmailedRecently(int $senderId, string $toEmail, int $days): bool
+    {
+        $toEmail = mb_strtolower(trim($toEmail));
+        if ($senderId <= 0 || $toEmail === '' || $days <= 0) {
+            return false;
+        }
+
+        return DB::connection(self::CONN)->table('email_queue')
+            ->where('sender_id', $senderId)
+            ->whereRaw('LOWER(to_email) = ?', [$toEmail])
+            ->whereIn('status', ['pending', 'sending', 'sent', 'opened', 'replied', 'reply_processed', 'in_conversation', 'completed'])
+            ->where('created_at', '>=', now()->subDays($days))
             ->exists();
     }
 
