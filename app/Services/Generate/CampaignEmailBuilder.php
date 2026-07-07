@@ -163,7 +163,10 @@ class CampaignEmailBuilder
 
         $fontSize = $style['font_size'] ?? '10pt';
         $textColor = $style['text_color'] ?? '#333';
-        $linkColor = $style['header_bg'] ?? '#2c5aa0';
+        // Цвет ссылки — ФИКСИРОВАННЫЙ видимый синий, НЕ header_bg: у ряда шаблонов
+        // header_bg = "transparent"/белый (после облегчения вёрстки) → текст ссылки
+        // становился невидимым (после «—» пусто). Ссылка должна читаться всегда.
+        $linkColor = '#1a56db';
         $textStyles = "font-size:{$fontSize};color:{$textColor};line-height:1.6;";
 
         $intro = trim((string) $intro);
