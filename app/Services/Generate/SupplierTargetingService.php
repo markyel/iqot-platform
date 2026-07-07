@@ -30,6 +30,8 @@ class SupplierTargetingService
         'youtube.', 'wikipedia.', 'facebook.', 'instagram.', 'vk.com', 'tiktok.', 'twitter.',
         'linkedin.', 'ok.ru', 'dzen.ru', 'tiu.ru', 'pulscen.ru', '2gis.ru', 'yell.ru', 'zoon.ru',
         'cataloxy.ru', 'rusprofile.ru', 'list-org.com', 'forum.', 'otvet.mail.ru', 'pikabu.ru',
+        // Переводчики-прокси (Яндекс/Google) и агрегаторы инструкций — не поставщики.
+        'tr-page.', 'translate.', 'translated.turbopages', 'turbopages.org', 'manualslib.',
     ];
 
     private const ALLOWED_TLD = ['.ru', '.рф', '.su'];
@@ -212,6 +214,22 @@ class SupplierTargetingService
         return trim(implode(' ', $take));
     }
 
+    /**
+     * Фри-почтовый домен (yandex.ru/mail.ru/gmail/...) — это ПРОВАЙДЕР почты, НЕ сайт
+     * поставщика. Матчить/цитировать по нему нельзя: поставщик с email @yandex.ru иначе
+     * ложно совпадает с ЛЮБЫМ yandex.ru-URL (напр. tr-page.yandex.ru — Яндекс-переводчик).
+     * Точное сравнение домена (не подстрока) — чтобы «liftmail.ru» НЕ считался фри-почтой.
+     */
+    private function isFreeMailHost(string $h): bool
+    {
+        static $free = [
+            'mail.ru', 'gmail.com', 'yandex.ru', 'ya.ru', 'yandex.by', 'yandex.kz',
+            'bk.ru', 'list.ru', 'inbox.ru', 'internet.ru', 'rambler.ru', 'mail.com',
+            'outlook.com', 'hotmail.com', 'yahoo.com', 'icloud.com',
+        ];
+        return in_array($h, $free, true);
+    }
+
     /** Домен поставщика для site:-запроса: website, иначе домен email (не фри-почта). */
     private function supplierHost(object $r): string
     {
@@ -223,7 +241,7 @@ class SupplierTargetingService
         }
         if (!empty($r->email) && preg_match('/@([\w.-]+)$/', (string) $r->email, $m)) {
             $h = $this->normHost($m[1]);
-            if ($h !== '' && !preg_match('/(mail\.|gmail|yandex\.|bk\.ru|list\.ru|inbox\.|rambler)/', $h)) {
+            if ($h !== '' && !$this->isFreeMailHost($h)) {
                 return $h;
             }
         }
@@ -383,10 +401,12 @@ class SupplierTargetingService
                     }
                 }
             }
-            // Домен email (для поставщиков без website — их большинство).
+            // Домен email (для поставщиков без website). ФРИ-почту НЕ берём: это домен
+            // почтового провайдера, а не сайт поставщика (иначе @yandex.ru ложно матчит
+            // любой yandex.ru-URL, напр. tr-page.yandex.ru — переводчик Яндекса).
             if ($r->email && preg_match('/@([\w.-]+)$/', (string) $r->email, $m)) {
                 $eh = $this->normHost($m[1]);
-                if ($eh !== '' && !isset($map[$eh])) {
+                if ($eh !== '' && !$this->isFreeMailHost($eh) && !isset($map[$eh])) {
                     $map[$eh] = (int) $r->id;
                 }
             }
