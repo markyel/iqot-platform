@@ -279,32 +279,15 @@ class GenerateCampaignJob implements ShouldQueue
         // только горячую волну 1 (tier2/tier3 держатся, лимит сегодня не расходуют).
         $this->classifyByTier($batch, $res);
 
-        // Прогрев (Phase 3b): режем батч по остаткам дневных лимитов — под-батчи,
-        // каждый со своим отправителем/стилем/токеном/телом. Что не влезло в лимиты —
-        // отсрочка (sender_capacity) до освобождения капасити. В dry-run — старый путь
-        // (без записей в deferred_batches). Перегенерация held/отложенной волны (пин В2/В3)
-        // сплиттер НЕ режет — эти волны сегодняшнюю капасити не расходуют (уйдут позже/held).
-        $skipSplit = $this->onlySupplierIds !== null && $this->pinnedWave !== null && $this->pinnedWave !== 1;
-        $plan = (!$this->dryRun && !$skipSplit && $this->splitter !== null) ? $this->splitter->split($batch) : null;
-        if ($plan === null) {
-            $this->generateAndPersist($batch, $tokenGenerator, $bodyGenerator, $emailBuilder, $persister);
-            return;
-        }
-
-        [$subs, $leftover] = $plan;
-        foreach ($subs as $sub) {
-            $this->generateAndPersist($sub, $tokenGenerator, $bodyGenerator, $emailBuilder, $persister);
-        }
-        if ($subs === []) {
-            // Капасити нет совсем — откладываем весь пул, СОХРАНЯЯ волну каждого тира
-            // (В1 горячие / В2 тёплые / В3 холодные-held), чтобы при выпуске волна не сбилась.
-            $this->deferBatchForCapacity($batch, $batch->suppliers, 'sender_capacity', 1);
-            $this->deferBatchForCapacity($batch, $batch->expansionSuppliers, 'sender_capacity', 2);
-            $this->deferBatchForCapacity($batch, $batch->coldSuppliers, 'sender_capacity', 3);
-        } elseif ($leftover !== []) {
-            // leftover — это горячая волна 1, не влезшая в дневные лимиты.
-            $this->deferBatchForCapacity($batch, $leftover, 'sender_capacity', 1);
-        }
+        // «1 БАТЧ = 1 SENDER»: батч НЕ дробим по ящикам. Весь батч (все волны) генерим
+        // с ОДНИМ назначенным отправителем (assigner round-robin). Дневной лимит держит
+        // ДИСПЕТЧЕР: что не влезло в лимит ящика сегодня — остаётся pending и досылается
+        // на след. день ТЕМ ЖЕ ящиком. Прежний WarmupBatchSplitter дробил волну-1 по
+        // нескольким ящикам пропорц. остатку лимита → концентрировал объём на одном
+        // высоколимитном ящике и ломал ротацию по получателю (поставщик получал пачку
+        // писем с ОДНОГО ящика). Убрано ради «1 батч = 1 sender».
+        $this->generateAndPersist($batch, $tokenGenerator, $bodyGenerator, $emailBuilder, $persister);
+        return;
     }
 
     /**

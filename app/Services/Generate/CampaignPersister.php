@@ -88,6 +88,14 @@ class CampaignPersister
                     continue;
                 }
 
+                // Дедуп пересборки: если поставщику УЖЕ отправлено (не отменено) письмо
+                // по этим позициям заявки — не создаём дубль. Частичные заявки
+                // пересобираем, докрывая только НЕ разосланных, не тревожа получивших.
+                $itemIds = $this->itemIds($email['request_item_ids'] ?? []);
+                if ($this->alreadyContacted($itemIds, $supplierId)) {
+                    continue;
+                }
+
                 $token = (string) ($email['tracking_token'] ?? '');
                 // scheduled_at по волне. Диспетчер берёт только scheduled_at <= NOW().
                 //   В1: сразу (now).
@@ -122,7 +130,7 @@ class CampaignPersister
                 ]);
                 $queueIds[] = $emailQueueId;
 
-                foreach ($this->itemIds($email['request_item_ids'] ?? []) as $itemId) {
+                foreach ($itemIds as $itemId) {
                     $this->upsertItemResponse($itemId, $supplierId, $emailQueueId, $batchId);
                 }
             }
@@ -151,6 +159,29 @@ class CampaignPersister
                 batch_id = VALUES(batch_id)',
             [$itemId, $supplierId, $emailQueueId, $batchId, 'pending']
         );
+    }
+
+    /**
+     * Уже слали (и НЕ отменили) письмо этому поставщику по любой из позиций заявки?
+     * Через request_item_responses → email_queue.status. cancelled/failed/pending НЕ
+     * считаются «отправленным» — их можно перекрыть при пересборке. Скоуп —
+     * request_item_id (заявка-специфичен), поэтому НОВАЯ заявка на тот же товар
+     * (другие item_id) не подавляется.
+     *
+     * @param array<int,int> $itemIds
+     */
+    private function alreadyContacted(array $itemIds, int $supplierId): bool
+    {
+        if ($itemIds === [] || $supplierId <= 0) {
+            return false;
+        }
+
+        return DB::connection(self::CONN)->table('request_item_responses as r')
+            ->join('email_queue as q', 'q.id', '=', 'r.email_queue_id')
+            ->where('r.supplier_id', $supplierId)
+            ->whereIn('r.request_item_id', $itemIds)
+            ->whereIn('q.status', ['sent', 'opened', 'replied', 'reply_processed', 'in_conversation', 'completed'])
+            ->exists();
     }
 
     /**

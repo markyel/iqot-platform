@@ -85,8 +85,8 @@ class DispatchPendingEmails extends Command
                     ->whereColumn('rm.email', DB::raw('LOWER(eq.to_email)'))
                     ->where('rm.is_blocked', 1);
             })
-            ->groupBy('s.id', 's.send_delay_seconds')
-            ->get(['s.id', 's.send_delay_seconds']);
+            ->groupBy('s.id', 's.send_delay_seconds', 's.daily_limit', 's.emails_sent_today', 's.last_send_date')
+            ->get(['s.id', 's.send_delay_seconds', 's.daily_limit', 's.emails_sent_today', 's.last_send_date']);
 
         if ($senders->isEmpty()) {
             $this->info('No pending emails.');
@@ -111,6 +111,18 @@ class DispatchPendingEmails extends Command
             return self::SUCCESS;
         }
 
+        // Дневной лимит ящика (прогрев): «1 батч = 1 sender» → весь пул батча может
+        // висеть на одном ящике; чтобы он не слал больше daily_limit/сутки, лимит
+        // держим ЗДЕСЬ (не в генерации). Учитываем письма «в полёте» (status=sending —
+        // заклеймлены, но счётчик emails_sent_today ещё не увеличен воркером).
+        $today = now()->toDateString();
+        $inFlight = DB::connection('reports')->table('email_queue')
+            ->where('status', 'sending')
+            ->selectRaw('sender_id, COUNT(*) as n')
+            ->groupBy('sender_id')
+            ->pluck('n', 'sender_id');
+        $dailyLimitHit = 0;
+
         foreach ($senders as $sender) {
             if ($dispatched >= $limit) {
                 break;
@@ -119,6 +131,23 @@ class DispatchPendingEmails extends Command
             $delaySec = max(1, (int) ($sender->send_delay_seconds ?: 2));
             // Сколько ящик успеет отправить до следующего тика (+1 в запас от простоя).
             $perSenderCap = (int) ceil($tick / $delaySec) + 1;
+
+            // Дневной лимит: остаток = daily_limit − отправлено_сегодня − в_полёте.
+            // emails_sent_today валиден только если last_send_date = сегодня (первая
+            // отправка нового дня его обнуляет в bumpSenderCounter). Ящик, выбравший
+            // лимит, ПРОПУСКАЕМ (continue) — очередь НЕ встаёт; его остаток ждёт pending
+            // и уйдёт на след. день (счётчик обнулится).
+            $dailyLimit = (int) $sender->daily_limit;
+            if ($dailyLimit > 0) {
+                $sentToday = (substr((string) $sender->last_send_date, 0, 10) === $today)
+                    ? (int) $sender->emails_sent_today : 0;
+                $remainingDaily = $dailyLimit - $sentToday - (int) ($inFlight[$sender->id] ?? 0);
+                if ($remainingDaily <= 0) {
+                    $dailyLimitHit++;
+                    continue;
+                }
+                $perSenderCap = min($perSenderCap, $remainingDaily);
+            }
             // Берём по ОДНОМУ письму на созревшего получателя (GROUP BY), с буфером
             // +50 на случай, что часть получателей уже заняты другим ящиком в этом
             // тике ($reserved). Фильтр зрелости — whereIn по eligibleKeys ДО лимита.
@@ -191,7 +220,7 @@ class DispatchPendingEmails extends Command
         }
 
         $this->info("Dispatched: {$dispatched} (senders: {$senders->count()}, получателей: "
-            . count($reserved) . ", на лимите ящика: {$totalCapHit})");
+            . count($reserved) . ", на тик-лимите: {$totalCapHit}, на дневном лимите: {$dailyLimitHit})");
         return self::SUCCESS;
     }
 
