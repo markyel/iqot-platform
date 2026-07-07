@@ -189,11 +189,12 @@ class CampaignEmailBuilder
             }
             $seen[$key] = true;
             $safeUrl = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
-            $host = htmlspecialchars(preg_replace('#^www\.#', '', (string) (parse_url($url, PHP_URL_HOST) ?: '')), ENT_QUOTES, 'UTF-8');
             $safeName = htmlspecialchars($name, ENT_QUOTES, 'UTF-8');
-            $label = $safeName !== '' ? $safeName : ($host !== '' ? $host : $safeUrl);
-            $suffix = $host !== '' ? " (<a href=\"{$safeUrl}\" style=\"color:{$linkColor};\">{$host}</a>)" : '';
-            $lines[] = "«{$label}»{$suffix}";
+            // Естественный «человек скопипастил ссылку»: позиция — СЫРОЙ полный URL.
+            // Аккуратный «Позиция» (домен) с ссылкой под текстом читается как автоматика
+            // (спрятать URL под якорь — заморочка, живой человек так не делает).
+            $link = "<a href=\"{$safeUrl}\" style=\"color:{$linkColor};\">{$safeUrl}</a>";
+            $lines[] = $safeName !== '' ? "{$safeName} — {$link}" : $link;
             if (count($lines) >= 3) {
                 break;
             }
