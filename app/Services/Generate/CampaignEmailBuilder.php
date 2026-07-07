@@ -30,6 +30,7 @@ class CampaignEmailBuilder
             'greeting' => $batch->aiBody['greeting'] ?? null,
             'introduction' => $batch->aiBody['introduction'] ?? null,
             'closing' => $batch->aiBody['closing'] ?? null,
+            'request' => $batch->aiBody['request'] ?? null,
         ];
 
         // Информация об отправителе.
@@ -978,6 +979,13 @@ class CampaignEmailBuilder
             case 'ai_introduction':
                 $intro = $aiContent['introduction'] ?: 'Прошу вас предоставить коммерческое предложение на следующие товары:';
                 return "<p style=\"margin:0 0 20px 0;{$textStyles}line-height:1.6;\">{$intro}</p>";
+
+            case 'ai_request':
+                // ОДНА живая просьба (заменяет ai_introduction + ai_closing в коротких
+                // скелетах). Идёт перед таблицей позиций — «что нужно + что указать».
+                $request = $aiContent['request']
+                    ?: ($aiContent['introduction'] ?: 'Собираем цены по позициям ниже — подскажите стоимость, сроки и условия оплаты.');
+                return "<p style=\"margin:0 0 16px 0;{$textStyles}line-height:1.6;\">{$request}</p>";
 
             case 'items_display':
                 $format = $template['items_format'] ?? ($block['format'] ?? 'table');

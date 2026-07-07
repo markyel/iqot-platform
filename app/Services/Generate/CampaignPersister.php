@@ -227,6 +227,7 @@ class CampaignPersister
         $parts = [
             trim((string) ($body['greeting'] ?? '')),
             trim((string) ($body['introduction'] ?? '')),
+            trim((string) ($body['request'] ?? '')),
             trim((string) ($body['closing'] ?? '')),
         ];
         return trim(implode("\n\n", array_filter($parts, static fn ($p) => $p !== '')));

@@ -217,6 +217,13 @@ TXT;
         $toneUpper = mb_strtoupper((string) $toneName);
         $itemsCount = count($items);
 
+        // ai_request — ОДНА живая просьба (заменяет пару introduction+closing в коротких
+        // скелетах, как пишут реальные закупщики). Вариант захода берём из скелета шаблона
+        // {"type":"ai_request","variant":"kp|availability|ask|terse"} — стабилен per-sender
+        // (один шаблон = один ящик), а между ящиками разный. Корпус — реальные входящие.
+        $requestVariant = $this->requestVariant($template);
+        $requestGuide = $this->requestGuide($requestVariant);
+
         // Структурный «угол» захода — СТАБИЛЕН per-sender (у одного ящика письма
         // похожи → анти-фингерпринт), но РАЗНЫЙ между отправителями. Поставщик получает
         // до ~30 писем/день от разных ящиков; чтобы они не были на один скелет, каждый
@@ -285,6 +292,7 @@ TXT;
   "greeting": "Приветствие",
   "introduction": "Вступление ({$introMin}-{$introMax} предложения)",
   "closing": "Заключение ({$closingMin}-{$closingMax} предложения)",
+  "request": "ОДНА живая просьба (1-2 коротких предложения)",
   "found_intro": "1 короткое предложение"
 }
 
@@ -318,7 +326,16 @@ TXT;
    - БЕЗ подписи (она добавляется отдельно)
    - {$closingMin}-{$closingMax} предложения
 
-4. found_intro (короткая подводка к ссылкам ниже — ОДНО предложение):
+4. request (ОДНА живая просьба — в КОРОТКИХ письмах ЗАМЕНЯЕТ introduction+closing):
+   - Самодостаточно: и ЧТО нужно, и что указать (цена / срок / наличие / оплата) — в
+     1-2 коротких предложениях, БЕЗ отдельного вступления и заключения.
+   - Пиши как реальный снабженец в почте: сразу к делу, живым языком, минимум воды.
+   - Можно ОДНОЙ фразой обозначить тип позиций («по лифтовым запчастям»), но БЕЗ
+     перечисления товаров (они в таблице) и БЕЗ артикулов.
+   - Заход "{$requestVariant}". Примеры (НЕ копируй дословно, придумай своё в тоне "{$toneName}"):
+{$requestGuide}
+
+5. found_intro (короткая подводка к ссылкам ниже — ОДНО предложение):
    - Смысл: под этой фразой пойдут ссылки на позиции, которые, ПОХОЖЕ, есть на сайте
      получателя. Мягко (как предположение, не утверждение) подведи к ним и попроси
      помочь с заявкой. БЕЗ самих ссылок (подставятся отдельно).
@@ -370,6 +387,55 @@ TXT;
     }
 
     /**
+     * Вариант захода для ai_request — из скелета шаблона
+     * {"type":"ai_request","variant":"kp|availability|ask|terse"}. Дефолт 'kp'.
+     *
+     * @param array<string,mixed> $template
+     */
+    private function requestVariant(array $template): string
+    {
+        $blocks = $template['blocks'] ?? null;
+        if (is_string($blocks)) {
+            $blocks = json_decode($blocks, true);
+        }
+        if (is_array($blocks)) {
+            foreach ($blocks as $b) {
+                if (is_array($b) && ($b['type'] ?? '') === 'ai_request') {
+                    $v = mb_strtolower(trim((string) ($b['variant'] ?? 'kp')));
+                    return in_array($v, ['kp', 'availability', 'ask', 'terse'], true) ? $v : 'kp';
+                }
+            }
+        }
+        return 'kp';
+    }
+
+    /**
+     * Few-shot из корпуса реальных входящих закупщиков под каждый заход ai_request:
+     * коротко, ОДНА просьба, суть (цена/срок/наличие/оплата).
+     */
+    private function requestGuide(string $variant): string
+    {
+        return match ($variant) {
+            'availability' =>
+                "  • «Подскажите, пожалуйста, наличие и стоимость по позициям ниже.»\n"
+                . "  • «Что из списка есть в наличии и по какой цене?»\n"
+                . "  • «Уточните наличие, цену и срок отгрузки.»",
+            'ask' =>
+                "  • «Сможете подобрать по позициям ниже? Интересует цена и срок.»\n"
+                . "  • «Поможете с поставкой? Сориентируйте по стоимости и наличию.»\n"
+                . "  • «Есть возможность отгрузить? Подскажите цену и срок.»",
+            'terse' =>
+                "  • «Нужны позиции ниже. Что по цене и срокам?»\n"
+                . "  • «Прошу цену и срок по списку.»\n"
+                . "  • «Стоимость и наличие по позициям?»",
+            default => // kp
+                "  • «Собираем цены по позициям ниже. Подскажите стоимость, срок и условия оплаты.»\n"
+                . "  • «Нужно КП по списку — цена, сроки поставки, оплата.»\n"
+                . "  • «Прошу цены и сроки по позициям. Как по оплате?»",
+        };
+    }
+
+    /**
      * Порт проверок «Parse AI Response» поверх уже распарсенного JSON.
      *
      * @param array<string,mixed> $parsed
@@ -380,6 +446,7 @@ TXT;
         $greeting = isset($parsed['greeting']) ? trim((string) $parsed['greeting']) : '';
         $introduction = isset($parsed['introduction']) ? trim((string) $parsed['introduction']) : '';
         $closing = isset($parsed['closing']) ? trim((string) $parsed['closing']) : '';
+        $request = isset($parsed['request']) ? trim((string) $parsed['request']) : '';
         $foundIntro = isset($parsed['found_intro']) ? trim((string) $parsed['found_intro']) : '';
 
         // Санитайзер концовки: gpt-4o упорно добавляет хвост-вежливость («ждём вашего
@@ -387,6 +454,7 @@ TXT;
         // Детерминированно срезаем ХВОСТОВЫЕ предложения-вежливости про ответ/сотрудничество,
         // если в них НЕТ сути (цена/сроки/оплата) — сама просьба (с сутью) сохраняется.
         $closing = $this->stripPolitenessTail($closing);
+        $request = $this->stripPolitenessTail($request);
 
         if ($greeting === '' || mb_strlen($greeting) < 3) {
             $greeting = 'Добрый день,';
@@ -397,6 +465,9 @@ TXT;
         if ($closing === '' || mb_strlen($closing) < 10) {
             $closing = 'Подскажите, пожалуйста, цену, сроки и условия оплаты.';
         }
+        if ($request === '' || mb_strlen($request) < 10) {
+            $request = 'Собираем цены по позициям ниже — подскажите стоимость, сроки и условия оплаты.';
+        }
         if ($foundIntro === '' || mb_strlen($foundIntro) < 10) {
             $foundIntro = 'Часть, кажется, у вас есть — гляньте, пожалуйста, и по остальному.';
         }
@@ -405,6 +476,7 @@ TXT;
             'greeting' => $greeting,
             'introduction' => $introduction,
             'closing' => $closing,
+            'request' => $request,
             'found_intro' => $foundIntro,
         ];
     }
@@ -449,6 +521,7 @@ TXT;
             'greeting' => 'Добрый день,',
             'introduction' => 'Собираем цены по позициям ниже — что можете предложить?',
             'closing' => 'Подскажите, пожалуйста, цену, сроки и условия оплаты.',
+            'request' => 'Собираем цены по позициям ниже — подскажите стоимость, сроки и условия оплаты.',
             'found_intro' => 'Часть, кажется, у вас есть — гляньте, пожалуйста, и по остальному.',
         ];
     }
