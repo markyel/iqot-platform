@@ -310,10 +310,15 @@ class DispatchPendingEmails extends Command
                 continue;
             }
 
-            // Пол интервала — не ниже личного override; потолок поднимаем под override.
+            // Интервал = горизонт / pending_ЭТОГО_получателя, но НЕ ниже пола (MIN или
+            // личный override — анти-спам). ПОТОЛКА НЕТ: так весь текущий объём
+            // распределяется до конца (фракции) окна. Мало писем у адресата → длинный
+            // интервал (пошлёт своё и всё); много → интервал падает к полу. Агрегат сам
+            // подстраивается под нагрузку: бэклог большой → все у пола (макс. безопасный
+            // темп), малый → растянуто. Прежний MAX-потолок держал редко-пендинговых на
+            // 60м и не давал слить весь бэклог за окно (жалоба пользователя).
             $floor = max($minInterval, (int) ($overrides[$recipient] ?? 0));
-            $ceil = max($maxInterval, $floor);
-            $interval = (int) min($ceil, max($floor, intdiv($remainingSec, max(1, (int) $n))));
+            $interval = max($floor, intdiv($remainingSec, max(1, (int) $n)));
             $last = $lastDispatched[$recipient] ?? null;
 
             if ($last === null || Carbon::parse($last)->lte($now->copy()->subSeconds($interval))) {
