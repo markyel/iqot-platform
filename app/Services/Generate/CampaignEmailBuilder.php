@@ -98,30 +98,18 @@ class CampaignEmailBuilder
             ],
             'organization' => $senderOrganization,
             'token' => $token,
+            // found_hint (намёк со ссылкой на сайт поставщика) — РЕДКИЙ блок, рендерится
+            // ТОЛЬКО если скелет шаблона содержит {"type":"found_hint"} (лишь у части
+            // шаблонов = ящиков). Реальные закупщики почти не вставляют ссылки — поэтому
+            // редко и вплетено, а не force-inject ко всем письмам.
+            'found_urls' => is_array($supplier['found_urls'] ?? null) ? $supplier['found_urls'] : [],
+            'found_intro' => $batch->aiBody['found_intro'] ?? null,
         ];
 
-        // #4 группа A: намёк со ссылками на товар у поставщика на сайте. Встраиваем
-        // В ТЕКСТ письма — ПЕРЕД вводным абзацем (ai_introduction), а не приклеиваем
-        // под подпись: так письмо читается естественно («нашли у вас на сайте … →
-        // помогите с заявкой» → далее обычный запрос КП).
-        $foundHtml = $this->renderFoundBlock(
-            $batch->aiBody['found_intro'] ?? null,
-            is_array($supplier['found_urls'] ?? null) ? $supplier['found_urls'] : [],
-            $globalStyle,
-        );
-        $foundInjected = ($foundHtml === '');
-
+        // Блоки письма по скелету шаблона (email_templates.blocks). found_hint —
+        // отдельный редкий блок (см. renderBlock case 'found_hint'), не force-inject.
         foreach ($blocks as $block) {
-            $blockType = is_array($block) ? (string) ($block['type'] ?? '') : '';
-            if (!$foundInjected && in_array($blockType, ['ai_introduction', 'items_display'], true)) {
-                $emailHTML .= $foundHtml;
-                $foundInjected = true;
-            }
             $emailHTML .= $this->renderBlock((array) $block, $context, $globalStyle);
-        }
-        // Фолбэк: в шаблоне нет ни ai_introduction, ни items_display — не теряем блок.
-        if (!$foundInjected) {
-            $emailHTML .= $foundHtml;
         }
 
         $emailHTML .= "</div>\n</body>\n</html>";
@@ -1023,6 +1011,16 @@ class CampaignEmailBuilder
                 $legal = $organization['legal_address'] ?? '';
                 // Плоско: без серой плашки/центрирования — обычная мелкая подпись-футер.
                 return "<div style=\"margin-top:16px;font-size:9pt;color:#666;\">\n        <strong>{$organization['name']}</strong><br>\n        {$innLine}<br>\n        {$legal}\n      </div>";
+
+            case 'found_hint':
+                // Редкий намёк со ссылкой на сайт поставщика — только у шаблонов, где
+                // этот блок явно в скелете (≈привычка конкретного отправителя иногда
+                // сослаться на сайт). Пусто, если у поставщика нет found_urls.
+                return $this->renderFoundBlock(
+                    $context['found_intro'] ?? null,
+                    is_array($context['found_urls'] ?? null) ? $context['found_urls'] : [],
+                    $globalStyle,
+                );
 
             case 'token':
                 return "<div style=\"margin-top:20px;\"><p style=\"margin:0;color:#ffffff;font-size:1px;line-height:1px;mso-hide:all;\">Ref: {$token}</p></div>";
