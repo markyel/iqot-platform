@@ -120,6 +120,9 @@ return [
         // размазываем дневной объём. Совпадает с расписанием emails:dispatch-pending.
         'work_window_end_hour' => (int) env('EMAILS_WORK_WINDOW_END_HOUR', 20),
         'work_window_timezone' => env('EMAILS_WORK_WINDOW_TZ', 'Europe/Riga'),
+        // Доля ОСТАТКА окна, под которую планируем размазывание (0..1, дефолт 0.5).
+        // <1 резервирует часть окна под НОВЫЕ заявки дня → выше утренний темп, ровнее пила.
+        'work_window_fraction' => (float) env('EMAILS_WORK_WINDOW_FRACTION', 0.5),
     ],
 
     // Адаптивный двухволновой пул: если подобранный пул > порога — волна 1 шлёт

@@ -244,11 +244,21 @@ class DispatchPendingEmails extends Command
         $tz = (string) config('services.email_dispatch.work_window_timezone', 'Europe/Riga');
         $endHour = (int) config('services.email_dispatch.work_window_end_hour', 20);
 
-        // Остаток рабочего окна сегодня (горизонт размазывания). Вне окна (ручной
-        // --force) горизонт = MAX → щадящий режим (низкая нагрузка → раз в MAX).
+        // Горизонт размазывания = ДОЛЯ остатка рабочего окна (work_window_fraction,
+        // дефолт 0.5 = половина). Смысл: в течение дня подъезжают НОВЫЕ заявки, и
+        // «зарезервированная» вторая часть окна их впитывает — иначе утром темп искусственно
+        // низкий (весь объём размазан на всё окно), а к вечеру скачок. Планируя под половину,
+        // поднимаем утренний темп; к концу окна доля→0 → интервал→MIN, хвост дочищается.
+        // Вне окна (ручной --force) горизонт = MAX → щадящий режим.
+        $windowFraction = (float) config('services.email_dispatch.work_window_fraction', 0.5);
+        if ($windowFraction <= 0 || $windowFraction > 1) {
+            $windowFraction = 0.5;
+        }
         $nowTz = Carbon::now($tz);
         $windowEnd = $nowTz->copy()->setTime($endHour, 0, 0);
-        $remainingSec = $nowTz->lt($windowEnd) ? (int) abs($nowTz->diffInSeconds($windowEnd)) : $maxInterval;
+        $remainingSec = $nowTz->lt($windowEnd)
+            ? max(60, (int) round(abs($nowTz->diffInSeconds($windowEnd)) * $windowFraction))
+            : $maxInterval;
 
         // pending по нормализованному получателю.
         $counts = DB::connection('reports')->table('email_queue')
