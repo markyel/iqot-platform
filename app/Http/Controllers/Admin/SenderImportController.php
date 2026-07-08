@@ -7,7 +7,9 @@ use App\Jobs\ImportSenderBlockJob;
 use App\Models\Reports\Sender;
 use App\Services\Senders\BulkSenderImporter;
 use App\Services\Senders\SenderAddressGenerator;
+use App\Services\Senders\SenderConnectivityChecker;
 use App\Services\Senders\SenderWizardImporter;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
@@ -251,6 +253,31 @@ class SenderImportController extends Controller
                 'finished' => $finished,
                 'rows' => $rows,
             ],
+        ]);
+    }
+
+    /**
+     * AJAX: проверка подключаемости одного ящика (SMTP-AUTH + IMAP-LOGIN) по кнопке
+     * на странице результатов импорта. По ящику за запрос — фронт гоняет список
+     * последовательно (иначе на десятках ящиков веб-запрос упрётся в таймаут).
+     */
+    public function checkConnectivity(Request $request, SenderConnectivityChecker $checker): JsonResponse
+    {
+        $id = (int) $request->input('sender_id');
+        $sender = $id > 0 ? Sender::find($id) : null;
+        if (!$sender) {
+            return response()->json(['ok' => false, 'error' => 'ящик не найден'], 404);
+        }
+
+        $r = $checker->check($sender);
+
+        return response()->json([
+            'sender_id' => $id,
+            'email' => $sender->email,
+            'smtp' => $r['smtp'],
+            'imap' => $r['imap'],
+            'ok' => $r['ok'],
+            'error' => $checker->summary($r),
         ]);
     }
 

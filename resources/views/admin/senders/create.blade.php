@@ -285,11 +285,13 @@
                                         <th style="padding: 0.5rem;">Статус</th>
                                         <th style="padding: 0.5rem;">Email</th>
                                         <th style="padding: 0.5rem;">Сообщение</th>
+                                        <th style="padding: 0.5rem;">SMTP/IMAP</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     @foreach($gs['rows'] as $row)
                                         @php
+                                            $isCreated = ($row['status'] ?? '') === 'created';
                                             $color = match($row['status'] ?? '') {
                                                 'created' => '#1e7e34',
                                                 'skipped' => 'var(--text-secondary)',
@@ -301,15 +303,73 @@
                                                 default => '✗ Ошибка',
                                             };
                                         @endphp
-                                        <tr style="border-bottom: 1px solid var(--border-light, #eee);">
+                                        <tr style="border-bottom: 1px solid var(--border-light, #eee);" @if($isCreated && !empty($row['sender_id'])) data-sender-id="{{ $row['sender_id'] }}" @endif>
                                             <td style="padding: 0.5rem; color: {{ $color }}; font-weight: 600; white-space: nowrap;">{{ $label }}</td>
                                             <td style="padding: 0.5rem; font-family: monospace;">{{ $row['email'] ?: '—' }}</td>
                                             <td style="padding: 0.5rem; color: var(--text-secondary);">{{ $row['message'] ?? '' }}</td>
+                                            <td data-conn style="padding: 0.5rem; white-space: nowrap; color: var(--text-secondary);">{{ $isCreated ? '—' : '·' }}</td>
                                         </tr>
                                     @endforeach
                                 </tbody>
                             </table>
                         </div>
+                    @endif
+
+                    @if($gs['finished'] && $gs['created'] > 0)
+                        <div style="margin-top: var(--space-4); display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;">
+                            <button type="button" id="checkConnBtn"
+                                    data-url="{{ route('admin.senders.import.check-connectivity') }}"
+                                    data-csrf="{{ csrf_token() }}"
+                                    class="btn btn-secondary" style="padding: 0.5rem 1rem; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; background: var(--surface-secondary); font-weight: 600;">
+                                <i data-lucide="plug-zap" class="icon-sm"></i> Проверить подключаемость
+                            </button>
+                            <span id="checkConnSummary" style="color: var(--text-secondary);"></span>
+                        </div>
+                        <script>
+                            (function () {
+                                var btn = document.getElementById('checkConnBtn');
+                                if (!btn || btn.dataset.bound) { return; }
+                                btn.dataset.bound = '1';
+                                var summary = document.getElementById('checkConnSummary');
+                                btn.addEventListener('click', async function () {
+                                    var rows = Array.prototype.slice.call(document.querySelectorAll('tr[data-sender-id]'));
+                                    if (!rows.length) { return; }
+                                    btn.disabled = true;
+                                    var orig = btn.innerHTML;
+                                    btn.textContent = 'Проверяю…';
+                                    var ok = 0, bad = 0;
+                                    for (var i = 0; i < rows.length; i++) {
+                                        var tr = rows[i];
+                                        var cell = tr.querySelector('[data-conn]');
+                                        if (cell) { cell.innerHTML = '<span style="color:var(--text-secondary)">⏳</span>'; }
+                                        try {
+                                            var resp = await fetch(btn.dataset.url, {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': btn.dataset.csrf, 'Accept': 'application/json' },
+                                                body: JSON.stringify({ sender_id: tr.dataset.senderId })
+                                            });
+                                            var data = await resp.json();
+                                            if (data && data.ok) {
+                                                ok++;
+                                                if (cell) { cell.innerHTML = '<span style="color:#1e7e34;font-weight:600">✓ ок</span>'; }
+                                            } else {
+                                                bad++;
+                                                var err = (data && data.error) ? data.error : 'ошибка';
+                                                if (cell) { cell.innerHTML = '<span style="color:#b02a37;font-weight:600" title="' + err.replace(/"/g, '&quot;') + '">✗ ' + err + '</span>'; }
+                                            }
+                                        } catch (e) {
+                                            bad++;
+                                            if (cell) { cell.innerHTML = '<span style="color:#b02a37;font-weight:600">✗ сеть</span>'; }
+                                        }
+                                        if (summary) { summary.textContent = 'Рабочих: ' + ok + ' · Проблемных: ' + bad + ' · осталось ' + (rows.length - i - 1); }
+                                    }
+                                    btn.innerHTML = orig;
+                                    btn.disabled = false;
+                                    if (window.lucide) { window.lucide.createIcons(); }
+                                    if (summary) { summary.textContent = 'Готово. Рабочих: ' + ok + ' · Проблемных: ' + bad; }
+                                });
+                            })();
+                        </script>
                     @endif
                 </div>
             </div>
