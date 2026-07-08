@@ -224,7 +224,40 @@ class SenderAddressGenerator
             return [self::DOMAIN_MAIL[$domain]['smtp'], self::DOMAIN_MAIL[$domain]['imap']];
         }
 
+        // Домен припаркован на beget? (MX → *.beget.com) — тогда общий smtp.beget.com,
+        // т.к. smtp.<домен> у beget НЕ резолвится. Детект по MX — чтобы не вести карту
+        // DOMAIN_MAIL руками (её забывали пополнять → ящики заводились с мёртвым хостом).
+        if ($this->isBegetDomain($domain)) {
+            return ['smtp.beget.com:465', 'imap.beget.com:993'];
+        }
+
         return [$autoSmtp, $autoImap];
+    }
+
+    /**
+     * Домен обслуживается beget (по MX-записи)? Результат кэшируется на прогон.
+     */
+    private function isBegetDomain(string $domain): bool
+    {
+        static $cache = [];
+        $domain = mb_strtolower(trim($domain));
+        if ($domain === '') {
+            return false;
+        }
+        if (array_key_exists($domain, $cache)) {
+            return $cache[$domain];
+        }
+        $hosts = [];
+        $beget = false;
+        if (@getmxrr($domain, $hosts) && $hosts) {
+            foreach ($hosts as $mx) {
+                if (stripos((string) $mx, 'beget') !== false) {
+                    $beget = true;
+                    break;
+                }
+            }
+        }
+        return $cache[$domain] = $beget;
     }
 
     /**

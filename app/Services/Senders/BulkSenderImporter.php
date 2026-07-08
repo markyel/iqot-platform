@@ -218,7 +218,8 @@ class BulkSenderImporter
                     'client_organization_id' => $org->id,
                     'token_template_id' => $this->randomId($this->tokenTemplateIds) ?? 1,
                     'preferred_template_id' => $this->randomId($this->emailTemplateIds),
-                    'daily_limit' => 100,
+                    // Новый ящик стартует с прогревочного лимита (start=30); прогрев (emails:warmup-ramp) рампит.
+                    'daily_limit' => (int) config('services.email_warmup.start', 30),
                     'is_active' => true,
                     'is_verified' => false,
                     'email_style' => $this->normalizeEmailStyle($ai['email_style'] ?? null),
