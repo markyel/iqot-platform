@@ -69,16 +69,22 @@ class CampaignEmailBuilder
         $suffix = $this->generateTokenSuffix((string) ($supplier['name'] ?? ''));
         $token = "{$baseToken}-{$suffix}";
 
-        // Тема письма (обогащённое название первого товара).
+        // Тема письма. Название позиции — КОРОТКОЕ (≤45 симв., по границе слова): в теме
+        // длинный обогащённый артикул с дублями бренда читается как машинная рассылка;
+        // реальные закупщики пишут короткое имя (см. корпус mzCorp).
         $format = $template['items_format'] ?? 'table';
         $enrichedItems = $this->prepareItemsForRender($items, $format, $displayConfig);
-        $firstItemName = $this->cleanValue($enrichedItems[0]['name'] ?? null, 'оборудование');
+        $firstItemName = $this->shortSubjectName($this->cleanValue($enrichedItems[0]['name'] ?? null, 'оборудование'));
 
         $requestNumber = $batch->requestNumbers[0] ?? '';
         $subject = (string) ($template['subject_template'] ?? '');
-        $subject = $this->replaceFirst($subject, '{{tracking_token}}', $token);
+        // В ТЕМЕ — только короткий БАЗОВЫЙ реф (естественно; per-supplier суффикс с телом
+        // в Ref). matchBatch ловит базовый токен → батч, поставщик резолвится по e-mail/телу.
+        $subject = $this->replaceFirst($subject, '{{tracking_token}}', $baseToken);
         $subject = $this->replaceFirst($subject, '{{request_number}}', (string) $requestNumber);
         $subject = $this->replaceFirst($subject, '{{item_name}}', (string) $firstItemName);
+        // Схлопнуть возможные двойные разделители/пробелы, если item_name вышел пустым/коротким.
+        $subject = trim((string) preg_replace('/\s{2,}/u', ' ', $subject));
 
         // ── HTML ────────────────────────────────────────────────────────────
         $emailHTML = "<!DOCTYPE html>\n<html>\n<head><meta charset=\"UTF-8\"></head>\n"
@@ -218,6 +224,29 @@ class CampaignEmailBuilder
             return null;
         }
         return $s;
+    }
+
+    /**
+     * Короткое имя позиции для ТЕМЫ письма: ≤ $max символов, обрез по границе слова,
+     * без хвостовых разделителей/скобок. Длинный обогащённый артикул в теме читается
+     * как машинная рассылка — тема должна быть короткой, как у реального закупщика.
+     */
+    private function shortSubjectName(string $name, int $max = 45): string
+    {
+        $name = trim((string) preg_replace('/\s{2,}/u', ' ', $name));
+        if (mb_strlen($name) <= $max) {
+            return $name;
+        }
+        $cut = mb_substr($name, 0, $max);
+        // Обрезать по последнему пробелу, если он не в самом начале.
+        $sp = mb_strrpos($cut, ' ');
+        if ($sp !== false && $sp >= (int) ($max * 0.5)) {
+            $cut = mb_substr($cut, 0, $sp);
+        }
+        // Срезать хвостовую пунктуацию/открытые скобки.
+        $cut = (string) preg_replace('/[\s,;:\-–—(\[«]+$/u', '', $cut);
+
+        return $cut;
     }
 
     private function formatQty(mixed $val, string $emptyVal = self::EMPTY_VAL): string
