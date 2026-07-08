@@ -218,6 +218,21 @@ return [
         'reenable_rate_pct' => (float) env('EMAILS_SPAM_GUARD_REENABLE_PCT', 8),
     ],
 
+    // Пробационный возврат самоотключённых ящиков (emails:revive-senders). Гвард
+    // выше отключает при спаме, но его авто-возврат мёртв (отключённый ящик ничего
+    // не шлёт → не набирает чистое окно). Эта команда берёт ОТСИДЕВШИЕСЯ спам-баны
+    // (не хардблок провайдера) и по daily_cap/день возвращает на пробо-лимит с
+    // sending_disabled=0; дальше прогрев рампит, а гвард пересуживает с эскалацией
+    // кулдауна (revival_attempts → base/7/14/30д, потом banned_once). См. ReviveSenders.
+    'email_sender_revival' => [
+        'enabled' => (bool) env('EMAILS_REVIVAL_ENABLED', false),
+        'probation_limit' => (int) env('EMAILS_REVIVAL_PROBATION_LIMIT', 30),  // стартовый дневной лимит при возврате
+        'daily_cap' => (int) env('EMAILS_REVIVAL_DAILY_CAP', 5),               // сколько ящиков возвращать за прогон
+        'rest_days' => (int) env('EMAILS_REVIVAL_REST_DAYS', 3),               // мин. дней без МАССОВОЙ отправки («отсидка»)
+        'max_attempts' => (int) env('EMAILS_REVIVAL_MAX_ATTEMPTS', 3),         // после стольких провалов пробации — banned_once
+        'base_cooldown_days' => (int) env('EMAILS_REVIVAL_BASE_COOLDOWN_DAYS', 3), // отдых после ОБЫЧНОГО (не пробационного) бана
+    ],
+
     // Каналы отправки (Phase 3c): пул egress-каналов для диверсификации исходящего IP
     // (репутация общего релей-IP горит на всплеске → mail.ru спам-флаг на все ящики;
     // лечится разными source-IP). Применяется ТОЛЬКО к beget-ящикам; распределение

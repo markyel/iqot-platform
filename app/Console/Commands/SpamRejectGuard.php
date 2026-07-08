@@ -71,7 +71,7 @@ class SpamRejectGuard extends Command
         // Кандидаты — активные на приём ящики.
         $senders = DB::connection(self::CONN)->table('senders')
             ->where('is_active', 1)
-            ->get(['id', 'email', 'sending_disabled']);
+            ->get(['id', 'email', 'sending_disabled', 'block_reason', 'revival_attempts']);
 
         $disabled = 0; $reenabled = 0; $skipped = 0;
         foreach ($senders as $s) {
@@ -103,11 +103,36 @@ class SpamRejectGuard extends Command
                 $reason = implode(', ', $why);
                 $this->line(sprintf('  ОТКЛЮЧИТЬ #%d %s: %s', $sid, $s->email, $reason));
                 if (!$dry) {
+                    // Эскалация кулдауна возврата. Провал ПРОБАЦИИ (block_reason='probation')
+                    // растит revival_attempts и удлиняет blocked_until (7→14→30д); на пределе
+                    // попыток ставим banned_once (сдаёмся — ручной разбор). Обычный первый бан
+                    // (не пробация) — базовый отдых, чтобы возврат забрал ящик не сразу.
+                    $rev = config('services.email_sender_revival');
+                    $wasProbation = ((string) ($s->block_reason ?? '')) === 'probation';
+                    $attempts = (int) ($s->revival_attempts ?? 0) + ($wasProbation ? 1 : 0);
+                    $maxAttempts = max(1, (int) ($rev['max_attempts'] ?? 3));
+                    $cooldownDays = match (true) {
+                        $attempts >= 3 => 30,
+                        $attempts === 2 => 14,
+                        $attempts === 1 => 7,
+                        default => max(1, (int) ($rev['base_cooldown_days'] ?? 3)),
+                    };
+                    $upd = [
+                        'sending_disabled' => 1,
+                        'last_block_at' => now(),
+                        'block_reason' => mb_substr($reason, 0, 255),
+                        'updated_at' => now(),
+                        'revival_attempts' => $attempts,
+                        'blocked_until' => now()->addDays($cooldownDays),
+                    ];
+                    if ($attempts >= $maxAttempts) {
+                        $upd['banned_once'] = 1; // пробации исчерпаны — больше не возвращаем авто
+                    }
                     $flipped = DB::connection(self::CONN)->table('senders')->where('id', $sid)->where('sending_disabled', 0)
-                        ->update(['sending_disabled' => 1, 'last_block_at' => now(), 'block_reason' => mb_substr($reason, 0, 255), 'updated_at' => now()]);
+                        ->update($upd);
                     if ($flipped) {
                         SenderBanContainment::contain($sid, ($overDead && !$overSpam && !$overToday) ? 'dead_rate' : 'spam_rate');
-                        Log::warning('SpamRejectGuard: sender отключён', ['sender_id' => $sid, 'spam_rate' => round($spamRate, 1), 'today_rate' => round($todayRate, 1), 'dead_rate' => round($deadRate, 1)]);
+                        Log::warning('SpamRejectGuard: sender отключён', ['sender_id' => $sid, 'spam_rate' => round($spamRate, 1), 'today_rate' => round($todayRate, 1), 'dead_rate' => round($deadRate, 1), 'revival_attempts' => $attempts, 'cooldown_days' => $cooldownDays]);
                     }
                 }
                 $disabled++;
