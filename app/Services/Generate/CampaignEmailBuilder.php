@@ -571,6 +571,9 @@ class CampaignEmailBuilder
 
             $line = preg_replace('/\{[a-z_]+\}/i', '', $line) ?? $line;
             $line = trim((string) preg_replace('/\s+/', ' ', $line));
+            // Маркер списка даёт сам <li> (нативный «•»); ведущий буллет/дефис в
+            // item_template или в названии → двойной маркер («• • …»). Срезаем.
+            $line = (string) preg_replace('/^\s*[•·▪‣∙*\-]\s+/u', '', $line);
 
             $html .= "<li style=\"margin:8px 0;\">{$line}</li>";
         }
