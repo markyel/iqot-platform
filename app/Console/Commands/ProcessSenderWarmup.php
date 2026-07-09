@@ -33,7 +33,8 @@ class ProcessSenderWarmup extends Command
 
         $start = max(1, (int) ($cfg['start'] ?? 30));
         $stepPct = max(0, (int) ($cfg['step_pct'] ?? 20));
-        $cap = max($start, (int) ($cfg['cap'] ?? 500));
+        $cap = max($start, (int) ($cfg['cap'] ?? 200));
+        $ageCaps = $this->parseAgeCaps((string) ($cfg['age_caps'] ?? ''));
         $dry = (bool) $this->option('dry-run');
 
         $tz = 'Europe/Moscow';
@@ -41,17 +42,30 @@ class ProcessSenderWarmup extends Command
         $yEnd = now($tz)->subDay()->endOfDay()->utc();
         $today = now($tz)->toDateString();
 
+        // Возраст домена = дней от создания ПЕРВОГО активного ящика на домене.
+        $domainFirst = DB::connection(self::CONN)->table('senders')
+            ->where('is_active', 1)
+            ->selectRaw("SUBSTRING_INDEX(email,'@',-1) dom, MIN(created_at) c")
+            ->groupBy('dom')->pluck('c', 'dom');
+
         $senders = DB::connection(self::CONN)->table('senders')
             ->where('is_active', 1)->where('sending_disabled', 0)
             ->get(['id', 'email', 'daily_limit', 'warmup_updated_on', 'banned_once', 'last_block_at']);
 
-        $ramped = 0; $reset = 0; $blocked = 0; $idle = 0;
+        $ramped = 0; $reset = 0; $blocked = 0; $idle = 0; $pulled = 0;
 
         foreach ($senders as $s) {
             if ((string) $s->warmup_updated_on === $today) {
                 continue; // уже считали сегодня
             }
             $limit = max($start, (int) $s->daily_limit);
+
+            // Потолок по возрасту домена ящика (свежий домен — низкий потолок).
+            $dom = strtolower((string) (explode('@', (string) $s->email)[1] ?? ''));
+            $ageDays = isset($domainFirst[$dom]) && $domainFirst[$dom] !== null
+                ? (int) floor((now()->timestamp - strtotime((string) $domainFirst[$dom])) / 86400)
+                : null;
+            $ageCap = $this->ageCapFor($ageDays, $ageCaps, $cap);
 
             $bannedYesterday = $s->last_block_at !== null
                 && $s->last_block_at >= (string) $yStart && $s->last_block_at <= (string) $yEnd;
@@ -88,8 +102,21 @@ class ProcessSenderWarmup extends Command
                 $idle++;
             }
 
+            // ПОТОЛОК ПО ВОЗРАСТУ ДОМЕНА поверх любой ветки: не выше ageCap. Стягиваем и
+            // уже раздутые лимиты вниз (кейс wwwsend: 208/ящик на 10-дневном домене).
+            $ceiling = min($cap, $ageCap);
+            $targetLimit = (int) ($update['daily_limit'] ?? $limit);
+            if ($targetLimit > $ceiling) {
+                $update['daily_limit'] = $ceiling;
+                if (!$bannedYesterday) { // не путаем со сбросом/блоком
+                    $action = "age-cap {$targetLimit}→{$ceiling} (домен {$ageDays}д)";
+                    $pulled++;
+                }
+            }
+
             if ($dry) {
-                $this->line(sprintf("  sender#%d %s: %s (вчера отправлено %d)", $s->id, $s->email, $action, $sentYesterday));
+                $this->line(sprintf("  sender#%d %s: %s (вчера отправлено %d, домен %sд, ageCap %d)",
+                    $s->id, $s->email, $action, $sentYesterday, $ageDays === null ? '?' : $ageDays, $ageCap));
             } else {
                 DB::connection(self::CONN)->table('senders')->where('id', $s->id)->update($update);
                 if ($action === 'block') {
@@ -100,7 +127,51 @@ class ProcessSenderWarmup extends Command
             }
         }
 
-        $this->info("Прогрев: рампа {$ramped}, сброс {$reset}, блок {$blocked}, без изменений {$idle}" . ($dry ? ' [dry-run]' : ''));
+        $this->info("Прогрев: рампа {$ramped}, стянуто по возрасту {$pulled}, сброс {$reset}, блок {$blocked}, без изменений {$idle}" . ($dry ? ' [dry-run]' : ''));
         return self::SUCCESS;
+    }
+
+    /**
+     * Разобрать «дней:лимит,дней:лимит» → отсортированный по возрастанию массив
+     * [[days,limit], ...]. Пустое/битое → [].
+     *
+     * @return array<int, array{0:int,1:int}>
+     */
+    private function parseAgeCaps(string $spec): array
+    {
+        $out = [];
+        foreach (explode(',', $spec) as $pair) {
+            $pair = trim($pair);
+            if ($pair === '' || !str_contains($pair, ':')) {
+                continue;
+            }
+            [$d, $l] = explode(':', $pair, 2);
+            $d = (int) trim($d);
+            $l = (int) trim($l);
+            if ($d > 0 && $l > 0) {
+                $out[] = [$d, $l];
+            }
+        }
+        usort($out, fn ($a, $b) => $a[0] <=> $b[0]);
+        return $out;
+    }
+
+    /**
+     * Потолок дневного лимита по возрасту домена: первая ступень, чей порог дней >
+     * возраста, задаёт лимит; если возраст выше всех ступеней (или неизвестен) — общий cap.
+     *
+     * @param array<int, array{0:int,1:int}> $ageCaps
+     */
+    private function ageCapFor(?int $ageDays, array $ageCaps, int $cap): int
+    {
+        if ($ageDays === null || $ageCaps === []) {
+            return $cap;
+        }
+        foreach ($ageCaps as [$days, $limit]) {
+            if ($ageDays < $days) {
+                return min($limit, $cap);
+            }
+        }
+        return $cap;
     }
 }

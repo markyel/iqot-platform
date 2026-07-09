@@ -204,7 +204,12 @@ return [
         'enabled' => (bool) env('EMAILS_WARMUP_ENABLED', false),
         'start' => (int) env('EMAILS_WARMUP_START', 30),            // стартовый дневной лимит ящика
         'step_pct' => (int) env('EMAILS_WARMUP_STEP_PCT', 20),      // +% за успешный день
-        'cap' => (int) env('EMAILS_WARMUP_CAP', 500),               // потолок дневного лимита ящика
+        'cap' => (int) env('EMAILS_WARMUP_CAP', 200),               // потолок дневного лимита ящика (зрелый домен)
+        // Потолок дневного лимита ящика ПО ВОЗРАСТУ ДОМЕНА (дней от создания первого ящика
+        // на домене). Свежий домен нельзя разгонять до cap за неделю — почтовики видят
+        // всплеск с молодого домена и жгут репутацию (кейс wwwsend). Формат «дней:лимит»
+        // по возрастанию; действует НИЖНЯЯ подходящая ступень, дальше — общий cap.
+        'age_caps' => env('EMAILS_WARMUP_AGE_CAPS', '3:15,7:25,14:40,21:60,30:90,45:130'),
         'global_daily_cap' => (int) env('EMAILS_GLOBAL_DAILY_CAP', 10000), // потолок писем/сутки на всю платформу
         'max_sub_batches' => (int) env('EMAILS_WARMUP_MAX_SUBBATCHES', 10), // максимум под-батчей на батч (2 AI-вызова каждый)
     ],
