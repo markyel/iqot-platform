@@ -407,6 +407,17 @@ return [
     //   ИДЕМПОТЕНТНОСТЬ: гарантируется claim'ом заявок (draft/new/active→queued_for_sending)
     //   в начале команды; email_batches/email_queue INSERT'ы НЕ идемпотентны.
     //   Флаг по умолчанию OFF — включать ТОЛЬКО после отключения n8n «Create Email Queue v4».
+    // Фаза 2: capacity-планировщик (backlog send_intents + ленивый рендер под ёмкость).
+    // Пока OFF — строится параллельно текущему генератору. Включать ТОЛЬКО вместе с
+    // выключением EMAILS_GENERATE_ENABLED (иначе оба обрабатывают заявки).
+    'email_planner' => [
+        'enabled' => (bool) env('EMAILS_PLANNER_ENABLED', false),
+        // Заявок за тик билдера интентов.
+        'build_request_limit' => (int) env('EMAILS_PLANNER_BUILD_LIMIT', 50),
+        // Дефолтная цель офферов на позицию (если requests.offer_target не задан).
+        'offer_target_default' => (int) env('EMAILS_PLANNER_OFFER_TARGET', 4),
+    ],
+
     'email_generate' => [
         'enabled' => (bool) env('EMAILS_GENERATE_ENABLED', false),
         // Phase 1b: рекапенет-гейт генерации (первый кирпич backlog/outbox). НЕ рендерить
