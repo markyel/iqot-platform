@@ -43,17 +43,25 @@ class QueuedEmailSender
         $relayMailer = new RelayHttpMailer();
         if ($relayMailer->handlesSender((int) $email->sender_id)) {
             $fromName = trim(preg_replace('/["\'`\\\\]/', '', (string) ($sender->sender_full_name ?: $sender->sender_name ?: '')));
+            $fromEmail = (string) ($email->from_email ?: $sender->email);
+            $bodyHtml = (string) ($email->body_html ?? '');
             $relayMailer->send([
                 'smtp_server' => (string) $sender->smtp_server,
                 'smtp_port' => (int) ($sender->smtp_port ?: 465),
                 'smtp_user' => (string) $sender->smtp_user,
                 'smtp_password' => (string) $sender->smtp_password,
                 'smtp_encryption' => $encryption,
-                'from_email' => (string) ($email->from_email ?: $sender->email),
+                'from_email' => $fromEmail,
                 'from_name' => $fromName !== '' ? $fromName : null,
                 'to_email' => (string) $email->to_email,
-                'subject' => (string) $email->subject,
-                'body_html' => (string) ($email->body_html ?? ''),
+                'subject' => $this->sanitizeHeader((string) $email->subject),
+                'body_html' => $bodyHtml,
+                // Плейн-текстовая альтернатива: HTML-only письмо без text-части — спам-сигнал.
+                'body_text' => $this->htmlToText($bodyHtml),
+                // Свой Message-ID (иначе письмо уходит вовсе без него → gmail reject,
+                // спам-очки у mail.ru/Яндекса). Формат <hex@домен-отправителя>.
+                'message_id' => $this->generateMessageId($fromEmail),
+                'reply_to' => $fromEmail,
                 'attachments' => $this->microserviceAttachments($email->batch_id),
                 'verify_cert' => ($encryption === 'ssl' && $isBeget),
             ], (int) $email->id);
@@ -115,10 +123,13 @@ class QueuedEmailSender
         $fromName = trim(preg_replace('/["\'`\\\\]/', '', (string) ($sender->sender_full_name ?: $sender->sender_name ?: '')));
         $fromEmail = $email->from_email ?: $sender->email;
 
+        // Symfony Mailer сам ставит Message-ID/Date/MIME-структуру и text-часть по HTML —
+        // этот путь корректен; чиним только тему (срез CR/LF от инъекции второго заголовка).
         $message = (new Email())
             ->from($fromName !== '' ? new Address($fromEmail, $fromName) : new Address($fromEmail))
             ->to($email->to_email)
-            ->subject($email->subject)
+            ->subject($this->sanitizeHeader((string) $email->subject))
+            ->text($this->htmlToText((string) ($email->body_html ?? '')))
             ->html($email->body_html ?? '');
 
         foreach ($this->attachmentsFor($email->batch_id) as $att) {
@@ -126,6 +137,53 @@ class QueuedEmailSender
         }
 
         $mailer->send($message);
+    }
+
+    /**
+     * Убрать из значения заголовка (тема) CR/LF и управляющие символы — иначе перенос
+     * строки в теме инъектит второй заголовок (gmail: «multiple Subject headers»).
+     */
+    private function sanitizeHeader(string $value): string
+    {
+        $value = preg_replace('/[\r\n\t]+/u', ' ', $value) ?? $value;
+        $value = preg_replace('/[\x00-\x1F\x7F]+/u', '', $value) ?? $value;
+        return trim(preg_replace('/\s{2,}/u', ' ', $value) ?? $value);
+    }
+
+    /**
+     * Плейн-текстовая версия HTML-письма (для multipart/alternative). Разворачивает
+     * <br>/<p>/</div> в переводы строк, срезает теги, декодирует сущности, схлопывает
+     * пустые строки. Скрытый 1px-токен («Ref: …») остаётся в тексте — помогает матчингу
+     * ответов и не виден в HTML-предпочтительном отображении.
+     */
+    private function htmlToText(string $html): string
+    {
+        if (trim($html) === '') {
+            return '';
+        }
+        $t = preg_replace('/<\s*(br|\/p|\/div|\/tr|\/h[1-6]|\/li)\s*>/i', "\n", $html) ?? $html;
+        $t = preg_replace('/<\s*(p|div|tr|h[1-6]|li)[^>]*>/i', "\n", $t) ?? $t;
+        $t = preg_replace('/<\s*td[^>]*>/i', "\t", $t) ?? $t;
+        $t = preg_replace('/<\s*(style|script|head)[^>]*>.*?<\/\s*\1\s*>/is', '', $t) ?? $t;
+        $t = strip_tags($t);
+        $t = html_entity_decode($t, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $t = preg_replace('/[ \t]+/', ' ', $t) ?? $t;
+        $t = preg_replace('/\n{3,}/', "\n\n", $t) ?? $t;
+        $lines = array_map('trim', explode("\n", $t));
+        return trim(implode("\n", $lines));
+    }
+
+    /**
+     * Уникальный Message-ID вида <hex@домен-отправителя> (RFC 5322). Без него письмо
+     * уходит вообще без Message-ID (релей ставит только если передан) → gmail reject.
+     */
+    private function generateMessageId(string $fromEmail): string
+    {
+        $domain = 'localhost';
+        if (str_contains($fromEmail, '@')) {
+            $domain = strtolower(trim(substr(strrchr($fromEmail, '@'), 1))) ?: 'localhost';
+        }
+        return '<' . bin2hex(random_bytes(16)) . '@' . $domain . '>';
     }
 
     /**
