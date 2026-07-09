@@ -147,6 +147,19 @@ Schedule::command('emails:generate-queue')
     ->everyFiveMinutes()
     ->withoutOverlapping();
 
+// Фаза 2 (планировщик, за флагом EMAILS_PLANNER_ENABLED — команды сами молчат, пока
+// off). Билдер backlog интентов + ленивый рендер под ёмкость получателей. Включать
+// ВМЕСТЕ с выключением EMAILS_GENERATE_ENABLED (иначе оба обрабатывают заявки).
+Schedule::command('emails:build-intents')
+    ->everyTenMinutes()
+    ->withoutOverlapping();
+Schedule::command('emails:plan-render')
+    ->everyFiveMinutes()
+    ->timezone('Europe/Riga')
+    ->weekdays()
+    ->between('8:00', '20:00')
+    ->withoutOverlapping();
+
 // Авто-закрытие зависших вопросов к автору: спустя N дней (по умолч. 4) без ответа
 // автора шлём поставщику «информации нет» и закрываем вопрос. Дозированно (--limit).
 // Молчит, пока EMAILS_AUTOCLOSE_ENABLED=false.
