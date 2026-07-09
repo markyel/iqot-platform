@@ -346,47 +346,133 @@ class GenerateCampaignJob implements ShouldQueue
         CampaignEmailBuilder $emailBuilder,
         CampaignPersister $persister,
     ): void {
-        $tokenGenerator->generate($batch);
-        $bodyGenerator->generate($batch);
-
-        // Волна 1 (сразу) + волна 2 (тёплые/расширение, +delay или held) + волна 3
-        // (холодные, waves-v2, held до followup). Persister ставит scheduled_at по wave.
-        // При пине (контейнмент/капасити) волну НЕ переклассифицируем — ставим сохранённую
-        // (В3 остаётся held-резервом). Обычный путь — волна 1 (горячие/tier1).
-        $suppliersWave = $this->onlySupplierIds !== null ? ($this->pinnedWave ?? 1) : 1;
-        $emails = [];
-        foreach ($batch->suppliers as $supplier) {
-            $e = $emailBuilder->build($batch, $supplier);
-            $e['wave'] = $suppliersWave;
-            $emails[] = $e;
-        }
-        foreach ($batch->expansionSuppliers as $supplier) {
-            $e = $emailBuilder->build($batch, $supplier);
-            $e['wave'] = 2;
-            $emails[] = $e;
-        }
-        foreach ($batch->coldSuppliers as $supplier) {
-            $e = $emailBuilder->build($batch, $supplier);
-            $e['wave'] = 3;
-            $emails[] = $e;
+        // Phase 1b рекапенет-гейт (за флагом): снять с рендера получателей с переполненным
+        // near-term outbox; снятых (волны 1–2) отложим в capacity-backlog на повтор.
+        $overWave1 = $overWave2 = [];
+        if ((bool) config('services.email_generate.recipient_gate', false)) {
+            [$overWave1, $overWave2] = $this->applyRecipientCapacityGate($batch);
         }
 
-        $persister->persist($batch, $emails);
+        $hasAny = $batch->suppliers !== [] || $batch->expansionSuppliers !== [] || $batch->coldSuppliers !== [];
+        if ($hasAny) {
+            $tokenGenerator->generate($batch);
+            $bodyGenerator->generate($batch);
 
-        // Discovery новых доменов — после persist (есть batch_id). Найденные
-        // поставщики привяжутся к батчу (campaign_discoveries) и обогатят волну 2.
-        if (!$this->dryRun && $batch->batchId && $batch->discoveryCandidates !== []) {
-            $requestId = (int) ($batch->requestIds[0] ?? 0);
-            foreach ($batch->discoveryCandidates as $cand) {
-                DiscoverFromCampaignJob::dispatch(
-                    (string) $cand['url'],
-                    (int) $cand['product_type_id'],
-                    isset($cand['domain_id']) ? (int) $cand['domain_id'] : null,
-                    (int) $batch->batchId,
-                    $requestId ?: null,
-                );
+            // Волна 1 (сразу) + волна 2 (тёплые/расширение, +delay или held) + волна 3
+            // (холодные, waves-v2, held до followup). Persister ставит scheduled_at по wave.
+            // При пине (контейнмент/капасити) волну НЕ переклассифицируем — ставим сохранённую
+            // (В3 остаётся held-резервом). Обычный путь — волна 1 (горячие/tier1).
+            $suppliersWave = $this->onlySupplierIds !== null ? ($this->pinnedWave ?? 1) : 1;
+            $emails = [];
+            foreach ($batch->suppliers as $supplier) {
+                $e = $emailBuilder->build($batch, $supplier);
+                $e['wave'] = $suppliersWave;
+                $emails[] = $e;
+            }
+            foreach ($batch->expansionSuppliers as $supplier) {
+                $e = $emailBuilder->build($batch, $supplier);
+                $e['wave'] = 2;
+                $emails[] = $e;
+            }
+            foreach ($batch->coldSuppliers as $supplier) {
+                $e = $emailBuilder->build($batch, $supplier);
+                $e['wave'] = 3;
+                $emails[] = $e;
+            }
+
+            $persister->persist($batch, $emails);
+
+            // Discovery новых доменов — после persist (есть batch_id). Найденные
+            // поставщики привяжутся к батчу (campaign_discoveries) и обогатят волну 2.
+            if (!$this->dryRun && $batch->batchId && $batch->discoveryCandidates !== []) {
+                $requestId = (int) ($batch->requestIds[0] ?? 0);
+                foreach ($batch->discoveryCandidates as $cand) {
+                    DiscoverFromCampaignJob::dispatch(
+                        (string) $cand['url'],
+                        (int) $cand['product_type_id'],
+                        isset($cand['domain_id']) ? (int) $cand['domain_id'] : null,
+                        (int) $batch->batchId,
+                        $requestId ?: null,
+                    );
+                }
             }
         }
+
+        // Снятые рекапенет-гейтом — в capacity-backlog (пин), повтор выпустит
+        // emails:process-capacity-deferred, когда outbox получателя разгрузится.
+        if ($overWave1 !== []) {
+            $this->deferBatchForCapacity($batch, $overWave1, 'recipient_cap', 1);
+        }
+        if ($overWave2 !== []) {
+            $this->deferBatchForCapacity($batch, $overWave2, 'recipient_cap', 2);
+        }
+    }
+
+    /**
+     * Phase 1b рекапенет-гейт (за флагом email_generate.recipient_gate). Снимает с рендера
+     * поставщиков, чей получатель уже имеет >= своего дневного cap НЕ-held pending-писем
+     * (near-term outbox переполнен). Мутирует $batch->suppliers/expansionSuppliers (оставляет
+     * «влезающих»); снятых возвращает по волнам для отсрочки. Волну 3 (cold/held) НЕ трогает.
+     *
+     * @return array{0:array<int,array<string,mixed>>,1:array<int,array<string,mixed>>} [overWave1, overWave2]
+     */
+    private function applyRecipientCapacityGate(Batch $batch): array
+    {
+        $held = '2037-01-01 00:00:00';
+        $emailSet = [];
+        foreach (array_merge($batch->suppliers, $batch->expansionSuppliers) as $s) {
+            $e = mb_strtolower(trim((string) ($s['email'] ?? '')));
+            if ($e !== '') {
+                $emailSet[$e] = true;
+            }
+        }
+        $emails = array_keys($emailSet);
+        if ($emails === []) {
+            return [[], []];
+        }
+
+        // НЕ-held pending на получателя (near-term outbox) — held-волна 3 не в счёт.
+        $pending = DB::connection(self::CONN)->table('email_queue')
+            ->whereIn(DB::raw('LOWER(to_email)'), $emails)
+            ->where('status', 'pending')
+            ->where('scheduled_at', '<', $held)
+            ->selectRaw('LOWER(to_email) r, COUNT(*) c')
+            ->groupBy(DB::raw('LOWER(to_email)'))
+            ->pluck('c', 'r');
+
+        $caps = DB::connection(self::CONN)->table('recipient_mailboxes')
+            ->whereIn('email', $emails)
+            ->pluck('daily_cap', 'email');
+
+        $base = (int) config('services.email_dispatch.recipient_daily_cap', 10);
+        $isOver = static function (array $s) use ($pending, $caps, $base): bool {
+            $e = mb_strtolower(trim((string) ($s['email'] ?? '')));
+            if ($e === '') {
+                return false;
+            }
+            $cap = ($caps[$e] ?? null) !== null ? (int) $caps[$e] : $base;
+            return $cap > 0 && (int) ($pending[$e] ?? 0) >= $cap;
+        };
+
+        $keep1 = $drop1 = $keep2 = $drop2 = [];
+        foreach ($batch->suppliers as $s) {
+            if ($isOver($s)) { $drop1[] = $s; } else { $keep1[] = $s; }
+        }
+        foreach ($batch->expansionSuppliers as $s) {
+            if ($isOver($s)) { $drop2[] = $s; } else { $keep2[] = $s; }
+        }
+        $batch->suppliers = $keep1;
+        $batch->expansionSuppliers = $keep2;
+
+        if ($drop1 !== [] || $drop2 !== []) {
+            Log::info('GenerateCampaignJob: recipient_gate снял поставщиков (переполнен outbox)', [
+                'request_ids' => $batch->requestIds,
+                'dropped_wave1' => count($drop1),
+                'dropped_wave2' => count($drop2),
+            ]);
+        }
+
+        return [$drop1, $drop2];
     }
 
     /**
@@ -875,7 +961,9 @@ class GenerateCampaignJob implements ShouldQueue
         }
 
         $this->loadRetry = ((string) $row->reason === 'recipient_load');
-        $this->capacityRetry = in_array((string) $row->reason, ['sender_capacity', 'ban_containment'], true);
+        // recipient_cap (Phase 1b) идёт по пин-пути капасити: повтор шлёт только снятым
+        // адресатам, и если outbox ещё переполнен — гейт снова отложит.
+        $this->capacityRetry = in_array((string) $row->reason, ['sender_capacity', 'ban_containment', 'recipient_cap'], true);
 
         if ($this->loadRetry || $this->capacityRetry) {
             // Строка уже заклеймлена командой (process-load-deferred /

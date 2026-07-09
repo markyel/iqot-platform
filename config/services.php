@@ -409,6 +409,12 @@ return [
     //   Флаг по умолчанию OFF — включать ТОЛЬКО после отключения n8n «Create Email Queue v4».
     'email_generate' => [
         'enabled' => (bool) env('EMAILS_GENERATE_ENABLED', false),
+        // Phase 1b: рекапенет-гейт генерации (первый кирпич backlog/outbox). НЕ рендерить
+        // письмо получателю, у которого уже >= его дневного cap НЕ-held pending-писем
+        // (outbox переполнен) — такие поставщики откладываются (reason='recipient_cap',
+        // пин) и повторятся, когда outbox разгрузится. Применяется к волнам 1–2 (не к
+        // held-волне 3). По умолчанию OFF — включать осознанно после проверки.
+        'recipient_gate' => (bool) env('EMAILS_GENERATE_RECIPIENT_GATE', false),
         // Тело письма: выше качеством (1 AI-вызов на батч, не на поставщика → стоимость ок).
         'body_model' => env('EMAILS_GENERATE_BODY_MODEL', 'gpt-4o'),
         // Температура тела — уникальность формулировок.

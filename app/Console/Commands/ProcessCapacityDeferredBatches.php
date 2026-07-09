@@ -42,7 +42,7 @@ class ProcessCapacityDeferredBatches extends Command
 
         $limit = max(1, (int) $this->option('limit'));
         $rows = DB::connection(self::CONN)->table('deferred_batches')
-            ->whereIn('reason', ['sender_capacity', 'ban_containment'])
+            ->whereIn('reason', ['sender_capacity', 'ban_containment', 'recipient_cap'])
             ->where('status', 'accumulating')
             ->orderBy('id')
             ->limit($limit)
