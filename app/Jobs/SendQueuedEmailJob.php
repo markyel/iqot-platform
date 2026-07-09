@@ -87,11 +87,11 @@ class SendQueuedEmailJob implements ShouldQueue
 
         // Отправитель недоступен — возвращаем письмо в очередь, заберёт следующий тик.
         if (!$senderModel || !$senderModel->is_active) {
-            $email->update(['status' => 'pending']);
+            $this->unclaim($email);
             return;
         }
         if ($senderModel->blocked_until && Carbon::parse($senderModel->blocked_until)->isFuture()) {
-            $email->update(['status' => 'pending']);
+            $this->unclaim($email);
             return;
         }
 
@@ -146,7 +146,7 @@ class SendQueuedEmailJob implements ShouldQueue
 
             if ($deferred) {
                 if ($this->attempts() >= self::MAX_SLOT_DEFERRALS) {
-                    $email->update(['status' => 'pending']);
+                    $this->unclaim($email);
                     return;
                 }
                 $this->release(1);
@@ -169,7 +169,7 @@ class SendQueuedEmailJob implements ShouldQueue
             // письмо в очередь БД и завершаем job БЕЗ release(): диспетчер перепланирует
             // на следующем тике, attempts не растёт до переполнения.
             if ($this->attempts() >= self::MAX_SLOT_DEFERRALS) {
-                $email->update(['status' => 'pending']);
+                $this->unclaim($email);
                 return;
             }
             $this->release($delay);
@@ -193,6 +193,19 @@ class SendQueuedEmailJob implements ShouldQueue
         } catch (\Throwable $e) {
             $this->handleFailure($email, $senderModel, $e->getMessage());
         }
+    }
+
+    /**
+     * Вернуть заклеймленное письмо в pending (un-claim) И ОТКАТИТЬ метку раздачи
+     * получателю. markDispatched сдвинул last_dispatched_at при claim'е диспетчером;
+     * если письмо реально не ушло (занят слот/недоступен отправитель/жёсткое падение),
+     * без отката получатель ждёт полный интервал впустую → мало-пендинговые адресаты
+     * голодают (каждый интервал claim→разжатие жжёт часы, доставок 0).
+     */
+    private function unclaim(EmailQueue $email): void
+    {
+        $email->update(['status' => 'pending']);
+        RecipientMailbox::rollbackDispatch((string) $email->to_email);
     }
 
     /**
@@ -445,7 +458,7 @@ class SendQueuedEmailJob implements ShouldQueue
         // Джоба упала жёстко (вне нашего try/catch) — снимаем claim, чтобы письмо переехало в очередь.
         $email = EmailQueue::find($this->emailQueueId);
         if ($email && $email->status === 'sending') {
-            $email->update(['status' => 'pending']);
+            $this->unclaim($email);
         }
 
         Log::error('SendQueuedEmailJob: hard failure', [

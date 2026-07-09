@@ -151,6 +151,25 @@ class RecipientMailbox extends Model
         );
     }
 
+    /**
+     * Откат метки раздачи. Письмо было заклеймлено (markDispatched уже сдвинул
+     * last_dispatched_at при claim'е), но реально НЕ отправлено — вернулось в pending
+     * (слот отправителя занят/MAX_SLOT_DEFERRALS, отправитель недоступен, жёсткое падение
+     * джоба). Сбрасываем last_dispatched_at в NULL, чтобы получатель снова стал «созревшим»
+     * на следующий тик, а не ждал ПОЛНЫЙ интервал впустую. Без этого мало-пендинговые
+     * адресаты (длинный интервал = остаток_окна/n) голодают: каждый интервал
+     * claim→разжатие снова жжёт часы, доставок 0.
+     */
+    public static function rollbackDispatch(string $email): void
+    {
+        $email = self::normalize($email);
+        if ($email === '') {
+            return;
+        }
+
+        self::query()->where('email', $email)->update(['last_dispatched_at' => null]);
+    }
+
     public static function isBlocked(string $email): bool
     {
         $email = self::normalize($email);
