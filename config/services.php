@@ -116,11 +116,17 @@ return [
         // нагрузка → MAX (≈раз в час), выше → плавно чаще, но не ниже MIN.
         'recipient_interval_min_seconds' => (int) env('EMAILS_RECIPIENT_INTERVAL_MIN', 300),   // пол: 5 мин
         'recipient_interval_max_seconds' => (int) env('EMAILS_RECIPIENT_INTERVAL_MAX', 3600),  // потолок: 1 ч
-        // ЖЁСТКИЙ дневной потолок писем на ОДНОГО получателя ЧЕРЕЗ ВСЕ наши ящики
-        // (анти-FBL: маркетплейс-адреса типа tiu.ru матчатся под много категорий и их
-        // добивали 100+/день с 80+ ящиков → спам-жалоба → ожог доменов). n8n держал
-        // ≤19/день; ставим щадяще. День — по МСК (локальный день получателя). 0 = выкл.
-        'recipient_daily_cap' => (int) env('EMAILS_RECIPIENT_DAILY_CAP', 6),
+        // Дневной потолок писем на ОДНОГО получателя ЧЕРЕЗ ВСЕ наши ящики (анти-FBL:
+        // маркетплейс-адреса типа tiu.ru матчатся под много категорий и их добивали
+        // 100+/день с 80+ ящиков → спам-жалоба → ожог доменов). n8n держал ≤19/день.
+        // Это БАЗА; per-адрес cap адаптируется (recipient_mailboxes.daily_cap) командой
+        // emails:recompute-recipient-caps. День — по МСК (локальный день получателя). 0 = выкл.
+        'recipient_daily_cap' => (int) env('EMAILS_RECIPIENT_DAILY_CAP', 10),
+        // Границы и шаг адаптации per-адрес cap (по вовлечённости).
+        'recipient_cap_max' => (int) env('EMAILS_RECIPIENT_CAP_MAX', 15),        // ответил/офферы → к max
+        'recipient_cap_min' => (int) env('EMAILS_RECIPIENT_CAP_MIN', 5),         // нет реакции/баунсы → к min
+        'recipient_cap_step' => (int) env('EMAILS_RECIPIENT_CAP_STEP', 2),       // постепенно, шаг/день
+        'recipient_cap_cold_sends' => (int) env('EMAILS_RECIPIENT_CAP_COLD_SENDS', 12), // столько писем без ответа → снижаем
         // Конец рабочего окна рассылки (час + таймзона) — горизонт, по которому
         // размазываем дневной объём. Совпадает с расписанием emails:dispatch-pending.
         'work_window_end_hour' => (int) env('EMAILS_WORK_WINDOW_END_HOUR', 20),

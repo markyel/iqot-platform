@@ -280,19 +280,22 @@ class DispatchPendingEmails extends Command
             return [];
         }
 
-        // Дневной потолок на получателя (через ВСЕ ящики) — анти-FBL. Тянем и метку
-        // раздачи, и дневной счётчик одним запросом.
-        $dailyCap = (int) config('services.email_dispatch.recipient_daily_cap', 6);
+        // Дневной потолок на получателя (через ВСЕ ящики) — анти-FBL. База из конфига,
+        // но per-адрес может быть переопределён адаптивным daily_cap (по вовлечённости,
+        // emails:recompute-recipient-caps). Тянем метку раздачи, счётчик и cap одним запросом.
+        $baseCap = (int) config('services.email_dispatch.recipient_daily_cap', 10);
         $today = RecipientMailbox::recipientDay();
         $rmRows = DB::connection('reports')->table('recipient_mailboxes')
             ->whereIn('email', $counts->keys()->all())
-            ->get(['email', 'last_dispatched_at', 'daily_sent_count', 'daily_sent_date']);
+            ->get(['email', 'last_dispatched_at', 'daily_sent_count', 'daily_sent_date', 'daily_cap']);
         $lastDispatched = [];
         $dailyCount = [];
+        $capFor = [];
         foreach ($rmRows as $r) {
             $lastDispatched[$r->email] = $r->last_dispatched_at;
             // Счётчик валиден только за сегодня (МСК); прошлый день = 0.
             $dailyCount[$r->email] = ((string) $r->daily_sent_date === $today) ? (int) $r->daily_sent_count : 0;
+            $capFor[$r->email] = $r->daily_cap !== null ? (int) $r->daily_cap : $baseCap;
         }
 
         // Личный интервал / пауза по отписке (suppliers, см. SupplierUnsubscribeEscalator):
@@ -321,9 +324,10 @@ class DispatchPendingEmails extends Command
                 continue;
             }
 
-            // ЖЁСТКИЙ дневной потолок на получателя (через все ящики) — анти-FBL.
-            // Добрал лимит за МСК-день → не eligible (не будет заклеймлен).
-            if ($dailyCap > 0 && ($dailyCount[$recipient] ?? 0) >= $dailyCap) {
+            // Дневной потолок на получателя (через все ящики) — анти-FBL. Per-адрес cap
+            // (адаптивный daily_cap) с фолбэком на базу. Добрал за МСК-день → не eligible.
+            $cap = $capFor[$recipient] ?? $baseCap;
+            if ($cap > 0 && ($dailyCount[$recipient] ?? 0) >= $cap) {
                 continue;
             }
 

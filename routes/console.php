@@ -35,17 +35,13 @@ Schedule::command('emails:dispatch-pending')
     ->between('8:00', '21:00')
     ->withoutOverlapping();
 
-// Досыл по холодному пулу (волна 3, waves-v2): проверяем батчи с придержанной волной
-// (старше followup_delay_days) — при малом отклике отпускаем письма в рассылку +
-// досылаем discovery, при достаточном числе КП отменяем холодный пул. Флаг
-// EMAILS_POOL_FOLLOWUP_ENABLED. КАЖДЫЕ 3 ЧАСА в рабочем окне (было раз/день в 08:05 —
-// холодный пул дозревает по скользящему cutoff в течение дня и копился на сутки, а
-// «достаточно КП» отменялось с большим лагом; частый прогон активирует пул вовремя).
+// Досыл по пулу расширения (волна 2): раз в день в начале рабочего окна проверяем
+// заявки с придержанной волной 2 (старше followup_delay_days) — при малом отклике
+// отпускаем письма в рассылку, иначе отменяем. Флаг EMAILS_POOL_FOLLOWUP_ENABLED.
 Schedule::command('emails:dispatch-followup')
-    ->everyThreeHours()
+    ->dailyAt('8:05')
     ->timezone('Europe/Riga')
     ->weekdays()
-    ->between('8:00', '20:00')
     ->withoutOverlapping();
 
 // Повтор отложенных гейтом качества батчей (discovery-first): когда discovery добрал
@@ -63,19 +59,18 @@ Schedule::command('emails:process-load-deferred')
     ->everyFifteenMinutes()
     ->withoutOverlapping();
 
-// Пробационный возврат отсидевшихся спам-отключённых ящиков (дополняет спам-гвард,
-// чей авто-возврат мёртв из-за замкнутого круга). Раз в сутки рано утром по МСК,
-// ПЕРЕД прогревом. Флаг EMAILS_REVIVAL_ENABLED (команда сама проверяет).
-Schedule::command('emails:revive-senders')
-    ->dailyAt('04:00')
-    ->timezone('Europe/Moscow')
-    ->withoutOverlapping();
-
 // Прогрев отправителей (Phase 3): суточный пересчёт senders.daily_limit — рампа за
 // успешный день / сброс+блок при бане. Флаг EMAILS_WARMUP_ENABLED (команда сама
 // проверяет). Раз в сутки рано утром по МСК (до рабочего окна рассылки).
 Schedule::command('emails:warmup-ramp')
     ->dailyAt('04:30')
+    ->timezone('Europe/Moscow')
+    ->withoutOverlapping();
+
+// Адаптивный дневной cap получателей по вовлечённости (ответил → к max 15; нет
+// реакции/баунсы → к min 5; иначе база 10). Раз в сутки рано утром по МСК.
+Schedule::command('emails:recompute-recipient-caps')
+    ->dailyAt('04:45')
     ->timezone('Europe/Moscow')
     ->withoutOverlapping();
 
