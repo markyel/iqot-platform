@@ -116,6 +116,11 @@ return [
         // нагрузка → MAX (≈раз в час), выше → плавно чаще, но не ниже MIN.
         'recipient_interval_min_seconds' => (int) env('EMAILS_RECIPIENT_INTERVAL_MIN', 300),   // пол: 5 мин
         'recipient_interval_max_seconds' => (int) env('EMAILS_RECIPIENT_INTERVAL_MAX', 3600),  // потолок: 1 ч
+        // ЖЁСТКИЙ дневной потолок писем на ОДНОГО получателя ЧЕРЕЗ ВСЕ наши ящики
+        // (анти-FBL: маркетплейс-адреса типа tiu.ru матчатся под много категорий и их
+        // добивали 100+/день с 80+ ящиков → спам-жалоба → ожог доменов). n8n держал
+        // ≤19/день; ставим щадяще. День — по МСК (локальный день получателя). 0 = выкл.
+        'recipient_daily_cap' => (int) env('EMAILS_RECIPIENT_DAILY_CAP', 6),
         // Конец рабочего окна рассылки (час + таймзона) — горизонт, по которому
         // размазываем дневной объём. Совпадает с расписанием emails:dispatch-pending.
         'work_window_end_hour' => (int) env('EMAILS_WORK_WINDOW_END_HOUR', 20),

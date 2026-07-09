@@ -280,9 +280,20 @@ class DispatchPendingEmails extends Command
             return [];
         }
 
-        $lastDispatched = DB::connection('reports')->table('recipient_mailboxes')
+        // Дневной потолок на получателя (через ВСЕ ящики) — анти-FBL. Тянем и метку
+        // раздачи, и дневной счётчик одним запросом.
+        $dailyCap = (int) config('services.email_dispatch.recipient_daily_cap', 6);
+        $today = RecipientMailbox::recipientDay();
+        $rmRows = DB::connection('reports')->table('recipient_mailboxes')
             ->whereIn('email', $counts->keys()->all())
-            ->pluck('last_dispatched_at', 'email');
+            ->get(['email', 'last_dispatched_at', 'daily_sent_count', 'daily_sent_date']);
+        $lastDispatched = [];
+        $dailyCount = [];
+        foreach ($rmRows as $r) {
+            $lastDispatched[$r->email] = $r->last_dispatched_at;
+            // Счётчик валиден только за сегодня (МСК); прошлый день = 0.
+            $dailyCount[$r->email] = ((string) $r->daily_sent_date === $today) ? (int) $r->daily_sent_count : 0;
+        }
 
         // Личный интервал / пауза по отписке (suppliers, см. SupplierUnsubscribeEscalator):
         // override поднимает ПОЛ интервала для адреса; активная пауза (unsubscribe_until в
@@ -307,6 +318,12 @@ class DispatchPendingEmails extends Command
         foreach ($counts as $recipient => $n) {
             // На паузе по отписке — пропускаем до истечения.
             if (isset($pausedUntil[$recipient]) && Carbon::parse($pausedUntil[$recipient])->isFuture()) {
+                continue;
+            }
+
+            // ЖЁСТКИЙ дневной потолок на получателя (через все ящики) — анти-FBL.
+            // Добрал лимит за МСК-день → не eligible (не будет заклеймлен).
+            if ($dailyCap > 0 && ($dailyCount[$recipient] ?? 0) >= $dailyCap) {
                 continue;
             }
 

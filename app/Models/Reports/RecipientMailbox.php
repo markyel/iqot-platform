@@ -3,6 +3,8 @@
 namespace App\Models\Reports;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Ящик получателя (reports.recipient_mailboxes) — учёт ошибок отправки подряд.
@@ -33,6 +35,8 @@ class RecipientMailbox extends Model
         'last_bounce_at',
         'last_success_at',
         'last_dispatched_at',
+        'daily_sent_count',
+        'daily_sent_date',
         'blocked_at',
     ];
 
@@ -44,8 +48,15 @@ class RecipientMailbox extends Model
         'last_bounce_at' => 'datetime',
         'last_success_at' => 'datetime',
         'last_dispatched_at' => 'datetime',
+        'daily_sent_count' => 'integer',
         'blocked_at' => 'datetime',
     ];
+
+    /** День получателя для дневного потолка — по МСК (локальный день адресата). */
+    public static function recipientDay(): string
+    {
+        return Carbon::now('Europe/Moscow')->toDateString();
+    }
 
     private static function normalize(string $email): string
     {
@@ -145,10 +156,17 @@ class RecipientMailbox extends Model
         }
 
         $now = now();
-        self::query()->updateOrCreate(
-            ['email' => $email],
-            ['last_dispatched_at' => $now],
-        );
+        $today = self::recipientDay();
+        $row = self::query()->firstOrNew(['email' => $email]);
+        $row->last_dispatched_at = $now;
+        // Дневной счётчик (анти-FBL): инкремент в пределах МСК-дня, сброс по смене дня.
+        if ((string) $row->daily_sent_date === $today) {
+            $row->daily_sent_count = (int) $row->daily_sent_count + 1;
+        } else {
+            $row->daily_sent_date = $today;
+            $row->daily_sent_count = 1;
+        }
+        $row->save();
     }
 
     /**
@@ -167,7 +185,12 @@ class RecipientMailbox extends Model
             return;
         }
 
-        self::query()->where('email', $email)->update(['last_dispatched_at' => null]);
+        // Письмо не ушло → откатываем и дневной счётчик (атомарный декремент, пол 0),
+        // иначе un-claim ложно «съедал» бы дневной лимит получателя.
+        self::query()->where('email', $email)->update([
+            'last_dispatched_at' => null,
+            'daily_sent_count' => DB::raw('GREATEST(0, CAST(daily_sent_count AS SIGNED) - 1)'),
+        ]);
     }
 
     public static function isBlocked(string $email): bool
