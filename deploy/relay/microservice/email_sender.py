@@ -10,7 +10,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
 from email.header import Header
-from email.utils import formataddr
+from email.utils import formataddr, formatdate, make_msgid
 import base64
 from datetime import datetime
 from typing import Optional, Dict, Any
@@ -117,8 +117,23 @@ class EmailSender:
         Returns:
             MIMEMultipart: MIME сообщение
         """
-        msg = MIMEMultipart('alternative')
-        
+        # СТРУКТУРА MIME:
+        #   без вложений → multipart/alternative (text + html)
+        #   с вложениями → multipart/mixed [ multipart/alternative (text+html), вложения ]
+        # РАНЬШЕ вложения клались прямо в 'alternative' — битая структура (вложение как
+        # «альтернатива» телу), почтовики её штрафуют. Теперь корректно.
+        alt = MIMEMultipart('alternative')
+        # Текстовая версия ПЕРВОЙ (порядок alternative = от простого к богатому).
+        if body_text:
+            alt.attach(MIMEText(body_text, 'plain', 'utf-8'))
+        alt.attach(MIMEText(body_html, 'html', 'utf-8'))
+
+        if attachments:
+            msg = MIMEMultipart('mixed')
+            msg.attach(alt)
+        else:
+            msg = alt
+
         # Заголовок From - правильное кодирование
         # Используем formataddr для корректного формирования заголовка:
         # имя кодируется отдельно, email остаётся в угловых скобках без кодирования
@@ -127,15 +142,26 @@ class EmailSender:
             msg['From'] = formataddr((str(Header(from_name, 'utf-8')), from_email))
         else:
             msg['From'] = from_email
-        
-        msg['To'] = to_email
-        msg['Subject'] = Header(subject, 'utf-8')
-        msg['Date'] = datetime.now().strftime('%a, %d %b %Y %H:%M:%S %z')
 
-        # Свой Message-ID (иначе финальный MTA назначит собственный, и Laravel не сможет
-        # записать реальный ID в email_messages для дедупа беседы). Передаётся уже в <>.
-        if message_id:
-            msg['Message-ID'] = message_id
+        msg['To'] = to_email
+        # Тема: срезаем CR/LF — иначе перенос строки инъектит второй заголовок Subject
+        # (gmail: «multiple Subject headers»).
+        clean_subject = (subject or '').replace('\r', ' ').replace('\n', ' ').strip()
+        msg['Subject'] = Header(clean_subject, 'utf-8')
+        # Date СТРОГО с таймзоной (RFC 5322). Раньше был naive datetime + '%z' → пустой
+        # offset («Date: … 18:40:00 » без +0300), почтовики штрафуют. formatdate даёт
+        # корректный «Fri, 09 Jul 2026 18:40:00 +0300».
+        msg['Date'] = formatdate(localtime=True)
+
+        # Message-ID: передан Laravel → ставим; иначе ГЕНЕРИМ (письмо без Message-ID
+        # gmail отклоняет, у mail.ru/Яндекса — спам-очки). Домен из адреса отправителя.
+        if not message_id:
+            try:
+                domain = from_email.split('@', 1)[1] if '@' in from_email else 'localhost'
+            except Exception:
+                domain = 'localhost'
+            message_id = make_msgid(domain=domain)
+        msg['Message-ID'] = message_id
 
         # Threading ответов — значения уже с угловыми скобками, ставим как есть.
         if in_reply_to:
@@ -145,41 +171,32 @@ class EmailSender:
 
         if reply_to:
             msg['Reply-To'] = reply_to
-        
+
         if cc:
             msg['Cc'] = ', '.join(cc)
-        
+
         # BCC не добавляется в заголовки (это скрытая копия)
-        
-        # Текстовая версия
-        if body_text:
-            part_text = MIMEText(body_text, 'plain', 'utf-8')
-            msg.attach(part_text)
-        
-        # HTML версия
-        part_html = MIMEText(body_html, 'html', 'utf-8')
-        msg.attach(part_html)
-        
-        # Вложения
+
+        # Вложения — в multipart/mixed корень (НЕ в alternative).
         if attachments:
             for attachment in attachments:
                 part = MIMEBase('application', 'octet-stream')
-                
+
                 # Декодируем base64
                 content = base64.b64decode(attachment.content)
                 part.set_payload(content)
                 encoders.encode_base64(part)
-                
+
                 part.add_header(
                     'Content-Disposition',
                     f'attachment; filename={attachment.filename}'
                 )
-                
+
                 if attachment.content_type:
                     part.add_header('Content-Type', attachment.content_type)
-                
+
                 msg.attach(part)
-        
+
         return msg
     
     async def send_email(self, request: SendEmailRequest) -> Dict[str, Any]:
