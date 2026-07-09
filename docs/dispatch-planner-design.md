@@ -91,8 +91,9 @@ score(intent) =
   - Шаг 1 ✅ схема `send_intents` + `requests.offer_target/max_reach`.
   - Шаг 2 ✅ `PositionCoverage` (позиционное покрытие: активные позиции, satisfied, priced-counts).
   - Шаг 3 ✅ `emails:build-intents` — билдер backlog (позиционно, grouper+selector, дедуп). Проверен.
-  - Шаг 4 ⏳ **ПЛАНИРОВЩИК-РЕНДЕР** (следующий, крупный): consume `send_intents(backlog)` под ёмкость (per-recipient adaptive cap + per-sender warmup), ленивый рендер активных позиций поставщика (token/body/HTML → `email_queue`), интент→rendered. Переиспует SenderAssigner/Token/Body/EmailBuilder/Persister, но per-intent с динамическими позициями. Score-приоритет (deficit).
-  - Шаг 5 ⏳ shadow-замер рядом с текущим; Шаг 6 ⏳ переключение (EMAILS_GENERATE_ENABLED off + EMAILS_PLANNER_ENABLED on) по доменам.
+  - Шаг 4 ✅ `emails:plan-render` (PlanRenderIntents) — ленивый рендер backlog под ёмкость: приоритет (клиентские/старые вперёд), capacity-gate получателя (adaptive cap + не-held pending) с разносом 1/получатель/прогон, рендер активных позиций (переиспуя SenderAssigner/Token/Body/EmailBuilder/Persister), интент→rendered, остаток→backlog. Всё волна 1 (held-пула нет). `--dry-run`. Проверено E2E (442→рендер 2/backlog 6). Расписание build-intents /10м + plan-render /5м (за флагом OFF).
+  - **Пробелы до полного переключения (Шаг 6):** (1) Яндекс-таргетинг/discovery/found_urls в планировщик НЕ перенесены (v1 без тиров/персонализации — все интенты равны, рендер сразу); (2) lifecycle заявки (satisfied → терминальный статус) — сейчас заявка остаётся active, просто не даёт интентов; (3) глобальный суточный потолок; (4) score-веса (сейчас грубый порядок клиент/возраст).
+  - Шаг 5 ⏳ shadow-замер; Шаг 6 ⏳ переключение (`EMAILS_GENERATE_ENABLED` off + `EMAILS_PLANNER_ENABLED` on) по доменам, после закрытия пробелов.
 - **Фаза 3:** полная обратная связь (§7), авто-тюн cap, ретайр старых механизмов.
 
 **Предусловие:** сначала стабилизировать репутацию (DKIM/DMARC + отлёжка сгоревших) — иначе эффект планировщика не измерить (смазано горелыми доменами).
