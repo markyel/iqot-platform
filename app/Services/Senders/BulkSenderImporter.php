@@ -197,9 +197,10 @@ class BulkSenderImporter
                 'director_name' => $fields['director'] ?? ($ai['director_name'] ?? null),
             ]);
 
-            // 5. Вставка отправителя. Телефон — реальный из ввода/Excel (личный →
-            // общий телефон организации), БЕЗ AI-фолбэка (см. выше); нет реального → null.
-            $phone = $this->firstCleanPhone($fields['phone'] ?? $fields['company_phone'] ?? null);
+            // 5. Вставка отправителя. Личный телефон ящика НЕ заполняем: в подписи он
+            // отключён во всех шаблонах, а номера из Excel — это телефоны реальных
+            // сторонних компаний (звонок ушёл бы не туда). Ручной ввод phone — уважаем.
+            $phone = $this->firstCleanPhone($fields['phone'] ?? null);
 
             $sender = DB::connection('reports')->transaction(function () use ($fields, $email, $phone, $smtpServer, $smtpPort, $imapServer, $imapPort, $org, $ai) {
                 return Sender::create([
