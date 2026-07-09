@@ -87,7 +87,12 @@ score(intent) =
 - **Фаза 1 (СДЕЛАНО):**
   - (а) ✅ **адаптивный cap получателя** (10/15/5, `recipient_mailboxes.daily_cap`, `emails:recompute-recipient-caps` 04:45 МСК). Коммит 904004e.
   - (б) ✅ **рекапенет-гейт в генерацию** (за флагом `EMAILS_GENERATE_RECIPIENT_GATE`, дефолт OFF): не рендерить письмо получателю с переполненным near-term outbox (≥ cap не-held pending) — снятые (волны 1–2) откладываются в capacity-backlog (reason=recipient_cap, пин) и повторяются `emails:process-capacity-deferred`. Проверено рефлексией. Коммит 18d7ecb. **Каветат:** повтор пересоздаёт deferred-строки (churn), пока outbox не разгрузится — приемлемо как первый кирпич; Фаза 2 заменяет на чистый backlog интентов.
-- **Фаза 2:** `send_intents` + непрерывный планировщик (§6) вместо волн/деферралов. Shadow-режим рядом с текущим, метрики, выкат **по доменам**.
+- **Фаза 2 (В РАБОТЕ, за флагом `EMAILS_PLANNER_ENABLED`=OFF, параллельно текущему):**
+  - Шаг 1 ✅ схема `send_intents` + `requests.offer_target/max_reach`.
+  - Шаг 2 ✅ `PositionCoverage` (позиционное покрытие: активные позиции, satisfied, priced-counts).
+  - Шаг 3 ✅ `emails:build-intents` — билдер backlog (позиционно, grouper+selector, дедуп). Проверен.
+  - Шаг 4 ⏳ **ПЛАНИРОВЩИК-РЕНДЕР** (следующий, крупный): consume `send_intents(backlog)` под ёмкость (per-recipient adaptive cap + per-sender warmup), ленивый рендер активных позиций поставщика (token/body/HTML → `email_queue`), интент→rendered. Переиспует SenderAssigner/Token/Body/EmailBuilder/Persister, но per-intent с динамическими позициями. Score-приоритет (deficit).
+  - Шаг 5 ⏳ shadow-замер рядом с текущим; Шаг 6 ⏳ переключение (EMAILS_GENERATE_ENABLED off + EMAILS_PLANNER_ENABLED on) по доменам.
 - **Фаза 3:** полная обратная связь (§7), авто-тюн cap, ретайр старых механизмов.
 
 **Предусловие:** сначала стабилизировать репутацию (DKIM/DMARC + отлёжка сгоревших) — иначе эффект планировщика не измерить (смазано горелыми доменами).
