@@ -416,6 +416,8 @@ return [
         'build_request_limit' => (int) env('EMAILS_PLANNER_BUILD_LIMIT', 50),
         // Дефолтная цель офферов на позицию (если requests.offer_target не задан).
         'offer_target_default' => (int) env('EMAILS_PLANNER_OFFER_TARGET', 4),
+        // Окно свежести: билдер берёт заявки не старше N дней (живой набор, не архив).
+        'fresh_days' => (int) env('EMAILS_PLANNER_FRESH_DAYS', 7),
     ],
 
     'email_generate' => [

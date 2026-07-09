@@ -97,8 +97,17 @@ class PlanRenderIntents extends Command
             if ($budget <= 0) {
                 break;
             }
-            $row = DB::connection(self::CONN)->table('requests')->where('id', $rid)->first(['offer_target', 'max_reach']);
-            $offerTarget = $row && $row->offer_target !== null ? (int) $row->offer_target : $defaultTarget;
+            $row = DB::connection(self::CONN)->table('requests')->where('id', $rid)->first(['status', 'offer_target', 'max_reach']);
+            // Терминальная заявка (completed/cancelled/нет строки) → гасим её backlog.
+            if (!$row || in_array((string) $row->status, ['completed', 'cancelled'], true)) {
+                if (!$dry) {
+                    DB::connection(self::CONN)->table('send_intents')
+                        ->where('request_id', $rid)->where('status', 'backlog')
+                        ->update(['status' => 'dropped', 'last_reason' => 'request_terminal', 'updated_at' => now()]);
+                }
+                continue;
+            }
+            $offerTarget = $row->offer_target !== null ? (int) $row->offer_target : $defaultTarget;
             $maxReach = (bool) ($row->max_reach ?? false);
 
             $active = $coverage->activeItemIds($rid, $offerTarget, $maxReach);

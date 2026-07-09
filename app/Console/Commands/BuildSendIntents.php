@@ -46,8 +46,15 @@ class BuildSendIntents extends Command
             // Точечный прогон — вне зависимости от статуса (ручной/тест).
             $q->where('id', $reqOpt);
         } else {
-            $q->whereIn('status', ['draft', 'new', 'active'])
-                ->orderBy('is_customer_request', 'desc')->orderBy('created_at', 'asc')
+            // Живой набор: новые + уже-обработанные старым генератором (их
+            // не-контактированные поставщики = резерв для планировщика), в окне свежести.
+            // Дедуп (request_item_responses) не даст двойной отправки уже-queued.
+            $freshDays = max(1, (int) config('services.email_planner.fresh_days', 7));
+            // Открытые заявки (не completed/cancelled): новые + отправленные/получившие
+            // часть ответов, но с ещё незакрытыми позициями. Дедуп не даст двойной отправки.
+            $q->whereIn('status', ['draft', 'new', 'active', 'queued_for_sending', 'emails_sent', 'responses_received'])
+                ->where('created_at', '>=', now()->subDays($freshDays))
+                ->orderBy('is_customer_request', 'desc')->orderBy('created_at', 'desc')
                 ->limit(max(1, (int) ($this->option('limit') ?: config('services.email_planner.build_request_limit', 50))));
         }
         $requests = $q->get(['id', 'offer_target', 'max_reach', 'is_customer_request']);

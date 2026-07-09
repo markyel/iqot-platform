@@ -152,12 +152,14 @@ Schedule::command('emails:generate-queue')
 // ВМЕСТЕ с выключением EMAILS_GENERATE_ENABLED (иначе оба обрабатывают заявки).
 Schedule::command('emails:build-intents')
     ->everyTenMinutes()
+    ->runInBackground()
     ->withoutOverlapping();
 Schedule::command('emails:plan-render')
     ->everyFiveMinutes()
     ->timezone('Europe/Riga')
     ->weekdays()
     ->between('8:00', '20:00')
+    ->runInBackground()
     ->withoutOverlapping();
 
 // Авто-закрытие зависших вопросов к автору: спустя N дней (по умолч. 4) без ответа
