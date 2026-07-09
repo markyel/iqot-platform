@@ -190,13 +190,16 @@ class BulkSenderImporter
                 'legal_address' => $fields['address'] ?? ($ai['legal_address'] ?? null),
                 'actual_address' => $fields['address'] ?? ($ai['actual_address'] ?? null),
                 'contact_person' => $fields['fullname'] ?? $fields['name'] ?? ($ai['sender_full_name'] ?? null),
-                'phone' => $fields['company_phone'] ?? ($ai['company_phone'] ?? null),
+                // Телефон — ТОЛЬКО из ввода/Excel (реальный), НЕ от AI: мини-модель
+                // выдаёт палевные последовательности (123-45-67, 345-67-89 и т.п.).
+                'phone' => $this->firstCleanPhone($fields['company_phone'] ?? null),
                 'email' => $ai['company_email'] ?? $email,
                 'director_name' => $fields['director'] ?? ($ai['director_name'] ?? null),
             ]);
 
-            // 5. Вставка отправителя.
-            $phone = $fields['phone'] ?? ($ai['phone'] ?? null);
+            // 5. Вставка отправителя. Телефон — реальный из ввода/Excel (личный →
+            // общий телефон организации), БЕЗ AI-фолбэка (см. выше); нет реального → null.
+            $phone = $this->firstCleanPhone($fields['phone'] ?? $fields['company_phone'] ?? null);
 
             $sender = DB::connection('reports')->transaction(function () use ($fields, $email, $phone, $smtpServer, $smtpPort, $imapServer, $imapPort, $org, $ai) {
                 return Sender::create([
@@ -218,8 +221,7 @@ class BulkSenderImporter
                     'client_organization_id' => $org->id,
                     'token_template_id' => $this->randomId($this->tokenTemplateIds) ?? 1,
                     'preferred_template_id' => $this->randomId($this->emailTemplateIds),
-                    // Новый ящик стартует с прогревочного лимита (start=30); прогрев (emails:warmup-ramp) рампит.
-                    'daily_limit' => (int) config('services.email_warmup.start', 30),
+                    'daily_limit' => 100,
                     'is_active' => true,
                     'is_verified' => false,
                     'email_style' => $this->normalizeEmailStyle($ai['email_style'] ?? null),
@@ -340,6 +342,28 @@ sender_name, sender_full_name, phone, email_style, email_greeting,
 company_name, inn, kpp, legal_address, actual_address, director_name, company_phone, company_email.
 Все значения на русском языке.
 PROMPT;
+    }
+
+    /**
+     * Из строки телефонов (часто несколько номеров через запятую + пометки вроде
+     * «(Секретариат/приёмная)») взять ОДИН чистый номер для показа в подписи:
+     * первый номер, без скобочных примечаний. Пусто/меньше 6 цифр → null.
+     */
+    private function firstCleanPhone(?string $phone): ?string
+    {
+        if ($phone === null || trim($phone) === '') {
+            return null;
+        }
+        // Первый номер до разделителя нескольких номеров.
+        $first = preg_split('/[,;]| или /u', trim($phone))[0] ?? '';
+        // Убрать скобочные примечания «(Секретариат/приёмная)» и т.п. (но НЕ код города
+        // в скобках вида «(495)» — его оставляем: там только цифры).
+        $first = (string) preg_replace('/\((?=[^)]*[^\d\s)])[^)]*\)/u', '', $first);
+        $first = trim(preg_replace('/\s{2,}/u', ' ', $first) ?? '');
+        if (preg_match_all('/\d/', $first) < 6) {
+            return null;
+        }
+        return mb_substr($first, 0, 50);
     }
 
     /**

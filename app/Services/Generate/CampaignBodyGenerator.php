@@ -72,8 +72,8 @@ class CampaignBodyGenerator
         }
         $row = DB::connection(self::CONN)->selectOne(
             'SELECT et.id, et.name, et.description, et.subject_template, et.blocks,
-                    et.signature_format, et.items_format, et.items_display_config,
-                    et.style_preset, et.ai_tone
+                    et.signature_format, et.signature_show_phone, et.items_format,
+                    et.items_display_config, et.style_preset, et.ai_tone
              FROM email_templates et
              JOIN senders s ON s.preferred_template_id = et.id
              WHERE s.id = ? AND et.is_active = 1

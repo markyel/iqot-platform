@@ -870,7 +870,10 @@ class CampaignEmailBuilder
 
         $fullName = $this->realName($senderData['sender_full_name'] ?? null)
             ?? ($this->realName($senderData['sender_name'] ?? null) ?? 'Отдел закупок');
-        $phone = $senderData['phone'] ?? null;
+        // Телефон показываем, только если шаблон разрешил (show_phone). По умолчанию
+        // у большинства шаблонов выключено — телефон убран из подписи.
+        $showPhone = $style['show_phone'] ?? true;
+        $phone = $showPhone ? ($senderData['phone'] ?? null) : null;
         $email = $senderData['email'] ?? null;
         $position = $senderData['position'] ?? null;
 
@@ -1041,6 +1044,12 @@ class CampaignEmailBuilder
             case 'signature':
                 $sigStyle = array_merge($globalStyle, is_array($block['style'] ?? null) ? $block['style'] : []);
                 $sigFormat = $block['format'] ?? ($template['signature_format'] ?? 'name_only');
+                // Показывать телефон в подписи — только если шаблон это разрешает
+                // (email_templates.signature_show_phone). У большинства шаблонов выкл:
+                // телефон убран из подписи по решению; включён у формата full и т.п.
+                if (!array_key_exists('show_phone', $sigStyle)) {
+                    $sigStyle['show_phone'] = (bool) ($template['signature_show_phone'] ?? true);
+                }
                 return $this->renderSignature((string) $sigFormat, $sender, $organization, $sigStyle);
 
             case 'company_footer':
