@@ -143,7 +143,15 @@ return [
         // Флаг также включает облегчённые Яндекс-запросы в SupplierTargetingService.
         'waves_v2' => (bool) env('EMAILS_WAVES_V2', false),
         // Метрика холодной В3 (followup): порог полученных КП по заявке (< → шлём В3).
+        // LEGACY-батч-уровневый счёт разных поставщиков (используется, только если
+        // wave3_min_offers_per_item/covered_fraction не заданы — см. ПОЗИЦИОННЫЙ критерий ниже).
         'wave3_min_offers' => (int) env('EMAILS_WAVE3_MIN_OFFERS', 4),
+        // ПОЗИЦИОННОЕ покрытие холодной В3 (followup): «достаточно КП» = у ДОЛИ позиций
+        // батча (>= wave3_min_covered_fraction) есть >= wave3_min_offers_per_item ценовых
+        // ответов. Иначе одна вечно-дефицитная позиция не должна держать пул — потому доля,
+        // а не «все позиции». Гейт покрытия ⇒ отменяем В3, недобор ⇒ отпускаем В3.
+        'wave3_min_offers_per_item' => (int) env('EMAILS_WAVE3_MIN_OFFERS_PER_ITEM', 1),
+        'wave3_min_covered_fraction' => (float) env('EMAILS_WAVE3_MIN_COVERED_FRACTION', 0.8),
         // Задержка (дни) перед отправкой тёплой В2 (tier2) относительно генерации.
         'wave2_delay_days' => (int) env('EMAILS_WAVE2_DELAY_DAYS', 1),
         // Волна 2 «добор пула»: по пул-поставщикам НЕ из волны 1 делаем Яндекс-запрос
@@ -216,21 +224,6 @@ return [
         'today_disable_pct' => (float) env('EMAILS_SPAM_GUARD_TODAY_PCT', 25),    // порог доли спама за ТЕКУЩИЕ сутки (ловит резкий всплеск)
         'today_min_sent' => (int) env('EMAILS_SPAM_GUARD_TODAY_MIN_SENT', 30),    // мин. отправок сегодня для дневного триггера
         'reenable_rate_pct' => (float) env('EMAILS_SPAM_GUARD_REENABLE_PCT', 8),
-    ],
-
-    // Пробационный возврат самоотключённых ящиков (emails:revive-senders). Гвард
-    // выше отключает при спаме, но его авто-возврат мёртв (отключённый ящик ничего
-    // не шлёт → не набирает чистое окно). Эта команда берёт ОТСИДЕВШИЕСЯ спам-баны
-    // (не хардблок провайдера) и по daily_cap/день возвращает на пробо-лимит с
-    // sending_disabled=0; дальше прогрев рампит, а гвард пересуживает с эскалацией
-    // кулдауна (revival_attempts → base/7/14/30д, потом banned_once). См. ReviveSenders.
-    'email_sender_revival' => [
-        'enabled' => (bool) env('EMAILS_REVIVAL_ENABLED', false),
-        'probation_limit' => (int) env('EMAILS_REVIVAL_PROBATION_LIMIT', 30),  // стартовый дневной лимит при возврате
-        'daily_cap' => (int) env('EMAILS_REVIVAL_DAILY_CAP', 5),               // сколько ящиков возвращать за прогон
-        'rest_days' => (int) env('EMAILS_REVIVAL_REST_DAYS', 3),               // мин. дней без МАССОВОЙ отправки («отсидка»)
-        'max_attempts' => (int) env('EMAILS_REVIVAL_MAX_ATTEMPTS', 3),         // после стольких провалов пробации — banned_once
-        'base_cooldown_days' => (int) env('EMAILS_REVIVAL_BASE_COOLDOWN_DAYS', 3), // отдых после ОБЫЧНОГО (не пробационного) бана
     ],
 
     // Каналы отправки (Phase 3c): пул egress-каналов для диверсификации исходящего IP

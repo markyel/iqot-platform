@@ -74,34 +74,42 @@ class DispatchFollowupEmails extends Command
         $builder = new CampaignEmailBuilder();
 
         foreach ($batchIds as $batchId) {
-            $responses = $wavesV2
-                ? $this->offersForBatch($batchId)
-                : DB::connection(self::CONN)->table('email_queue')
+            // Waves-v2: ПОЗИЦИОННОЕ покрытие (достаточно КП = доля позиций покрыта);
+            // legacy: число ответивших писем очереди >= порога.
+            if ($wavesV2) {
+                $cov = $this->coverageForBatch($batchId);
+                $enough = $cov['ok'];
+                $detail = "covered {$cov['covered']}/{$cov['total']} pos (frac " . number_format($cov['fraction'], 2) . ")";
+            } else {
+                $responses = DB::connection(self::CONN)->table('email_queue')
                     ->where('batch_id', $batchId)
                     ->whereIn('status', ['replied', 'reply_processed', 'in_conversation'])
                     ->count();
+                $enough = $responses >= $minResponses;
+                $detail = "responses {$responses}";
+            }
 
             $heldQ = fn () => DB::connection(self::CONN)->table('email_queue')
                 ->where('batch_id', $batchId)->where('wave', $heldWave)->where('status', 'pending')
                 ->where('scheduled_at', '>=', self::HELD_THRESHOLD);
 
-            if ($responses >= $minResponses) {
+            if ($enough) {
                 $cancelled += $heldQ()->update([
                     'status' => 'cancelled',
-                    'error_message' => "followup skipped: enough responses ({$responses})",
+                    'error_message' => "followup skipped: enough ({$detail})",
                     'updated_at' => $now,
                 ]);
-                // Откликов хватает — discovery по этому батчу не шлём, помечаем обработанными.
+                // Покрытия хватает — discovery по этому батчу не шлём, помечаем обработанными.
                 DB::connection(self::CONN)->table('campaign_discoveries')
                     ->where('batch_id', $batchId)->where('emailed', 0)->update(['emailed' => 1]);
-                Log::info('Followup: cancelled wave 2 (enough responses)', ['batch_id' => $batchId, 'responses' => $responses]);
+                Log::info('Followup: cancelled cold wave (enough coverage)', ['batch_id' => $batchId, 'detail' => $detail]);
                 continue;
             }
 
-            // Мало откликов → отпускаем расширение + досылаем новым из discovery.
+            // Покрытия мало → отпускаем холодную волну + досылаем новым из discovery.
             $released += $heldQ()->update(['scheduled_at' => $now, 'updated_at' => $now]);
             $enriched += $this->enrichFromDiscoveries($batchId, $builder);
-            Log::info('Followup: released + enriched', ['batch_id' => $batchId, 'responses' => $responses]);
+            Log::info('Followup: released + enriched', ['batch_id' => $batchId, 'detail' => $detail]);
         }
 
         $this->info("Батчей: " . count($batchIds) . " | отпущено: {$released} | новых (discovery): {$enriched} | отменено: {$cancelled}");
@@ -109,27 +117,49 @@ class DispatchFollowupEmails extends Command
     }
 
     /**
-     * Число полученных КП по батчу (waves-v2 метрика для холодной волны 3): сколько
-     * РАЗНЫХ поставщиков дали ценовой ответ по позициям батча — request_item_responses
-     * с ценой (price_per_unit / total_price) по request_item_id из батча.
+     * ПОЗИЦИОННОЕ покрытие батча (waves-v2 метрика для холодной волны 3). Позиция
+     * «покрыта», если по ней есть >= wave3_min_offers_per_item РАЗНЫХ поставщиков с
+     * ценовым ответом (request_item_responses с price_per_unit / total_price). Батч
+     * «достаточен» (ok), если покрыта доля позиций >= wave3_min_covered_fraction —
+     * доля, а не «все», чтобы одна вечно-дефицитная позиция не держала пул вечно.
+     *
+     * @return array{ok:bool, covered:int, total:int, fraction:float}
      */
-    private function offersForBatch(int $batchId): int
+    private function coverageForBatch(int $batchId): array
     {
         $itemIds = json_decode(
             (string) (DB::connection(self::CONN)->table('email_batches')->where('id', $batchId)->value('request_items') ?? '[]'),
             true
         ) ?: [];
-        if ($itemIds === []) {
-            return 0;
+        $total = count($itemIds);
+        if ($total === 0) {
+            // Нет позиций — держать нечего, считаем «достаточным» (отменяем холодный пул).
+            return ['ok' => true, 'covered' => 0, 'total' => 0, 'fraction' => 1.0];
         }
 
-        return (int) DB::connection(self::CONN)->table('request_item_responses')
+        $minPerItem = max(1, (int) config('services.email_pool.wave3_min_offers_per_item', 1));
+        $minFraction = (float) config('services.email_pool.wave3_min_covered_fraction', 0.8);
+
+        // РАЗНЫХ поставщиков с ценой на позицию, сгруппировано по request_item_id.
+        $perItem = DB::connection(self::CONN)->table('request_item_responses')
             ->whereIn('request_item_id', $itemIds)
             ->where(function ($q) {
                 $q->whereNotNull('price_per_unit')->orWhereNotNull('total_price');
             })
-            ->distinct()
-            ->count('supplier_id');
+            ->selectRaw('request_item_id, COUNT(DISTINCT supplier_id) c')
+            ->groupBy('request_item_id')
+            ->pluck('c', 'request_item_id')
+            ->all();
+
+        $covered = 0;
+        foreach ($itemIds as $iid) {
+            if ((int) ($perItem[$iid] ?? 0) >= $minPerItem) {
+                $covered++;
+            }
+        }
+        $fraction = $covered / $total;
+
+        return ['ok' => $fraction >= $minFraction, 'covered' => $covered, 'total' => $total, 'fraction' => $fraction];
     }
 
     /**
