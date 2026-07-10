@@ -114,6 +114,60 @@ score(intent) =
 
 ---
 
+# ПЕРЕДАЧА — СОСТОЯНИЕ НА 2026-07-10 (v2 В БОЮ)
+
+**🟢 v2 переключён в бой 2026-07-10 ~12:10 Riga.** `.env` прода: `EMAILS_DAYPLAN_ENABLED=true`
+(бэкап `.env.bak.dayplan-cutover`; там же `EMAILS_PLANNER_ENABLED=true`, `EMAILS_GENERATE_ENABLED=false`).
+**Откат:** `EMAILS_DAYPLAN_ENABLED=false` + `config:clear` → plan-render вернётся в полный v1-режим.
+
+## Что крутится
+- `emails:plan-day` — расписание **07:30 МСК будни**, runInBackground. Строит план дня и рендерит
+  его в `email_queue` (реализация модели v2 ниже). Тест-опции: `--dry-run`, `--request=`, `--limit=`,
+  `--hold` (уводит отрендеренное в scheduled_at=2037 — диспетчер не заберёт), `--no-yandex`, `--force`.
+- `emails:plan-render` — каждые 5 мин, АВТОМАТИЧЕСКИ в режиме top-up при включённом dayplan-флаге:
+  рендерит только поставщиков моложе `EMAILS_DAYPLAN_TOPUP_NEW_HOURS` (деф. 24) — новых из discovery.
+- `emails:build-intents` — как был (топит send_intents backlog).
+- Discovery: кандидаты из Яндекс-выдачи plan-day → `DiscoverFromCampaignJob`
+  (потолок `EMAILS_DAYPLAN_DISCOVERY_MAX=30`/прогон; флаг `EMAILS_DAYPLAN_DISCOVERY`).
+
+## Компоненты v2 (все в бою)
+- `DayPlanAssigner` — ядро-РАСПРЕДЕЛИТЕЛЬ (чистая логика): этап 1 — раунды по срочности,
+  конверты (до daily_cap на получателя, деф. 10), подсадка в совместимые конверты; этап 2 —
+  «липкие» ящики группами одинаковых наборов позиций (рендер-группы крупнее → меньше AI-вызовов),
+  ротация 7д (senderRecent-пары), разные ящики конвертам одного получателя.
+- `PlanDayCampaign` — пулы (grouper+selector − rir), Яндекс ПО ВСЕМ позициям с кэшем
+  `dayplan:yx:item:{id}` (`EMAILS_DAYPLAN_YANDEX_CACHE_DAYS=3`; matchPool с текущим пулом свежий),
+  аффинность gpt-4o (`EMAILS_DAYPLAN_AFFINITY_MODEL`; mini метила avoid ВСЕ пары — дробила письма),
+  рендер группами (ящик+набор) → 1 батч/1 тело AI → token/body/EmailBuilder(wave=1)/Persister.
+- `PositionCoverage` — activeItemIds / emailedSuppliersPerItem (считает ЛЮБУЮ rir-строку!) / remainingPool.
+
+## Первый боевой прогон (2026-07-10)
+395 батчей / 608 писем / **0 дедуп-скипов** / 14м45с; median 4 позиции/письмо; 245 получателей
+(avg 2.5 конверта); discovery 182 кандидата → 30 в анализ. Релевантных конвертов ~0 — НЕ баг:
+недельным позициям v1 уже написал релевантных (выпали из остаточного пула); на свежих заявках
+релевантные пойдут первыми.
+
+## Инциденты/грабли (не наступать)
+- **Вечный SYN-SENT к ai.lazylift.ru**: Http `timeout(60)` НЕ обрывает зависший коннект — рендер
+  стоял 25 мин. Фикс: `connectTimeout(15)` в `OpenAIClassifierClient` (commit a1eca8c).
+- Прогон plan-day **идемпотентен**: kill + перезапуск безопасны (rir/капы учитывают отрендеренное).
+- Тестовые письма отменять (`status='cancelled'`) И **удалять их rir-строки** — иначе
+  emailedSuppliersPerItem навсегда выкинет поставщика из пула позиции.
+- `php -r` по SSH ломается на бэкслешах — временные .php в /var/www/iqot (не /tmp).
+
+## Мониторинг (первый авто-прогон — понедельник 07:30 МСК)
+Лог `PlanDayCampaign: рендер` (queued/skipped/discovery), email_queue pending/sent от батчей дня,
+дедуп-скипы (должны быть ~0), спам-гвард/блокировки ящиков, релевантные конверты на свежих заявках.
+
+## Открытые хвосты
+1. send_intents backlog для НЕ-новых поставщиков никем не дренится (plan-day интенты не трогает) —
+   копится stale; почистить/ретайрить.
+2. 2 письма упали на Beget MX («send only from domains with BeGet MX») — инфра релея, не v2.
+3. Пробелы v1 остаются: lifecycle заявки (satisfied → терминальный статус), глобальный суточный
+   потолок, score-веса срочности.
+4. Ключевые коммиты: 09a360c (ядро-распределение), 4c2f0e1 (discovery+top-up+cutover),
+   a1eca8c (липкие ящики+connectTimeout), db30f2d (рендер), 0114151 (расписание).
+
 # МОДЕЛЬ v2 — ДНЕВНОЙ ПЛАНИРОВЩИК + TOP-UP (уточнено 2026-07-10 v2, ЦЕЛЕВАЯ)
 
 v1 (непрерывный top-up) близорук: рендерит «здесь и сейчас» малыми данными → 93% батчей = 1 позиция, поставщик с несколькими позициями получает N одиночных писем. v2 планирует **на дневное окно** сразу по всей потребности и всем ресурсам.
