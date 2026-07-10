@@ -422,11 +422,14 @@ return [
         'dayplan_enabled' => (bool) env('EMAILS_DAYPLAN_ENABLED', false),
         'dayplan_max_per_email' => (int) env('EMAILS_DAYPLAN_MAX_PER_EMAIL', 4),  // позиций в письме
         'dayplan_yandex' => (bool) env('EMAILS_DAYPLAN_YANDEX', true),            // Яндекс-релевантность
-        // Бюджет Яндекс-таргетинга за прогон: опрашиваем только N САМЫХ СРОЧНЫХ батчей
-        // (полный обход всех батчей не влезает в прогон — >240с). Остальные идут без
-        // релевантных (их позиции покроет фаза добора). 0 = без лимита.
-        'dayplan_yandex_budget' => (int) env('EMAILS_DAYPLAN_YANDEX_BUDGET', 12),
+        // Кэш найденных Яндексом доменов НА ПОЗИЦИЮ (дней): все позиции прогоняются
+        // через Яндекс на стадии планирования, но повторные утра берут выдачу из кэша
+        // (матч с текущим пулом — всегда свежий). 0 = без кэша, каждый прогон заново.
+        'dayplan_yandex_cache_days' => (int) env('EMAILS_DAYPLAN_YANDEX_CACHE_DAYS', 3),
         'dayplan_affinity_ai' => (bool) env('EMAILS_DAYPLAN_AFFINITY_AI', true),  // AI-аффинность
+        // Модель аффинности: mini чрезмерно дробит (метит avoid обычные разнотипные
+        // комплектующие), gpt-4o судит адекватно; вызовов мало (1 на домен-группу).
+        'dayplan_affinity_model' => env('EMAILS_DAYPLAN_AFFINITY_MODEL', 'gpt-4o'),
     ],
 
     'email_generate' => [

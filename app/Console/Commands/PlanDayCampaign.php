@@ -17,14 +17,19 @@ use App\Services\Generate\PositionCoverage;
 use App\Services\Generate\SupplierTargetingService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Фаза 2 (v2), утренний прогон: строит ДНЕВНОЙ ПЛАН рассылки.
+ * Фаза 2 (v2), утренний прогон: строит и рендерит ДНЕВНОЙ ПЛАН рассылки.
  *
- * позиции(активные) → пулы(профильные − уже писавшие) → Яндекс(релевантные) +
- * AI-аффинность → DayPlanAssigner → упорядоченный план (поставщик→позиции→ящик).
+ * Задача РАСПРЕДЕЛЕНИЯ: два набора — позиции (остаточный пул = таксономия минус «уже
+ * слали эту позицию», релевантность из Яндекса ПО ВСЕМ позициям с кэшем, AI-совмести-
+ * мость, срочность) × поставщики (дневной лимит «конвертов» на получателя, деф. 10).
+ * DayPlanAssigner раскладывает позиции по конвертам раундами (равномерное покрытие,
+ * релевантные вперёд, подсадка в открытые конверты); позиция не ограничивается
+ * искусственно — только исчерпание её пула либо ёмкости дня (хвост уйдёт завтра).
  *
  * Рендер: письма плана группируются по (sender_id, набор позиций) — группа = один
  * батч (1 ящик, 1 тело AI, N поставщиков с одинаковым набором позиций) → token/body/
@@ -107,35 +112,17 @@ class PlanDayCampaign extends Command
         }
         unset($m);
 
-        // 2. Пулы + Яндекс-релевантность (по батчам группировки type/domain).
+        // 2. Пулы на позицию: grouper по type/domain → selector (пул определяется
+        // таксономией) → минус уже писавшие ПО ЭТОЙ позиции = остаточный пул.
         $categories = $this->loadCategories();
         $useNewRouting = (bool) DB::connection(self::CONN)->table('migration_flags')->where('flag_name', 'use_new_routing')->value('is_enabled');
         $grouper = new CampaignItemGrouper($categories, $useNewRouting, (int) config('services.email_generate.items_per_batch', 5));
         $selector = new CampaignSupplierSelector();
-        $yandexOn = !$this->option('no-yandex')
-            && (bool) config('services.email_planner.dayplan_yandex', true)
-            && (bool) config('services.email_pretarget.enabled', false);
 
-        $poolMap = [];        // itemId => [supplierId]
-        $relevantMap = [];    // itemId => [supplierId]
+        $poolMap = [];        // itemId => [supplierId] (остаточный пул)
         $supplierEmail = [];  // supplierId => email
-        $yandexQueriedBatches = 0;
 
-        // Яндекс-БЮДЖЕТ: полный обход всех батчей не влезает в прогон (>240с), поэтому
-        // таргетим только N самых срочных — батчи сортируем по max-срочности их позиций.
-        // Остальные идут без релевантных (их позиции покроет фаза добора). 0 = без лимита.
-        $yandexBudget = max(0, (int) config('services.email_planner.dayplan_yandex_budget', 12));
-        $batchUrgency = function ($batch) use ($positions): float {
-            $u = 0.0;
-            foreach ($batch->items as $it) {
-                $u = max($u, (float) ($positions[(int) ($it['id'] ?? 0)]['urgency'] ?? 0));
-            }
-            return $u;
-        };
-        $groupedBatches = $grouper->group(array_values($itemRows));
-        usort($groupedBatches, fn ($a, $b) => $batchUrgency($b) <=> $batchUrgency($a));
-
-        foreach ($groupedBatches as $batch) {
+        foreach ($grouper->group(array_values($itemRows)) as $batch) {
             $suppliers = $selector->select($batch);
             $supIds = [];
             foreach ($suppliers as $s) {
@@ -146,29 +133,60 @@ class PlanDayCampaign extends Command
                 $supIds[] = $sid;
                 $supplierEmail[$sid] = mb_strtolower(trim((string) ($s['email'] ?? '')));
             }
-            $relevant = [];
-            if ($yandexOn && $supIds !== [] && ($yandexBudget === 0 || $yandexQueriedBatches < $yandexBudget)) {
-                try {
-                    $res = SupplierTargetingService::make()->target($batch->items, $supIds);
-                    $relevant = array_values(array_unique(array_merge(
-                        array_map('intval', (array) ($res['tier1'] ?? [])),
-                        array_map('intval', (array) ($res['tier2'] ?? [])),
-                    )));
-                    $yandexQueriedBatches++;
-                } catch (\Throwable $e) {
-                    // Яндекс упал — позиции батча пойдут через фазу добора (без релевантных).
-                }
-            }
-            $relFlip = array_flip($relevant);
             foreach ($batch->items as $it) {
                 $iid = (int) ($it['id'] ?? 0);
                 if ($iid <= 0 || !isset($positions[$iid])) {
                     continue;
                 }
                 $emailed = $coverage->emailedSuppliersPerItem([$iid])[$iid] ?? [];
-                $remaining = $coverage->remainingPool($supIds, $emailed);
-                $poolMap[$iid] = $remaining;
-                $relevantMap[$iid] = array_values(array_filter($remaining, static fn ($s) => isset($relFlip[(int) $s])));
+                $poolMap[$iid] = $coverage->remainingPool($supIds, $emailed);
+            }
+        }
+
+        // 2b. Яндекс-релевантность: по ВСЕМ позициям (стадия планирования!), с кэшем
+        // найденных доменов на позицию — повторные утра не дёргают Яндекс по той же
+        // позиции. Матч кэшированных доменов с ТЕКУЩИМ остаточным пулом — всегда свежий.
+        $yandexOn = !$this->option('no-yandex')
+            && (bool) config('services.email_planner.dayplan_yandex', true)
+            && (bool) config('services.email_pretarget.enabled', false);
+        $relevantMap = [];    // itemId => [supplierId] ⊆ пула
+        $yandexQueried = 0;
+        $yandexCached = 0;
+        if ($yandexOn) {
+            $svc = SupplierTargetingService::make();
+            $ttlDays = max(0, (int) config('services.email_planner.dayplan_yandex_cache_days', 3));
+            $failStreak = 0;
+            foreach ($itemRows as $iid => $it) {
+                $poolIds = $poolMap[$iid] ?? [];
+                if ($poolIds === [] || $failStreak >= 3) {
+                    continue;
+                }
+                $key = 'dayplan:yx:item:' . $iid;
+                $found = $ttlDays > 0 ? Cache::get($key) : null;
+                if (!is_array($found)) {
+                    try {
+                        $found = $svc->searchItems([$it]);
+                        $yandexQueried++;
+                        $failStreak = 0;
+                        if ($ttlDays > 0) {
+                            Cache::put($key, $found, now()->addDays($ttlDays));
+                        }
+                    } catch (\Throwable $e) {
+                        $failStreak++; // 3 подряд → Яндекс лежит, остальных не мучаем
+                        continue;
+                    }
+                } else {
+                    $yandexCached++;
+                }
+                if ($found === []) {
+                    continue;
+                }
+                $match = $svc->matchPool($found, $poolIds);
+                $rel = array_map('intval', array_merge((array) ($match['tier1'] ?? []), (array) ($match['tier2'] ?? [])));
+                if ($rel !== []) {
+                    $relFlip = array_flip($rel);
+                    $relevantMap[$iid] = array_values(array_filter($poolIds, static fn ($s) => isset($relFlip[(int) $s])));
+                }
             }
         }
 
@@ -183,23 +201,38 @@ class PlanDayCampaign extends Command
             ];
         }
         $affinityAi = (bool) config('services.email_planner.dayplan_affinity_ai', true) ? $this->makeClient() : null;
-        $affinity = (new PositionAffinity($affinityAi, (string) config('services.email_generate.token_model', 'gpt-4o-mini')))->compute($affInput);
+        // Модель посильнее (gpt-4o): mini на avoid-парах слишком строгая — метила «не
+        // мешать» обычные разнотипные комплектующие одной закупки, письма распадались.
+        $affinity = (new PositionAffinity($affinityAi, (string) config('services.email_planner.dayplan_affinity_model', 'gpt-4o')))->compute($affInput);
 
         // 4. Ёмкость ящиков.
         $senderCaps = $this->senderCaps();
-        // 5. Ёмкость получателей.
+        // 5. Ёмкость получателей (конвертов на поставщика сегодня).
         $recipientCaps = $this->recipientCaps(array_values(array_unique(array_filter($supplierEmail))));
 
-        // 6. План.
-        $plan = (new DayPlanAssigner())->plan($positions, $poolMap, $relevantMap, $affinity, $supplierEmail, $senderCaps, $recipientCaps, $maxPerEmail);
+        // 6. История «ящик→получатель» за окно ротации: конвертам одного получателя —
+        // разные ящики, и не те, что писали ему недавно (иначе персистер молча срежет).
+        $rotDays = max(0, (int) config('services.email_generate.sender_recipient_days', 7));
+        $senderRecent = [];
+        if ($rotDays > 0) {
+            foreach (DB::connection(self::CONN)->table('email_queue')
+                ->where('created_at', '>=', now()->subDays($rotDays))
+                ->whereIn('status', ['pending', 'sending', 'sent', 'opened', 'replied', 'reply_processed', 'in_conversation', 'completed'])
+                ->selectRaw('DISTINCT sender_id, LOWER(to_email) e')->get() as $r) {
+                $senderRecent[((int) $r->sender_id) . '|' . (string) $r->e] = true;
+            }
+        }
 
-        // 7. Отчёт по плану (и в dry-run, и перед рендером).
-        $this->reportPlan($plan, $positions, $priced, $yandexOn, $yandexQueriedBatches, count($senderCaps));
+        // 7. Распределение позиций по конвертам поставщиков.
+        $plan = (new DayPlanAssigner())->plan($positions, $poolMap, $relevantMap, $affinity, $supplierEmail, $senderCaps, $recipientCaps, $senderRecent, $maxPerEmail);
+
+        // 8. Отчёт по плану (и в dry-run, и перед рендером).
+        $this->reportPlan($plan, $positions, $priced, $yandexOn, $yandexQueried, $yandexCached, count($senderCaps));
         if ($dry) {
             return self::SUCCESS;
         }
 
-        // 8. Рендер: группировка писем плана по (sender_id, набор позиций) → батчи.
+        // 9. Рендер: группировка писем плана по (sender_id, набор позиций) → батчи.
         $limit = max(0, (int) $this->option('limit'));
         $toRender = $limit > 0 ? array_slice($plan, 0, $limit) : $plan;
         $res = $this->renderPlan($toRender, $itemRows, $useNewRouting);
@@ -402,17 +435,17 @@ class PlanDayCampaign extends Command
      * @param array<int,array<string,mixed>> $positions
      * @param array<int,int> $priced
      */
-    private function reportPlan(array $plan, array $positions, array $priced, bool $yandexOn, int $yandexBatches, int $senders): void
+    private function reportPlan(array $plan, array $positions, array $priced, bool $yandexOn, int $yandexQueried, int $yandexCached, int $senders): void
     {
         $emails = count($plan);
         $byPhase = ['relevant' => 0, 'fill' => 0];
-        $recips = [];
+        $envPerRecipient = [];
         $sendersUsed = [];
         $sizes = [];
         $coverAdd = [];
         foreach ($plan as $p) {
             $byPhase[$p['phase']] = ($byPhase[$p['phase']] ?? 0) + 1;
-            $recips[$p['supplier_id']] = true;
+            $envPerRecipient[$p['supplier_id']] = ($envPerRecipient[$p['supplier_id']] ?? 0) + 1;
             $sendersUsed[$p['sender_id']] = true;
             $sizes[] = count($p['item_ids']);
             foreach ($p['item_ids'] as $it) {
@@ -423,7 +456,8 @@ class PlanDayCampaign extends Command
         $med = $sizes ? $sizes[intdiv(count($sizes), 2)] : 0;
         $avg = $sizes ? array_sum($sizes) / count($sizes) : 0;
 
-        // покрытие: сколько позиций план доводит до target
+        // Покрытие: скольким позициям план полностью раздаёт остаточный пул сегодня
+        // (остальным не хватило ёмкости — хвост пула уйдёт завтра) + добор до target.
         $activeCnt = count($positions);
         $willReach = 0;
         foreach ($positions as $id => $m) {
@@ -434,11 +468,17 @@ class PlanDayCampaign extends Command
         }
 
         $this->info('=== ДНЕВНОЙ ПЛАН ' . ($this->option('dry-run') ? '(dry-run)' : '(к рендеру)') . ' ===');
-        $yBudget = (int) config('services.email_planner.dayplan_yandex_budget', 12);
-        $this->line("  Яндекс: " . ($yandexOn ? "вкл (батчей опрошено {$yandexBatches}, бюджет " . ($yBudget ?: '∞') . ")" : 'выкл') . " | ящиков с ёмкостью: {$senders}");
+        $this->line("  Яндекс: " . ($yandexOn ? "вкл (запросов {$yandexQueried}, из кэша {$yandexCached})" : 'выкл') . " | ящиков с ёмкостью: {$senders}");
         $this->line("  Активных позиций: {$activeCnt}");
-        $this->line("  Писем в плане: {$emails}  (релевантные {$byPhase['relevant']} / добор {$byPhase['fill']})");
-        $this->line("  Уникальных получателей: " . count($recips) . " | задействовано ящиков: " . count($sendersUsed));
+        $this->line("  Писем (конвертов) в плане: {$emails}  (с релевантными {$byPhase['relevant']} / добор {$byPhase['fill']})");
+        $recipients = count($envPerRecipient);
+        $this->line(sprintf(
+            "  Получателей: %d | конвертов на получателя: avg=%.1f max=%d | задействовано ящиков: %d",
+            $recipients,
+            $recipients ? $emails / $recipients : 0,
+            $envPerRecipient ? max($envPerRecipient) : 0,
+            count($sendersUsed),
+        ));
         $this->line(sprintf("  Позиций в письме: median=%d avg=%.1f max=%d  (v1 было ~1)", $med, $avg, $sizes ? max($sizes) : 0));
         $this->line(sprintf("  Позиций дойдут до target: %d из %d (%d%%)", $willReach, $activeCnt, $activeCnt ? round(100 * $willReach / $activeCnt) : 0));
     }
