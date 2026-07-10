@@ -84,6 +84,51 @@ class PositionCoverage
     }
 
     /**
+     * Поставщики, которым УЖЕ писали по позиции (v2 позиционный дедуп). Строка
+     * request_item_responses существует для каждой (позиция × поставщик), которой
+     * отправили письмо (с ценой или без) → это множество «кому по факту слали».
+     *
+     * @param array<int,int> $itemIds
+     * @return array<int,array<int,int>> request_item_id => [supplier_id, ...]
+     */
+    public function emailedSuppliersPerItem(array $itemIds): array
+    {
+        if ($itemIds === []) {
+            return [];
+        }
+        $out = [];
+        foreach (DB::connection(self::CONN)->table('request_item_responses')
+            ->whereIn('request_item_id', $itemIds)
+            ->distinct()->get(['request_item_id', 'supplier_id']) as $r) {
+            $out[(int) $r->request_item_id][] = (int) $r->supplier_id;
+        }
+        return $out;
+    }
+
+    /**
+     * Остаток пула на позицию (v2): кандидаты − уже писавшие. Пустой → пул исчерпан.
+     *
+     * @param array<int,int> $candidateSupplierIds профильные поставщики позиции
+     * @param array<int,int> $emailedSupplierIds кому уже писали по этой позиции
+     * @return array<int,int> supplier_id
+     */
+    public function remainingPool(array $candidateSupplierIds, array $emailedSupplierIds): array
+    {
+        if ($emailedSupplierIds === []) {
+            return array_values(array_unique(array_map('intval', $candidateSupplierIds)));
+        }
+        $emailed = array_flip(array_map('intval', $emailedSupplierIds));
+        $out = [];
+        foreach ($candidateSupplierIds as $sid) {
+            $sid = (int) $sid;
+            if (!isset($emailed[$sid])) {
+                $out[] = $sid;
+            }
+        }
+        return $out;
+    }
+
+    /**
      * Сколько РАЗНЫХ поставщиков дали ценовой ответ по каждой позиции.
      *
      * @param array<int,int> $itemIds
