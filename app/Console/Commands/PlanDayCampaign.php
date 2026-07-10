@@ -479,11 +479,15 @@ class PlanDayCampaign extends Command
         $sendersUsed = [];
         $sizes = [];
         $coverAdd = [];
+        $renderGroups = [];
         foreach ($plan as $p) {
             $byPhase[$p['phase']] = ($byPhase[$p['phase']] ?? 0) + 1;
             $envPerRecipient[$p['supplier_id']] = ($envPerRecipient[$p['supplier_id']] ?? 0) + 1;
             $sendersUsed[$p['sender_id']] = true;
             $sizes[] = count($p['item_ids']);
+            $ids = array_map('intval', $p['item_ids']);
+            sort($ids);
+            $renderGroups[$p['sender_id'] . '|' . implode(',', $ids)] = true;
             foreach ($p['item_ids'] as $it) {
                 $coverAdd[$it] = ($coverAdd[$it] ?? 0) + 1;
             }
@@ -506,7 +510,7 @@ class PlanDayCampaign extends Command
         $this->info('=== ДНЕВНОЙ ПЛАН ' . ($this->option('dry-run') ? '(dry-run)' : '(к рендеру)') . ' ===');
         $this->line("  Яндекс: " . ($yandexOn ? "вкл (запросов {$yandexQueried}, из кэша {$yandexCached})" : 'выкл') . " | ящиков с ёмкостью: {$senders}");
         $this->line("  Активных позиций: {$activeCnt}");
-        $this->line("  Писем (конвертов) в плане: {$emails}  (с релевантными {$byPhase['relevant']} / добор {$byPhase['fill']})");
+        $this->line("  Писем (конвертов) в плане: {$emails}  (с релевантными {$byPhase['relevant']} / добор {$byPhase['fill']}) | рендер-групп (тел AI): " . count($renderGroups));
         $recipients = count($envPerRecipient);
         $this->line(sprintf(
             "  Получателей: %d | конвертов на получателя: avg=%.1f max=%d | задействовано ящиков: %d",

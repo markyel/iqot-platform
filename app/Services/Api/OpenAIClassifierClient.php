@@ -80,7 +80,11 @@ class OpenAIClassifierClient
             $headers['X-Proxy-Key'] = $this->proxyKey;
         }
 
+        // connectTimeout отдельно от общего timeout: наблюдали вечный SYN-SENT к прокси
+        // (коннект не устанавливается и не рвётся) — общий timeout его не оборвал,
+        // рендер вставал навсегда. Коннект дольше 15с = мёртвая точка, рвём сразу.
         $response = Http::withHeaders($headers)
+            ->connectTimeout(15)
             ->timeout($this->timeout)
             ->post($this->baseUrl . '/chat/completions', [
                 'model' => $model,
@@ -137,7 +141,11 @@ class OpenAIClassifierClient
             $headers['X-Proxy-Key'] = $this->proxyKey;
         }
 
+        // connectTimeout отдельно от общего timeout: наблюдали вечный SYN-SENT к прокси
+        // (коннект не устанавливается и не рвётся) — общий timeout его не оборвал,
+        // рендер вставал навсегда. Коннект дольше 15с = мёртвая точка, рвём сразу.
         $response = Http::withHeaders($headers)
+            ->connectTimeout(15)
             ->timeout($this->timeout)
             ->post($this->baseUrl . '/chat/completions', [
                 'model' => $model,

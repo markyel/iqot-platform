@@ -11,18 +11,24 @@ namespace App\Services\Generate;
  * на получателя, по умолчанию 10). Раскладываем позиции по конвертам поставщиков
  * максимально эффективно, не заспамив.
  *
- * Алгоритм — РАУНДАМИ (равномерное покрытие, а не «первая срочная позиция съела всё»):
+ * Этап 1 — раскладка РАУНДАМИ (равномерное покрытие, а не «первая срочная позиция
+ * съела всё»):
  *   - в каждом раунде каждая активная позиция (в порядке срочности) получает ПО ОДНОМУ
  *     новому поставщику из своего пула (релевантные вперёд);
  *   - внутри поставщика: сначала подсадка в уже ОТКРЫТЫЙ конверт с совместимыми
  *     позициями и свободным местом (письмо плотнее, ёмкость не расходуется);
- *     иначе — НОВЫЙ конверт, пока лимит получателя и ёмкость ящиков позволяют;
+ *     иначе — НОВЫЙ конверт, пока лимит получателя и суммарная ёмкость ящиков позволяют;
  *   - несовместимые позиции могут уйти одному поставщику в один день разными письмами;
  *   - позиция НЕ ограничивается искусственно: выходит из раундов только при исчерпании
- *     СВОЕГО пула. Не хватило ёмкости на поставщика → он просто уйдёт завтра;
- *   - конверт при открытии получает ящик-отправитель: round-robin по остаткам лимитов,
- *     ИСКЛЮЧАЯ ящики, писавшие этому получателю за окно ротации (senderRecent), и уже
- *     назначенные другим конвертам этого же получателя (иначе персистер молча срежет).
+ *     СВОЕГО пула. Не хватило ёмкости на поставщика → он просто уйдёт завтра.
+ *
+ * Этап 2 — назначение ящиков ПОСЛЕ раскладки, ГРУППАМИ одинаковых наборов позиций:
+ * конверты одного набора получают ОДИН «липкий» ящик (пока его лимит позволяет) →
+ * рендер собирает их в один батч (1 ящик, 1 тело AI, N поставщиков) — на порядок
+ * меньше AI-вызовов, чем ящик-на-конверт round-robin. Ограничения: дневной лимит
+ * ящика; НЕ ящик, писавший этому получателю за окно ротации (senderRecent); разные
+ * ящики конвертам одного получателя (иначе персистер молча срежет). Внутри группы
+ * получатели уникальны by design (позиция не идёт дважды одному поставщику).
  *
  * Итог — упорядоченный план: конверты с релевантными позициями в начало дня.
  */
@@ -38,6 +44,7 @@ class DayPlanAssigner
      * @param array<string,int> $recipientCaps       email => остаток конвертов сегодня (декрементим)
      * @param array<string,bool> $senderRecent       "senderId|email" => true (ящик писал получателю за окно ротации)
      * @param int $maxPerEmail                       максимум позиций в одном конверте
+     * @param int|null $droppedNoSender              out: конверты, не получившие ящик (дропнуты)
      * @return array<int,array{supplier_id:int,sender_id:int,item_ids:array<int,int>,order:int,phase:string}>
      */
     public function plan(
@@ -50,8 +57,10 @@ class DayPlanAssigner
         array $recipientCaps,
         array $senderRecent = [],
         int $maxPerEmail = 4,
+        ?int &$droppedNoSender = null,
     ): array {
         $maxPerEmail = max(1, $maxPerEmail);
+        $droppedNoSender = 0;
 
         // Кандидаты позиции: релевантные вперёд, затем остальной пул (порядок пула).
         $cand = [];      // itemId => [supplierId,...]
@@ -67,38 +76,20 @@ class DayPlanAssigner
             $relFlip[$id] = $relSet;
         }
 
-        // Конверты: idx => {supplier_id, sender_id, item_ids, relevant, urgency}.
+        // Суммарная ёмкость ящиков = бюджет конвертов дня (конкретный ящик — на этапе 2).
+        $capacityLeft = 0;
+        foreach ($senderCaps as $c) {
+            $capacityLeft += max(0, (int) $c);
+        }
+
+        // Конверты: idx => {supplier_id, email, item_ids, relevant, urgency}.
         $envelopes = [];
-        $bySupplier = [];          // supplierId => [envelope idx,...]
-        $sendersOfSupplier = [];   // supplierId => set(senderId) — конвертам одного получателя разные ящики
+        $bySupplier = [];   // supplierId => [envelope idx,...]
 
-        // Round-robin ящиков с остатком ёмкости.
-        $senderIds = array_keys(array_filter($senderCaps, static fn ($c) => $c > 0));
-        $sPtr = 0;
-        $pickSender = function (int $supplierId, string $email) use (&$senderCaps, $senderIds, &$sPtr, &$sendersOfSupplier, $senderRecent): ?int {
-            $n = count($senderIds);
-            for ($i = 0; $i < $n; $i++) {
-                $sid = (int) $senderIds[($sPtr + $i) % $n];
-                if (($senderCaps[$sid] ?? 0) <= 0) {
-                    continue;
-                }
-                if (isset($senderRecent[$sid . '|' . $email])) {
-                    continue;
-                }
-                if (isset($sendersOfSupplier[$supplierId][$sid])) {
-                    continue;
-                }
-                $sPtr = ($sPtr + $i + 1) % max(1, $n);
-                return $sid;
-            }
-            return null;
-        };
-
-        // Порядок позиций в раунде — по срочности (убыв.).
+        // ── Этап 1: раунды. Позиция за раунд получает одного поставщика. ──────────
         $active = array_keys($positions);
         usort($active, fn ($a, $b) => ($positions[$b]['urgency'] ?? 0) <=> ($positions[$a]['urgency'] ?? 0));
 
-        // Раунды: позиция за раунд получает одного поставщика; выпадает при исчерпании пула.
         while ($active !== []) {
             $next = [];
             foreach ($active as $item) {
@@ -131,20 +122,18 @@ class DayPlanAssigner
                         break;
                     }
 
-                    // 2) Новый конверт: лимит получателя + ящик с ёмкостью и без ротационного конфликта.
+                    // 2) Новый конверт: лимит получателя + суммарная ёмкость ящиков.
                     if (($recipientCaps[$email] ?? 0) <= 0) {
                         continue; // получатель на сегодня полон — этой позиции он достанется завтра
                     }
-                    $sender = $pickSender($sid, $email);
-                    if ($sender === null) {
-                        continue; // нет подходящего ящика — поставщик уйдёт завтра
+                    if ($capacityLeft <= 0) {
+                        continue; // ёмкость дня исчерпана — подсадки ещё возможны, новые конверты нет
                     }
-                    $senderCaps[$sender]--;
+                    $capacityLeft--;
                     $recipientCaps[$email]--;
-                    $sendersOfSupplier[$sid][$sender] = true;
                     $envelopes[] = [
                         'supplier_id' => $sid,
-                        'sender_id' => $sender,
+                        'email' => $email,
                         'item_ids' => [$item],
                         'relevant' => $isRel,
                         'urgency' => $urg,
@@ -160,8 +149,70 @@ class DayPlanAssigner
             $active = $next;
         }
 
-        // Порядок дня: конверты с релевантными позициями вперёд, затем по срочности.
-        usort($envelopes, static function ($a, $b) {
+        // ── Этап 2: ящики группами одинаковых наборов («липкий» ящик на группу). ──
+        $groups = [];
+        foreach ($envelopes as $i => $env) {
+            $ids = $env['item_ids'];
+            sort($ids);
+            $groups[implode(',', $ids)][] = $i;
+        }
+
+        $senderIds = array_keys(array_filter($senderCaps, static fn ($c) => $c > 0));
+        $n = count($senderIds);
+        $sPtr = 0;
+        $sendersOfSupplier = []; // supplierId => set(senderId) — разные ящики конвертам получателя
+        $senderOf = [];          // envelope idx => senderId
+
+        $okFor = function (int $s, array $env) use (&$senderCaps, $senderRecent, &$sendersOfSupplier): bool {
+            if (($senderCaps[$s] ?? 0) <= 0) {
+                return false;
+            }
+            if (isset($senderRecent[$s . '|' . $env['email']])) {
+                return false;
+            }
+            return !isset($sendersOfSupplier[$env['supplier_id']][$s]);
+        };
+
+        foreach ($groups as $idxs) {
+            $current = null; // липкий ящик группы
+            foreach ($idxs as $i) {
+                $env = $envelopes[$i];
+                if ($current !== null && ($senderCaps[$current] ?? 0) <= 0) {
+                    $current = null; // лимит липкого исчерпан — группе нужен следующий
+                }
+                $use = ($current !== null && $okFor($current, $env)) ? $current : null;
+                if ($use === null) {
+                    for ($k = 0; $k < $n; $k++) {
+                        $s = (int) $senderIds[($sPtr + $k) % $n];
+                        if ($okFor($s, $env)) {
+                            $use = $s;
+                            $sPtr = ($sPtr + $k + 1) % max(1, $n);
+                            break;
+                        }
+                    }
+                }
+                if ($use === null) {
+                    $droppedNoSender++; // ни одного допустимого ящика (ротация/лимиты) — дроп
+                    continue;
+                }
+                if ($current === null) {
+                    $current = $use; // новый липкий (конверто-специфичный обход current не меняет)
+                }
+                $senderOf[$i] = $use;
+                $senderCaps[$use]--;
+                $sendersOfSupplier[$env['supplier_id']][$use] = true;
+            }
+        }
+
+        // ── Порядок дня: релевантные вперёд, затем по срочности. ──────────────────
+        $keep = [];
+        foreach ($envelopes as $i => $env) {
+            if (isset($senderOf[$i])) {
+                $env['sender_id'] = $senderOf[$i];
+                $keep[] = $env;
+            }
+        }
+        usort($keep, static function ($a, $b) {
             if ($a['relevant'] !== $b['relevant']) {
                 return $b['relevant'] <=> $a['relevant'];
             }
@@ -169,7 +220,7 @@ class DayPlanAssigner
         });
 
         $plan = [];
-        foreach ($envelopes as $i => $env) {
+        foreach ($keep as $i => $env) {
             $plan[] = [
                 'supplier_id' => (int) $env['supplier_id'],
                 'sender_id' => (int) $env['sender_id'],
