@@ -162,6 +162,18 @@ Schedule::command('emails:plan-render')
     ->runInBackground()
     ->withoutOverlapping();
 
+// v2 ДНЕВНОЙ планировщик (за флагом EMAILS_DAYPLAN_ENABLED — команда сама молчит,
+// пока off). Раз в сутки утром до открытия окна рассылки (8:00 Riga = 9:00 МСК)
+// строит план дня (позиции→пулы→Яндекс-бюджет→аффинность→назначатель) и рендерит
+// его в email_queue. Тяжёлый прогон (минуты) — строго runInBackground. При
+// включении перевести plan-render в режим top-up новых поставщиков.
+Schedule::command('emails:plan-day')
+    ->dailyAt('07:30')
+    ->timezone('Europe/Moscow')
+    ->weekdays()
+    ->runInBackground()
+    ->withoutOverlapping();
+
 // Авто-закрытие зависших вопросов к автору: спустя N дней (по умолч. 4) без ответа
 // автора шлём поставщику «информации нет» и закрываем вопрос. Дозированно (--limit).
 // Молчит, пока EMAILS_AUTOCLOSE_ENABLED=false.
