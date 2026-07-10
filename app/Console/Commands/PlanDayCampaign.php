@@ -3,8 +3,14 @@
 namespace App\Console\Commands;
 
 use App\Services\Api\OpenAIClassifierClient;
+use App\Services\Generate\Batch;
+use App\Services\Generate\CampaignBodyGenerator;
+use App\Services\Generate\CampaignEmailBuilder;
 use App\Services\Generate\CampaignItemGrouper;
+use App\Services\Generate\CampaignPersister;
+use App\Services\Generate\CampaignSenderAssigner;
 use App\Services\Generate\CampaignSupplierSelector;
+use App\Services\Generate\CampaignTokenGenerator;
 use App\Services\Generate\DayPlanAssigner;
 use App\Services\Generate\PositionAffinity;
 use App\Services\Generate\PositionCoverage;
@@ -12,6 +18,7 @@ use App\Services\Generate\SupplierTargetingService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Фаза 2 (v2), утренний прогон: строит ДНЕВНОЙ ПЛАН рассылки.
@@ -19,9 +26,11 @@ use Illuminate\Support\Facades\DB;
  * позиции(активные) → пулы(профильные − уже писавшие) → Яндекс(релевантные) +
  * AI-аффинность → DayPlanAssigner → упорядоченный план (поставщик→позиции→ящик).
  *
- * Пока реализована ЧАСТЬ ПЛАНИРОВАНИЯ + --dry-run отчёт (для сверки с текущей
- * рассылкой). Рендер (запись в email_queue) — следующий шаг; без --dry-run команда
- * НИЧЕГО не пишет (предохранитель). За флагом EMAILS_DAYPLAN_ENABLED.
+ * Рендер: письма плана группируются по (sender_id, набор позиций) — группа = один
+ * батч (1 ящик, 1 тело AI, N поставщиков с одинаковым набором позиций) → token/body/
+ * EmailBuilder(wave=1)/Persister → email_queue. Дедуп — request_item_responses
+ * (persister пишет позицию×поставщика). --dry-run строит и показывает план без
+ * записи. За флагом EMAILS_DAYPLAN_ENABLED.
  */
 class PlanDayCampaign extends Command
 {
@@ -31,6 +40,9 @@ class PlanDayCampaign extends Command
     protected $signature = 'emails:plan-day
         {--dry-run : Построить и показать план без записи}
         {--no-yandex : Без Яндекс-релевантности (быстрый прогон)}
+        {--request= : Только эта заявка (тест)}
+        {--limit=0 : Потолок писем за прогон, 0 = весь план (тест)}
+        {--hold : (тест) сразу после persist уводить письма в held — диспетчер не заберёт}
         {--force : Запустить при выключенном флаге}';
 
     protected $description = 'Фаза 2: построить дневной план рассылки (позиции→пулы→Яндекс→аффинность→назначатель)';
@@ -42,21 +54,22 @@ class PlanDayCampaign extends Command
             return self::SUCCESS;
         }
         $dry = (bool) $this->option('dry-run');
-        if (!$dry) {
-            $this->warn('Рендер плана ещё не реализован — запусти с --dry-run (пока команда только строит и показывает план).');
-            return self::SUCCESS;
-        }
 
         $coverage = new PositionCoverage();
         $defaultTarget = (int) config('services.email_planner.offer_target_default', 4);
         $maxPerEmail = (int) config('services.email_planner.dayplan_max_per_email', 4);
         $freshDays = max(1, (int) config('services.email_planner.fresh_days', 7));
 
-        // 1. Активные позиции по открытым свежим заявкам.
-        $requests = DB::connection(self::CONN)->table('requests')
-            ->whereIn('status', ['draft', 'new', 'active', 'queued_for_sending', 'emails_sent', 'responses_received'])
-            ->where('created_at', '>=', now()->subDays($freshDays))
-            ->get(['id', 'offer_target', 'max_reach', 'is_customer_request', 'created_at']);
+        // 1. Активные позиции по открытым свежим заявкам. --request — точечный тест
+        // одной заявки (вне статуса/свежести).
+        $reqQuery = DB::connection(self::CONN)->table('requests');
+        if ($only = (int) $this->option('request')) {
+            $reqQuery->where('id', $only);
+        } else {
+            $reqQuery->whereIn('status', ['draft', 'new', 'active', 'queued_for_sending', 'emails_sent', 'responses_received'])
+                ->where('created_at', '>=', now()->subDays($freshDays));
+        }
+        $requests = $reqQuery->get(['id', 'offer_target', 'max_reach', 'is_customer_request', 'created_at']);
 
         $positions = [];   // itemId => мета
         $itemRows = [];    // itemId => строка позиции
@@ -166,9 +179,208 @@ class PlanDayCampaign extends Command
         // 6. План.
         $plan = (new DayPlanAssigner())->plan($positions, $poolMap, $relevantMap, $affinity, $supplierEmail, $senderCaps, $recipientCaps, $maxPerEmail);
 
-        // 7. Отчёт (dry-run).
+        // 7. Отчёт по плану (и в dry-run, и перед рендером).
         $this->reportPlan($plan, $positions, $priced, $yandexOn, $yandexQueriedBatches, count($senderCaps));
+        if ($dry) {
+            return self::SUCCESS;
+        }
+
+        // 8. Рендер: группировка писем плана по (sender_id, набор позиций) → батчи.
+        $limit = max(0, (int) $this->option('limit'));
+        $toRender = $limit > 0 ? array_slice($plan, 0, $limit) : $plan;
+        $res = $this->renderPlan($toRender, $itemRows, $useNewRouting);
+
+        $this->info(sprintf(
+            'Рендер: батчей %d, писем в email_queue %d (дедуп-скипов %d)%s. batch_ids: %s',
+            $res['batches'],
+            $res['queued'],
+            $res['skipped'],
+            $this->option('hold') ? ' [HELD]' : '',
+            $res['batch_ids'] ? implode(',', $res['batch_ids']) : '—',
+        ));
+        Log::info('PlanDayCampaign: рендер', [
+            'plan_emails' => count($plan), 'rendered_batches' => $res['batches'],
+            'queued' => $res['queued'], 'skipped' => $res['skipped'], 'batch_ids' => $res['batch_ids'],
+        ]);
         return self::SUCCESS;
+    }
+
+    /**
+     * Рендер плана. Группа = (sender_id, отсортированный набор item_ids): один батч,
+     * одно тело AI, N поставщиков с одинаковым набором позиций. Батч собирается ПОД
+     * ПРОИЗВОЛЬНЫЙ набор позиций (НЕ через grouper — тот бьёт по типу/домену и разорвал
+     * бы бандлы аффинности).
+     *
+     * @param array<int,array{supplier_id:int,sender_id:int,item_ids:array<int,int>,order:int,phase:string}> $plan
+     * @param array<int,array<string,mixed>> $itemRows itemId => строка позиции
+     * @return array{batches:int,queued:int,skipped:int,batch_ids:array<int,int>}
+     */
+    private function renderPlan(array $plan, array $itemRows, bool $useNewRouting): array
+    {
+        $groups = [];
+        foreach ($plan as $p) {
+            $itemIds = array_values(array_unique(array_map('intval', (array) $p['item_ids'])));
+            sort($itemIds);
+            $key = (int) $p['sender_id'] . '|' . implode(',', $itemIds);
+            if (!isset($groups[$key])) {
+                $groups[$key] = ['sender_id' => (int) $p['sender_id'], 'item_ids' => $itemIds, 'supplier_ids' => []];
+            }
+            if (!in_array((int) $p['supplier_id'], $groups[$key]['supplier_ids'], true)) {
+                $groups[$key]['supplier_ids'][] = (int) $p['supplier_id'];
+            }
+        }
+        if ($groups === []) {
+            return ['batches' => 0, 'queued' => 0, 'skipped' => 0, 'batch_ids' => []];
+        }
+
+        // Профили поставщиков всех групп одним запросом (поля как у selector'а).
+        $allSupIds = [];
+        foreach ($groups as $g) {
+            $allSupIds = array_merge($allSupIds, $g['supplier_ids']);
+        }
+        $supRows = [];
+        foreach (DB::connection(self::CONN)->table('suppliers')
+            ->whereIn('id', array_values(array_unique($allSupIds)))
+            ->get(['id', 'name', 'email', 'contact_person', 'categories']) as $r) {
+            $supRows[(int) $r->id] = (array) $r;
+        }
+
+        $cfg = config('services.email_generate');
+        $client = $this->makeClient();
+        $assigner = new CampaignSenderAssigner();
+        $tokenGenerator = new CampaignTokenGenerator($client, (string) ($cfg['token_model'] ?? 'gpt-4o-mini'), (bool) ($cfg['token_use_ai'] ?? true));
+        $bodyGenerator = new CampaignBodyGenerator($client, (string) ($cfg['body_model'] ?? 'gpt-4o'), (float) ($cfg['body_temperature'] ?? 0.7), (int) ($cfg['max_tokens'] ?? 1500));
+        $emailBuilder = new CampaignEmailBuilder();
+        $persister = new CampaignPersister();
+        $hold = (bool) $this->option('hold');
+
+        $batches = 0;
+        $queued = 0;
+        $skipped = 0;
+        $batchIds = [];
+        foreach ($groups as $g) {
+            try {
+                $items = [];
+                foreach ($g['item_ids'] as $iid) {
+                    if (isset($itemRows[$iid])) {
+                        $items[] = $itemRows[$iid];
+                    }
+                }
+                $suppliers = [];
+                foreach ($g['supplier_ids'] as $sid) {
+                    if (isset($supRows[$sid])) {
+                        $suppliers[] = $supRows[$sid];
+                    }
+                }
+                if ($items === [] || $suppliers === []) {
+                    continue;
+                }
+
+                $batch = $this->makeBatch($items, $useNewRouting);
+                $batch->sender = $assigner->fullSender($g['sender_id']);
+                if (empty($batch->sender['email'])) {
+                    Log::warning('PlanDayCampaign: у ящика нет профиля/email — группа пропущена', ['sender_id' => $g['sender_id']]);
+                    continue;
+                }
+                $batch->suppliers = $suppliers;
+                $batch->supplierIds = array_map(static fn ($s) => (int) $s['id'], $suppliers);
+
+                $tokenGenerator->generate($batch);
+                $bodyGenerator->generate($batch);
+                $emails = [];
+                foreach ($suppliers as $sup) {
+                    $e = $emailBuilder->build($batch, $sup);
+                    $e['wave'] = 1; // дневной план: всё уходит сейчас, held-пула нет
+                    $emails[] = $e;
+                }
+                $res = $persister->persist($batch, $emails);
+
+                // Тестовый предохранитель: сразу увести из-под диспетчера (окно рассылки
+                // может быть открыто). Дальше строки инспектируются и cancelled руками.
+                if ($hold && $res['queue_ids'] !== []) {
+                    DB::connection(self::CONN)->table('email_queue')
+                        ->whereIn('id', $res['queue_ids'])
+                        ->update(['scheduled_at' => self::HELD]);
+                }
+
+                $batches++;
+                $queued += count($res['queue_ids']);
+                $skipped += count($emails) - count($res['queue_ids']);
+                $batchIds[] = (int) $res['batch_id'];
+            } catch (\Throwable $e) {
+                Log::error('PlanDayCampaign: батч упал', [
+                    'sender_id' => $g['sender_id'], 'item_ids' => $g['item_ids'], 'error' => $e->getMessage(),
+                ]);
+                $this->error("Батч (sender {$g['sender_id']}, items " . implode(',', $g['item_ids']) . ") упал: {$e->getMessage()}");
+            }
+        }
+
+        return ['batches' => $batches, 'queued' => $queued, 'skipped' => $skipped, 'batch_ids' => $batchIds];
+    }
+
+    /**
+     * Batch DTO под произвольный набор позиций (зеркалит поля grouper'а).
+     * Именной батч — только если ВСЕ позиции из одной именной заявки; смешанный
+     * бандл считается анонимным (customer-блок в теле не рисуем).
+     *
+     * @param array<int,array<string,mixed>> $items строки позиций (loadItems)
+     */
+    private function makeBatch(array $items, bool $useNewRouting): Batch
+    {
+        $batch = new Batch();
+        $batch->items = array_values($items);
+        $batch->itemsCount = count($items);
+        $batch->useNewRouting = $useNewRouting;
+
+        $reqIds = [];
+        $reqNums = [];
+        $cats = [];
+        $ptIds = [];
+        $dmIds = [];
+        $allCustomer = true;
+        foreach ($items as $it) {
+            $rid = (int) ($it['request_id'] ?? 0);
+            if ($rid > 0 && !in_array($rid, $reqIds, true)) {
+                $reqIds[] = $rid;
+            }
+            $num = $it['request_number'] ?? null;
+            if ($num !== null && $num !== '' && !in_array($num, $reqNums, true)) {
+                $reqNums[] = $num;
+            }
+            $cat = trim((string) ($it['category'] ?? ''));
+            if ($cat !== '' && !in_array($cat, $cats, true)) {
+                $cats[] = $cat;
+            }
+            $pt = (int) ($it['product_type_id'] ?? 0);
+            if ($pt > 0 && !in_array($pt, $ptIds, true)) {
+                $ptIds[] = $pt;
+            }
+            $dm = (int) ($it['domain_id'] ?? 0);
+            if ($dm > 0 && !in_array($dm, $dmIds, true)) {
+                $dmIds[] = $dm;
+            }
+            if (empty($it['is_customer_request'])) {
+                $allCustomer = false;
+            }
+        }
+        $batch->requestIds = $reqIds;
+        $batch->requestNumbers = $reqNums;
+        $batch->productTypeIds = $ptIds;
+        $batch->domainIds = $dmIds;
+        $batch->category = count($cats) === 1 ? $cats[0] : (count($cats) > 1 ? 'mixed' : 'Другое');
+        $batch->targetCategories = $useNewRouting ? ['NEW_ROUTING'] : [];
+
+        if ($allCustomer && count($reqIds) === 1) {
+            $first = $batch->items[0];
+            $batch->isCustomerRequest = true;
+            $batch->clientOrganizationId = !empty($first['client_organization_id']) ? (int) $first['client_organization_id'] : null;
+            $batch->customerCompany = $first['customer_company'] ?? null;
+            $batch->customerContactPerson = $first['customer_contact_person'] ?? null;
+            $batch->customerEmail = $first['customer_email'] ?? null;
+            $batch->customerPhone = $first['customer_phone'] ?? null;
+        }
+
+        return $batch;
     }
 
     /**
@@ -207,7 +419,7 @@ class PlanDayCampaign extends Command
             }
         }
 
-        $this->info('=== ДНЕВНОЙ ПЛАН (dry-run) ===');
+        $this->info('=== ДНЕВНОЙ ПЛАН ' . ($this->option('dry-run') ? '(dry-run)' : '(к рендеру)') . ' ===');
         $this->line("  Яндекс: " . ($yandexOn ? "вкл (батчей опрошено {$yandexBatches})" : 'выкл') . " | ящиков с ёмкостью: {$senders}");
         $this->line("  Активных позиций: {$activeCnt}");
         $this->line("  Писем в плане: {$emails}  (релевантные {$byPhase['relevant']} / добор {$byPhase['fill']})");
