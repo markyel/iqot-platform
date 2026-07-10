@@ -418,6 +418,11 @@ return [
         'offer_target_default' => (int) env('EMAILS_PLANNER_OFFER_TARGET', 4),
         // Окно свежести: билдер берёт заявки не старше N дней (живой набор, не архив).
         'fresh_days' => (int) env('EMAILS_PLANNER_FRESH_DAYS', 7),
+        // v2 дневной планировщик (emails:plan-day): за флагом, параллельно v1 top-up.
+        'dayplan_enabled' => (bool) env('EMAILS_DAYPLAN_ENABLED', false),
+        'dayplan_max_per_email' => (int) env('EMAILS_DAYPLAN_MAX_PER_EMAIL', 4),  // позиций в письме
+        'dayplan_yandex' => (bool) env('EMAILS_DAYPLAN_YANDEX', true),            // Яндекс-релевантность
+        'dayplan_affinity_ai' => (bool) env('EMAILS_DAYPLAN_AFFINITY_AI', true),  // AI-аффинность
     ],
 
     'email_generate' => [
