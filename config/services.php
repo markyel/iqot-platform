@@ -430,6 +430,13 @@ return [
         // Модель аффинности: mini чрезмерно дробит (метит avoid обычные разнотипные
         // комплектующие), gpt-4o судит адекватно; вызовов мало (1 на домен-группу).
         'dayplan_affinity_model' => env('EMAILS_DAYPLAN_AFFINITY_MODEL', 'gpt-4o'),
+        // Discovery новых доменов из Яндекс-выдачи plan-day (боевой прогон): анализ
+        // сайта + авто-добавление поставщика; потолок диспатчей за прогон.
+        'dayplan_discovery' => (bool) env('EMAILS_DAYPLAN_DISCOVERY', true),
+        'dayplan_discovery_max' => (int) env('EMAILS_DAYPLAN_DISCOVERY_MAX', 30),
+        // Режим top-up plan-render при включённом plan-day: рендерить только
+        // поставщиков, созданных за последние N часов (новые из discovery).
+        'dayplan_topup_new_hours' => (int) env('EMAILS_DAYPLAN_TOPUP_NEW_HOURS', 24),
     ],
 
     'email_generate' => [

@@ -30,6 +30,11 @@ use Illuminate\Support\Facades\Log;
  * Переиспользует весь render-путь (SenderAssigner/Selector/Token/Body/EmailBuilder/
  * Persister). За флагом EMAILS_PLANNER_ENABLED. Включать вместе с выключением
  * EMAILS_GENERATE_ENABLED (иначе оба обрабатывают заявки).
+ *
+ * РЕЖИМ TOP-UP (автоматически при EMAILS_DAYPLAN_ENABLED=true): полный backlog раздаёт
+ * утренний emails:plan-day, а эта команда днём дорабатывает ТОЛЬКО НОВЫХ поставщиков
+ * (появились из discovery после утреннего плана: suppliers.created_at свежее
+ * dayplan_topup_new_hours) по ещё-открытым позициям.
  */
 class PlanRenderIntents extends Command
 {
@@ -56,10 +61,24 @@ class PlanRenderIntents extends Command
         $coverage = new PositionCoverage();
         $defaultTarget = (int) config('services.email_planner.offer_target_default', 4);
 
+        // Режим top-up при включённом дневном планировщике: полный backlog раздаёт
+        // утренний plan-day, здесь рендерим только НОВЫХ поставщиков (из discovery).
+        $topupSince = null;
+        if ((bool) config('services.email_planner.dayplan_enabled', false)) {
+            $topupSince = now()->subHours(max(1, (int) config('services.email_planner.dayplan_topup_new_hours', 24)));
+        }
+
         // Заявки с backlog-интентами, ранжированные: клиентские вперёд, затем старые.
         $reqQuery = DB::connection(self::CONN)->table('send_intents as si')
             ->join('requests as r', 'r.id', '=', 'si.request_id')
             ->where('si.status', 'backlog');
+        if ($topupSince !== null) {
+            $reqQuery->whereExists(function ($q) use ($topupSince) {
+                $q->selectRaw('1')->from('suppliers as sup')
+                    ->whereColumn('sup.id', 'si.supplier_id')
+                    ->where('sup.created_at', '>=', $topupSince);
+            });
+        }
         if ($only = (int) $this->option('request')) {
             $reqQuery->where('si.request_id', $only);
         }
@@ -126,6 +145,9 @@ class PlanRenderIntents extends Command
 
             $backlogSuppliers = DB::connection(self::CONN)->table('send_intents')
                 ->where('request_id', $rid)->where('status', 'backlog')
+                ->when($topupSince !== null, fn ($q) => $q->whereIn('supplier_id', function ($sub) use ($topupSince) {
+                    $sub->select('id')->from('suppliers')->where('created_at', '>=', $topupSince);
+                }))
                 ->pluck('supplier_id')->map(static fn ($v) => (int) $v)->flip();
             if ($backlogSuppliers->isEmpty()) {
                 continue;

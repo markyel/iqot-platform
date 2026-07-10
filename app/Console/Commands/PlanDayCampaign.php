@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Jobs\DiscoverFromCampaignJob;
 use App\Services\Api\OpenAIClassifierClient;
 use App\Services\Generate\Batch;
 use App\Services\Generate\CampaignBodyGenerator;
@@ -150,6 +151,7 @@ class PlanDayCampaign extends Command
             && (bool) config('services.email_planner.dayplan_yandex', true)
             && (bool) config('services.email_pretarget.enabled', false);
         $relevantMap = [];    // itemId => [supplierId] ⊆ пула
+        $discoveryCands = []; // host => {url, product_type_id, domain_id, request_id}
         $yandexQueried = 0;
         $yandexCached = 0;
         if ($yandexOn) {
@@ -186,6 +188,14 @@ class PlanDayCampaign extends Command
                 if ($rel !== []) {
                     $relFlip = array_flip($rel);
                     $relevantMap[$iid] = array_values(array_filter($poolIds, static fn ($s) => isset($relFlip[(int) $s])));
+                }
+                // Новые домены из выдачи (не в базе поставщиков) → кандидаты discovery.
+                // matchPool уже отсёк существующих; диспатчим ПОСЛЕ рендера (не в dry).
+                foreach ((array) ($match['candidates'] ?? []) as $host => $cand) {
+                    if (!isset($discoveryCands[$host]) && (int) ($cand['product_type_id'] ?? 0) > 0) {
+                        $cand['request_id'] = (int) ($positions[$iid]['request_id'] ?? 0);
+                        $discoveryCands[$host] = $cand;
+                    }
                 }
             }
         }
@@ -245,11 +255,37 @@ class PlanDayCampaign extends Command
             $this->option('hold') ? ' [HELD]' : '',
             $res['batch_ids'] ? implode(',', $res['batch_ids']) : '—',
         ));
+
+        // 10. Discovery новых доменов из Яндекс-выдачи (только боевой прогон): анализ
+        // сайта + авто-добавление поставщика с таксономией — DiscoverFromCampaignJob
+        // (очередь default). Найденных дошлёт top-up plan-render / завтрашний план.
+        $dispatched = 0;
+        if ((bool) config('services.email_planner.dayplan_discovery', true) && $discoveryCands !== []) {
+            $maxDisc = max(0, (int) config('services.email_planner.dayplan_discovery_max', 30));
+            foreach (array_slice($discoveryCands, 0, $maxDisc ?: null) as $cand) {
+                DiscoverFromCampaignJob::dispatch(
+                    (string) $cand['url'],
+                    (int) $cand['product_type_id'],
+                    isset($cand['domain_id']) && (int) $cand['domain_id'] > 0 ? (int) $cand['domain_id'] : null,
+                    null,
+                    (int) ($cand['request_id'] ?? 0) ?: null,
+                );
+                $dispatched++;
+            }
+            $this->info("Discovery: кандидатов {$this->cntArr($discoveryCands)}, отправлено в анализ {$dispatched}.");
+        }
+
         Log::info('PlanDayCampaign: рендер', [
             'plan_emails' => count($plan), 'rendered_batches' => $res['batches'],
             'queued' => $res['queued'], 'skipped' => $res['skipped'], 'batch_ids' => $res['batch_ids'],
+            'discovery_candidates' => count($discoveryCands), 'discovery_dispatched' => $dispatched,
         ]);
         return self::SUCCESS;
+    }
+
+    private function cntArr(array $a): int
+    {
+        return count($a);
     }
 
     /**
