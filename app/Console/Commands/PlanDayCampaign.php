@@ -121,7 +121,21 @@ class PlanDayCampaign extends Command
         $supplierEmail = [];  // supplierId => email
         $yandexQueriedBatches = 0;
 
-        foreach ($grouper->group(array_values($itemRows)) as $batch) {
+        // Яндекс-БЮДЖЕТ: полный обход всех батчей не влезает в прогон (>240с), поэтому
+        // таргетим только N самых срочных — батчи сортируем по max-срочности их позиций.
+        // Остальные идут без релевантных (их позиции покроет фаза добора). 0 = без лимита.
+        $yandexBudget = max(0, (int) config('services.email_planner.dayplan_yandex_budget', 12));
+        $batchUrgency = function ($batch) use ($positions): float {
+            $u = 0.0;
+            foreach ($batch->items as $it) {
+                $u = max($u, (float) ($positions[(int) ($it['id'] ?? 0)]['urgency'] ?? 0));
+            }
+            return $u;
+        };
+        $groupedBatches = $grouper->group(array_values($itemRows));
+        usort($groupedBatches, fn ($a, $b) => $batchUrgency($b) <=> $batchUrgency($a));
+
+        foreach ($groupedBatches as $batch) {
             $suppliers = $selector->select($batch);
             $supIds = [];
             foreach ($suppliers as $s) {
@@ -133,7 +147,7 @@ class PlanDayCampaign extends Command
                 $supplierEmail[$sid] = mb_strtolower(trim((string) ($s['email'] ?? '')));
             }
             $relevant = [];
-            if ($yandexOn && $supIds !== []) {
+            if ($yandexOn && $supIds !== [] && ($yandexBudget === 0 || $yandexQueriedBatches < $yandexBudget)) {
                 try {
                     $res = SupplierTargetingService::make()->target($batch->items, $supIds);
                     $relevant = array_values(array_unique(array_merge(
@@ -420,7 +434,8 @@ class PlanDayCampaign extends Command
         }
 
         $this->info('=== ДНЕВНОЙ ПЛАН ' . ($this->option('dry-run') ? '(dry-run)' : '(к рендеру)') . ' ===');
-        $this->line("  Яндекс: " . ($yandexOn ? "вкл (батчей опрошено {$yandexBatches})" : 'выкл') . " | ящиков с ёмкостью: {$senders}");
+        $yBudget = (int) config('services.email_planner.dayplan_yandex_budget', 12);
+        $this->line("  Яндекс: " . ($yandexOn ? "вкл (батчей опрошено {$yandexBatches}, бюджет " . ($yBudget ?: '∞') . ")" : 'выкл') . " | ящиков с ёмкостью: {$senders}");
         $this->line("  Активных позиций: {$activeCnt}");
         $this->line("  Писем в плане: {$emails}  (релевантные {$byPhase['relevant']} / добор {$byPhase['fill']})");
         $this->line("  Уникальных получателей: " . count($recips) . " | задействовано ящиков: " . count($sendersUsed));
