@@ -88,6 +88,13 @@ class PositionCoverage
      * request_item_responses существует для каждой (позиция × поставщик), которой
      * отправили письмо (с ценой или без) → это множество «кому по факту слали».
      *
+     * НЕ считаются пары, чьё письмо НЕ ушло (error/failed/cancelled): иначе сгоревшее
+     * на отправке письмо (напр. битый ящик-отправитель) навсегда выкидывает поставщика
+     * из пула позиции — v2 не может дослать его живым ящиком (инцидент 2026-07-13,
+     * недонастроенный домен tomailbox.store). Письмо удалено (LEFT JOIN мимо) —
+     * консервативно считаем «слали». Оффер/ответ уже есть (status в rir не pending) —
+     * тоже слали, даже если email_queue-строку перекрыло/отменило: ответ важнее письма.
+     *
      * @param array<int,int> $itemIds
      * @return array<int,array<int,int>> request_item_id => [supplier_id, ...]
      */
@@ -97,9 +104,15 @@ class PositionCoverage
             return [];
         }
         $out = [];
-        foreach (DB::connection(self::CONN)->table('request_item_responses')
-            ->whereIn('request_item_id', $itemIds)
-            ->distinct()->get(['request_item_id', 'supplier_id']) as $r) {
+        foreach (DB::connection(self::CONN)->table('request_item_responses as r')
+            ->leftJoin('email_queue as q', 'q.id', '=', 'r.email_queue_id')
+            ->whereIn('r.request_item_id', $itemIds)
+            ->where(function ($w) {
+                $w->whereNull('q.id')
+                    ->orWhereNotIn('q.status', ['error', 'failed', 'cancelled'])
+                    ->orWhere('r.status', '<>', 'pending');
+            })
+            ->distinct()->get(['r.request_item_id', 'r.supplier_id']) as $r) {
             $out[(int) $r->request_item_id][] = (int) $r->supplier_id;
         }
         return $out;

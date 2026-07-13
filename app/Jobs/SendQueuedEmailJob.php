@@ -302,7 +302,15 @@ class SendQueuedEmailJob implements ShouldQueue
         // контейнмент (снять/перебросить его pending-письма), письмо — terminal error
         // без ретрая. Получателя НЕ штрафуем (recordFailure), иначе живой адрес попадёт
         // в блок-лист из-за нашего отключённого ящика (баг, ловившийся на проде).
-        $isDeadMailbox = (bool) preg_match('/sending is disabled for mailbox|message sending is disabled|sending is disabled/i', $message);
+        // Сюда же 550 «send from only domains with BeGet MX» — ДОМЕН отправителя не
+        // настроен (MX не опубликован): ящик слать не может в принципе, получатель ни
+        // при чём (инцидент 2026-07-13: недонастроенный tomailbox.store наставил
+        // страйков и заблокировал 191 живого получателя).
+        $isDeadMailbox = (bool) preg_match(
+            '/sending is disabled for mailbox|message sending is disabled|sending is disabled|'
+            . 'send from only domains|only domains with beget mx/i',
+            $message
+        );
         if ($isDeadMailbox) {
             $this->deactivateSenderDisabled($sender, $message);
             $email->update([
