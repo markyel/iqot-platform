@@ -40,11 +40,13 @@ class AnalyzeSupplierReplies extends Command
         }
 
         $limit = (int) ($this->option('limit') ?: config('services.email_analysis.batch_limit', 50));
+        $maxAttempts = (int) config('services.email_analysis.max_attempts', 3);
 
         $ids = DB::connection('reports')->table('email_messages as em')
             ->join('email_conversations as ec', 'em.conversation_id', '=', 'ec.id')
             ->where('em.direction', 'incoming')
             ->where('em.ai_processed', 0)
+            ->where('em.ai_attempts', '<', $maxAttempts)
             ->whereNotIn('ec.status', ['complete', 'rejected', 'no_response'])
             ->orderBy('em.received_at')
             ->limit($limit)

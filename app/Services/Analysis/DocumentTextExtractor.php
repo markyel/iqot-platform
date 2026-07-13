@@ -31,8 +31,16 @@ class DocumentTextExtractor
     private const PLAIN_EXT = ['txt', 'csv', 'tsv', 'xml', 'json'];
     private const HTML_EXT = ['html', 'htm'];
 
-    public function __construct(private readonly int $maxChars = 30000)
-    {
+    /**
+     * @param int $maxChars   потолок итогового текста (обрезка начало+конец)
+     * @param int $pdfMaxBytes потолок размера PDF в байтах; 0 = без лимита. Большие
+     *   PDF-каталоги (напр. 6.5 МБ) виснут в LZW-декодере smalot/pdfparser дольше
+     *   таймаута джоба и делают письмо «ядовитым» — пропускаем их без парсинга.
+     */
+    public function __construct(
+        private readonly int $maxChars = 30000,
+        private readonly int $pdfMaxBytes = 0,
+    ) {
     }
 
     /**
@@ -84,7 +92,7 @@ class DocumentTextExtractor
             return $this->extractSpreadsheet($absolute);
         }
         if ($ext === 'pdf' || str_contains($mime, 'pdf')) {
-            return $this->extractPdf($absolute);
+            return $this->extractPdf($absolute, $name);
         }
         if (in_array($ext, self::WORD_EXT, true)) {
             return $this->extractWord($absolute, $ext);
@@ -128,8 +136,15 @@ class DocumentTextExtractor
         return implode("\n", $lines);
     }
 
-    private function extractPdf(string $absolute): string
+    private function extractPdf(string $absolute, string $name): string
     {
+        if ($this->pdfMaxBytes > 0) {
+            $size = @filesize($absolute);
+            if ($size !== false && $size > $this->pdfMaxBytes) {
+                return "[PDF пропущен — слишком большой ({$size} байт): {$name}]";
+            }
+        }
+
         $parser = new PdfParser();
         $pdf = $parser->parseFile($absolute);
 

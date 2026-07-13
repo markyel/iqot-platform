@@ -51,10 +51,20 @@ class AnalyzeSupplierReplyJob implements ShouldQueue
         }
 
         try {
-            $message = $this->loadMessage();
+            $ec = config('services.email_analysis');
+            $maxAttempts = (int) ($ec['max_attempts'] ?? 3);
+
+            $message = $this->loadMessage($maxAttempts);
             if ($message === null) {
-                return; // уже обработано или не подходит под условия
+                return; // уже обработано, исчерпан лимит попыток или не подходит под условия
             }
+
+            // Инкремент ДО тяжёлого парсинга: даже если джоб убьёт по таймауту во
+            // время разбора «ядовитого» вложения, попытка засчитается, и после
+            // max_attempts письмо больше не выберется (см. loadMessage + команду).
+            DB::connection('reports')->table('email_messages')
+                ->where('id', $this->messageId)
+                ->increment('ai_attempts');
 
             $batchId = (int) $message->batch_id;
             $attachments = $this->loadAttachments();
@@ -63,9 +73,10 @@ class AnalyzeSupplierReplyJob implements ShouldQueue
             $bodyCleaner = new EmailBodyCleaner();
             $body = $bodyCleaner->clean($message->body_text ?? null, $message->body_html ?? null);
 
-            $ec = config('services.email_analysis');
-            $documentText = (new DocumentTextExtractor((int) ($ec['doc_max_chars'] ?? 30000)))
-                ->extractFromAttachments($attachments);
+            $documentText = (new DocumentTextExtractor(
+                (int) ($ec['doc_max_chars'] ?? 30000),
+                (int) ($ec['pdf_max_bytes'] ?? 0),
+            ))->extractFromAttachments($attachments);
 
             $analyzer = $this->makeAnalyzer($ec);
 
@@ -106,7 +117,7 @@ class AnalyzeSupplierReplyJob implements ShouldQueue
      * Порт «Get Unprocessed Messages», но точечно по id + повторная проверка
      * ai_processed=0 внутри лока (claim).
      */
-    private function loadMessage(): ?object
+    private function loadMessage(int $maxAttempts): ?object
     {
         return DB::connection('reports')->table('email_messages as em')
             ->join('email_conversations as ec', 'em.conversation_id', '=', 'ec.id')
@@ -114,6 +125,7 @@ class AnalyzeSupplierReplyJob implements ShouldQueue
             ->where('em.id', $this->messageId)
             ->where('em.direction', 'incoming')
             ->where('em.ai_processed', 0)
+            ->where('em.ai_attempts', '<', $maxAttempts)
             ->whereNotIn('ec.status', ['complete', 'rejected', 'no_response'])
             ->first([
                 'em.id as message_id',

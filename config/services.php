@@ -328,6 +328,14 @@ return [
         'headless_timeout' => (int) env('EMAILS_ANALYZE_HEADLESS_TIMEOUT', 30),
         // Порог «огрызка»: HTTP-текст короче → пробуем headless.
         'http_min_chars' => (int) env('EMAILS_ANALYZE_HTTP_MIN_CHARS', 200),
+        // Предохранитель от «ядовитого» письма: сколько раз пытаемся проанализировать
+        // письмо, прежде чем навсегда пропустить (тяжёлое вложение может валить джоб
+        // по таймауту → без потолка письмо переставляется в очередь бесконечно).
+        'max_attempts' => (int) env('EMAILS_ANALYZE_MAX_ATTEMPTS', 3),
+        // Потолок размера PDF для локального парсинга (smalot/pdfparser): большие
+        // каталоги (LZW-поток) виснут в декодере дольше timeout. Крупнее — пропускаем
+        // (текст не извлекаем, тело письма всё равно анализируется). 0 = без лимита.
+        'pdf_max_bytes' => (int) env('EMAILS_ANALYZE_PDF_MAX_BYTES', 3000000),
     ],
 
     // Триаж вопросов поставщиков (замена n8n «Process Supplier Questions»).
