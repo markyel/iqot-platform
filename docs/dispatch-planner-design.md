@@ -159,10 +159,22 @@ score(intent) =
 Лог `PlanDayCampaign: рендер` (queued/skipped/discovery), email_queue pending/sent от батчей дня,
 дедуп-скипы (должны быть ~0), спам-гвард/блокировки ящиков, релевантные конверты на свежих заявках.
 
+## Инцидент tomailbox.store (2026-07-13, разобран — commit 0a491b3)
+6 ящиков домена tomailbox.store не могли слать (550 «send from only domains with BeGet MX»):
+DNS-зона домена НЕ опубликована на NS Beget (делегирование на ns1/ns2.beget.com есть, но NS
+зону не отдают — чинится в панели/поддержке Beget). Ошибка не матчила sender-side паттерны →
+страйки ставились ПОЛУЧАТЕЛЯМ → 191 живой поставщик заблокирован, их rir сужали пулы v2
+(«позиций дойдут до target» было 38%). Сделано: ящики отключены (block_reason, вернуть после
+починки зоны), 191 получатель разблокирован, 753 rir-строки error-писем удалены; код-фиксы —
+«BeGet MX» в isDeadMailbox (деактивация отправителя, без страйка получателю) +
+PositionCoverage игнорирует rir писем error/failed/cancelled (кроме rir с не-pending статусом).
+Эффект: target-прогноз плана 38% → 80%. ⚠️ ЯЩИКИ tomailbox.store ВКЛЮЧИТЬ обратно
+(sending_disabled=0) только после того, как `dig MX tomailbox.store` начнёт отвечать.
+
 ## Открытые хвосты
 1. send_intents backlog для НЕ-новых поставщиков никем не дренится (plan-day интенты не трогает) —
    копится stale; почистить/ретайрить.
-2. 2 письма упали на Beget MX («send only from domains with BeGet MX») — инфра релея, не v2.
+2. DNS-зона tomailbox.store — ждёт починки на стороне Beget (см. инцидент выше).
 3. Пробелы v1 остаются: lifecycle заявки (satisfied → терминальный статус), глобальный суточный
    потолок, score-веса срочности.
 4. Ключевые коммиты: 09a360c (ядро-распределение), 4c2f0e1 (discovery+top-up+cutover),
