@@ -2,6 +2,7 @@
 
 namespace App\Services\Generate;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -144,6 +145,7 @@ class CampaignSupplierSelector
         $this->excludeBlockedDomains($query);
         $this->excludeBlockedRecipients($query);
         $this->excludePaused($query);
+        $this->excludeUndeliverable($query);
 
         $domainIds = $this->intList($batch->domainIds);
         if (!empty($domainIds)) {
@@ -159,15 +161,90 @@ class CampaignSupplierSelector
         $typeIds = $this->intList($batch->productTypeIds);
         if (!empty($typeIds)) {
             $in = implode(',', $typeIds);
-            $query->where(function ($q) use ($in) {
+            $incExists = $this->includedExistsSql($typeIds);
+            $query->where(function ($q) use ($in, $incExists) {
                 $q->where(function ($q2) use ($in) {
                     $q2->where('s.scope_product_types', 'all')
                         ->whereRaw("NOT EXISTS (SELECT 1 FROM supplier_product_types spt WHERE spt.supplier_id = s.id AND spt.product_type_id IN ($in) AND spt.is_included = 0)");
-                })->orWhereRaw("EXISTS (SELECT 1 FROM supplier_product_types spt WHERE spt.supplier_id = s.id AND spt.product_type_id IN ($in) AND spt.is_included = 1)");
+                })->orWhereRaw($incExists);
             });
         }
 
         return $query->get()->all();
+    }
+
+    /**
+     * SQL-условие «поставщик профилен под эти типы».
+     * Флаг OFF — как было: любая строка is_included=1 (trusted ИЛИ probation).
+     * Флаг ON (EMAILS_POOL_KARMA_GATE) — probation-гейт: в rich-темах (trusted >= порога)
+     * требуем trusted-строку (source manual/response_positive ИЛИ positive_signals>0),
+     * в thin-темах — как было. frozen (is_included=0) исключён в обоих режимах.
+     *
+     * @param array<int,int> $typeIds
+     */
+    private function includedExistsSql(array $typeIds): string
+    {
+        $in = implode(',', $typeIds);
+        if (!$this->karmaEnabled()) {
+            return "EXISTS (SELECT 1 FROM supplier_product_types spt WHERE spt.supplier_id = s.id AND spt.product_type_id IN ($in) AND spt.is_included = 1)";
+        }
+        $rich = $this->richProductTypes($typeIds);
+        $thin = array_values(array_diff($typeIds, $rich));
+        $richIn = implode(',', $rich !== [] ? $rich : [0]);
+        $thinIn = implode(',', $thin !== [] ? $thin : [0]);
+
+        return "EXISTS (SELECT 1 FROM supplier_product_types spt WHERE spt.supplier_id = s.id AND ("
+            . "(spt.product_type_id IN ($richIn) AND spt.is_included = 1 AND (spt.source IN ('manual','response_positive') OR spt.positive_signals > 0)) "
+            . "OR (spt.product_type_id IN ($thinIn) AND spt.is_included = 1)))";
+    }
+
+    /**
+     * Подмножество типов, где trusted-поставщиков (ответивших/manual) >= порога → тема
+     * «проработанная» (rich): probation-кандидатов в общий пул не пускаем. Кэш 10 мин —
+     * в одном прогоне плана селектор зовётся многократно по тем же типам.
+     *
+     * @param array<int,int> $typeIds
+     * @return array<int,int>
+     */
+    private function richProductTypes(array $typeIds): array
+    {
+        if ($typeIds === []) {
+            return [];
+        }
+        $min = max(1, (int) config('services.email_pool.karma_regime_rich_min', 30));
+        sort($typeIds);
+        $key = 'pool:rich_types:' . md5(implode(',', $typeIds)) . ':' . $min;
+
+        return Cache::remember($key, now()->addMinutes(10), function () use ($typeIds, $min) {
+            $in = implode(',', $typeIds);
+            $rows = DB::connection(self::CONN)->select(
+                "SELECT spt.product_type_id AS pt FROM supplier_product_types spt "
+                . "JOIN suppliers s ON s.id = spt.supplier_id "
+                . "WHERE spt.product_type_id IN ($in) AND s.is_active = 1 AND spt.is_included = 1 "
+                . "AND (spt.source IN ('manual','response_positive') OR spt.positive_signals > 0) "
+                . "GROUP BY spt.product_type_id HAVING COUNT(DISTINCT spt.supplier_id) >= $min"
+            );
+
+            return array_map(static fn ($r) => (int) $r->pt, $rows);
+        });
+    }
+
+    private function karmaEnabled(): bool
+    {
+        return (bool) config('services.email_pool.karma_gate_enabled', false);
+    }
+
+    /**
+     * Хард-дроп недоставляемых: пустой/пробельный email — слать некуда. Только при
+     * включённом карма-гейте (флаг OFF = поведение без изменений).
+     *
+     * @param \Illuminate\Database\Query\Builder $query
+     */
+    private function excludeUndeliverable($query): void
+    {
+        if ($this->karmaEnabled()) {
+            $query->whereRaw("TRIM(COALESCE(s.email, '')) <> ''");
+        }
     }
 
     /**

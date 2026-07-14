@@ -142,6 +142,12 @@ return [
     // ответов по заявке < followup_min_responses, волна 2 досылает по пулу расширения.
     'email_pool' => [
         'wave1_threshold' => (int) env('EMAILS_POOL_WAVE1_THRESHOLD', 150),
+        // Карма/probation-гейт пула (спека docs/dispatch-planner-design.md, раздел «КАРМА»).
+        // OFF — селектор как был (любой is_included=1). ON — в rich-темах (trusted >=
+        // rich_min) в общий пул пускаем только trusted (ответившие/manual); probation
+        // (ai_inferred без отклика) — мимо; пустой email — хард-дроп. Обратимо флагом.
+        'karma_gate_enabled' => (bool) env('EMAILS_POOL_KARMA_GATE', false),
+        'karma_regime_rich_min' => (int) env('EMAILS_POOL_KARMA_RICH_MIN', 30),
         'followup_enabled' => (bool) env('EMAILS_POOL_FOLLOWUP_ENABLED', true),
         'followup_delay_days' => (int) env('EMAILS_POOL_FOLLOWUP_DELAY_DAYS', 2),
         'followup_min_responses' => (int) env('EMAILS_POOL_FOLLOWUP_MIN_RESPONSES', 3),
