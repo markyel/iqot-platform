@@ -66,6 +66,8 @@ class DayPlanAssigner
         // Диагностика недобора: почему кандидаты не сели сегодня.
         $skips = ['empty_email' => 0, 'recipient_cap' => 0, 'capacity' => 0];
         $rounds = 0;
+        $densifyAdded = 0;   // раунд 2: остаток, доложенный в пустующие конверты (densify)
+        $leftover = [];      // [itemId, supplierId] — не сел в раунде 1 из-за капа получателя
 
         // Кандидаты позиции: релевантные вперёд, затем остальной пул (порядок пула).
         $cand = [];      // itemId => [supplierId,...]
@@ -112,7 +114,8 @@ class DayPlanAssigner
                     $isRel = isset($relFlip[$item][$sid]);
                     $urg = (float) ($positions[$item]['urgency'] ?? 0);
 
-                    // 1) Подсадка в открытый конверт (бесплатно по ёмкости).
+                    // 1) Подсадка в открытый конверт (бесплатно по ёмкости) — ТОЛЬКО
+                    // совместимые (качество письма). Несовместимый остаток добьёт раунд 2.
                     foreach ($bySupplier[$sid] ?? [] as $ei) {
                         if (count($envelopes[$ei]['item_ids']) >= $maxPerEmail) {
                             continue;
@@ -133,7 +136,12 @@ class DayPlanAssigner
                     // 2) Новый конверт: лимит получателя + суммарная ёмкость ящиков.
                     if (($recipientCaps[$email] ?? 0) <= 0) {
                         $skips['recipient_cap']++;
-                        continue; // получатель на сегодня полон — этой позиции он достанется завтра
+                        // Остаток: новый конверт не открыть (кап полон), но у поставщика
+                        // может быть недозаполненный конверт — раунд 2 доложит туда.
+                        if ($densify) {
+                            $leftover[] = [$item, $sid];
+                        }
+                        continue; // иначе — получателю достанется завтра
                     }
                     if ($capacityLeft <= 0) {
                         $skips['capacity']++;
@@ -160,40 +168,27 @@ class DayPlanAssigner
         }
         $stage1Envelopes = count($envelopes);
 
-        // ── Этап 1b (densify): добиваем недозаполненные конверты позициями, которые
-        // МАТЧИТ их поставщик (он в пуле позиции = торгует типом), ИГНОРИРУЯ доменную
-        // совместимость. Бесплатно по капу (подсадка), растягивает лимит получателя:
-        // тот же конверт накрывает больше позиций. За флагом (densify). ──────────────
-        $densifyAdded = 0;
+        // ── Раунд 2 (densify): ОСТАТОК, не севший в раунде 1 из-за капа получателя,
+        // докладываем в САМЫЙ ПУСТУЮЩИЙ недозаполненный конверт ЭТОГО ЖЕ поставщика,
+        // ИГНОРИРУЯ совместимость (он в пуле позиции = торгует типом). Раунд 1 остаётся
+        // «чистым» (совместимые письма); мешаем только вынужденный хвост, и только туда,
+        // где уже есть открытый конверт получателя — новый не плодим, кап не тратим. ──
         if ($densify) {
-            // Инверсия пула: supplierId => [itemId,...] (какие позиции матчит поставщик).
-            $itemsBySupplier = [];
-            foreach ($cand as $item => $list) {
-                foreach ($list as $sid) {
-                    $itemsBySupplier[$sid][] = $item;
-                }
-            }
-            foreach ($envelopes as $ei => $env) {
-                if (count($envelopes[$ei]['item_ids']) >= $maxPerEmail) {
-                    continue;
-                }
-                $sid = $env['supplier_id'];
-                // Позиции, УЖЕ отданные этому поставщику (в любом его конверте) — не дублируем.
-                $already = [];
-                foreach ($bySupplier[$sid] ?? [] as $e2) {
-                    foreach ($envelopes[$e2]['item_ids'] as $it) {
-                        $already[$it] = true;
-                    }
-                }
-                foreach ($itemsBySupplier[$sid] ?? [] as $candItem) {
-                    if (count($envelopes[$ei]['item_ids']) >= $maxPerEmail) {
-                        break;
-                    }
-                    if (isset($already[$candItem])) {
+            foreach ($leftover as [$item, $sid]) {
+                $best = null;
+                $bestFill = $maxPerEmail;
+                foreach ($bySupplier[$sid] ?? [] as $ei) {
+                    $fill = count($envelopes[$ei]['item_ids']);
+                    if ($fill >= $maxPerEmail || in_array($item, $envelopes[$ei]['item_ids'], true)) {
                         continue;
                     }
-                    $envelopes[$ei]['item_ids'][] = $candItem;
-                    $already[$candItem] = true;
+                    if ($fill < $bestFill) { // самый пустой
+                        $bestFill = $fill;
+                        $best = $ei;
+                    }
+                }
+                if ($best !== null) {
+                    $envelopes[$best]['item_ids'][] = $item;
                     $densifyAdded++;
                 }
             }
