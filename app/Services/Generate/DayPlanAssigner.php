@@ -59,6 +59,7 @@ class DayPlanAssigner
         int $maxPerEmail = 4,
         ?int &$droppedNoSender = null,
         ?array &$stats = null,
+        bool $densify = false,
     ): array {
         $maxPerEmail = max(1, $maxPerEmail);
         $droppedNoSender = 0;
@@ -159,6 +160,45 @@ class DayPlanAssigner
         }
         $stage1Envelopes = count($envelopes);
 
+        // ── Этап 1b (densify): добиваем недозаполненные конверты позициями, которые
+        // МАТЧИТ их поставщик (он в пуле позиции = торгует типом), ИГНОРИРУЯ доменную
+        // совместимость. Бесплатно по капу (подсадка), растягивает лимит получателя:
+        // тот же конверт накрывает больше позиций. За флагом (densify). ──────────────
+        $densifyAdded = 0;
+        if ($densify) {
+            // Инверсия пула: supplierId => [itemId,...] (какие позиции матчит поставщик).
+            $itemsBySupplier = [];
+            foreach ($cand as $item => $list) {
+                foreach ($list as $sid) {
+                    $itemsBySupplier[$sid][] = $item;
+                }
+            }
+            foreach ($envelopes as $ei => $env) {
+                if (count($envelopes[$ei]['item_ids']) >= $maxPerEmail) {
+                    continue;
+                }
+                $sid = $env['supplier_id'];
+                // Позиции, УЖЕ отданные этому поставщику (в любом его конверте) — не дублируем.
+                $already = [];
+                foreach ($bySupplier[$sid] ?? [] as $e2) {
+                    foreach ($envelopes[$e2]['item_ids'] as $it) {
+                        $already[$it] = true;
+                    }
+                }
+                foreach ($itemsBySupplier[$sid] ?? [] as $candItem) {
+                    if (count($envelopes[$ei]['item_ids']) >= $maxPerEmail) {
+                        break;
+                    }
+                    if (isset($already[$candItem])) {
+                        continue;
+                    }
+                    $envelopes[$ei]['item_ids'][] = $candItem;
+                    $already[$candItem] = true;
+                    $densifyAdded++;
+                }
+            }
+        }
+
         // ── Этап 2: ящики группами одинаковых наборов («липкий» ящик на группу). ──
         $groups = [];
         foreach ($envelopes as $i => $env) {
@@ -255,6 +295,7 @@ class DayPlanAssigner
             $stats = [
                 'rounds' => $rounds,
                 'stage1_envelopes' => $stage1Envelopes,
+                'densify_added' => $densifyAdded,
                 'kept' => count($keep),
                 'dropped_no_sender' => $droppedNoSender,
                 'capacity_total' => $capacityTotal,

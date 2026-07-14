@@ -236,7 +236,8 @@ class PlanDayCampaign extends Command
         // 7. Распределение позиций по конвертам поставщиков.
         $dropped = 0;
         $assignStats = [];
-        $plan = (new DayPlanAssigner())->plan($positions, $poolMap, $relevantMap, $affinity, $supplierEmail, $senderCaps, $recipientCaps, $senderRecent, $maxPerEmail, $dropped, $assignStats);
+        $densify = (bool) config('services.email_planner.dayplan_densify', false);
+        $plan = (new DayPlanAssigner())->plan($positions, $poolMap, $relevantMap, $affinity, $supplierEmail, $senderCaps, $recipientCaps, $senderRecent, $maxPerEmail, $dropped, $assignStats, $densify);
 
         // 8. Отчёт по плану (и в dry-run, и перед рендером).
         $this->reportPlan($plan, $positions, $priced, $yandexOn, $yandexQueried, $yandexCached, count($senderCaps), $assignStats);
@@ -527,11 +528,12 @@ class PlanDayCampaign extends Command
         if ($assignStats !== []) {
             $sk = $assignStats['skips'] ?? [];
             $this->line(sprintf(
-                "  [ДИАГ] раундов=%d | ёмкость ящиков: %d/%d исп. | конвертов этап1=%d, дропнуто-без-ящика=%d, оставлено=%d",
+                "  [ДИАГ] раундов=%d | ёмкость ящиков: %d/%d исп. | конвертов этап1=%d, +densify=%d, дропнуто-без-ящика=%d, оставлено=%d",
                 $assignStats['rounds'] ?? 0,
                 ($assignStats['capacity_total'] ?? 0) - ($assignStats['capacity_left'] ?? 0),
                 $assignStats['capacity_total'] ?? 0,
                 $assignStats['stage1_envelopes'] ?? 0,
+                $assignStats['densify_added'] ?? 0,
                 $assignStats['dropped_no_sender'] ?? 0,
                 $assignStats['kept'] ?? 0,
             ));

@@ -439,6 +439,10 @@ return [
         // v2 дневной планировщик (emails:plan-day): за флагом, параллельно v1 top-up.
         'dayplan_enabled' => (bool) env('EMAILS_DAYPLAN_ENABLED', false),
         'dayplan_max_per_email' => (int) env('EMAILS_DAYPLAN_MAX_PER_EMAIL', 4),  // позиций в письме
+        // densify: 2-й проход добивает недозаполненные конверты позициями, которые
+        // матчит поставщик, ИГНОРИРУЯ доменную совместимость (он в пуле = торгует типом).
+        // Плотнее конверт → тот же кап получателя накрывает больше позиций. Деф OFF.
+        'dayplan_densify' => (bool) env('EMAILS_DAYPLAN_DENSIFY', false),
         'dayplan_yandex' => (bool) env('EMAILS_DAYPLAN_YANDEX', true),            // Яндекс-релевантность
         // Кэш найденных Яндексом доменов НА ПОЗИЦИЮ (дней): все позиции прогоняются
         // через Яндекс на стадии планирования, но повторные утра берут выдачу из кэша
