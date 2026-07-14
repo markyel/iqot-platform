@@ -32,10 +32,13 @@ class CampaignSupplierSelector
 
         $suppliers = array_map(static fn ($r) => (array) $r, $rows);
 
-        if ((bool) config('services.email_pool.waves_v2', false)) {
-            // Waves-v2: НЕ режем по размеру. Весь пул → suppliers, а деление на волны по
-            // ТЕМПЕРАТУРЕ Яндекс-матча делает GenerateCampaignJob::classifyByTier ПОСЛЕ
-            // таргетинга (нужен весь пул в supplierIds, чтобы классифицировать всех).
+        if (!(bool) config('services.email_pool.pool_split_enabled', false)) {
+            // ПО УМОЛЧАНИЮ пул НЕ режем: дневной план (plan-day) и plan-render берут
+            // ВЕСЬ профильный пул — покрытие позиции = весь остаточный пул, ёмкость
+            // контролирует ассигнатор (recipient/sender caps), а не досрочный срез.
+            // Wave-1/wave-2 split (splitPool) ретайрен вместе с волнами; включается ТОЛЬКО
+            // явным флагом EMAILS_POOL_SPLIT_ENABLED для легаси-генератора. Раньше срез
+            // ошибочно был привязан к EMAILS_WAVES_V2 — его выключение подрезало пул плана.
             $wave1 = $suppliers;
             $expansion = [];
         } else {

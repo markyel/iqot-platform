@@ -148,6 +148,10 @@ return [
         // (ai_inferred без отклика) — мимо; пустой email — хард-дроп. Обратимо флагом.
         'karma_gate_enabled' => (bool) env('EMAILS_POOL_KARMA_GATE', false),
         'karma_regime_rich_min' => (int) env('EMAILS_POOL_KARMA_RICH_MIN', 30),
+        // Легаси wave-1/wave-2 срез пула (splitPool до wave1_threshold). ретайрен вместе
+        // с волнами; ПО УМОЛЧАНИЮ OFF = дневной план берёт ВЕСЬ пул. Раньше срез был
+        // привязан к EMAILS_WAVES_V2 (его выключение подрезало пул) — развязано.
+        'pool_split_enabled' => (bool) env('EMAILS_POOL_SPLIT_ENABLED', false),
         'followup_enabled' => (bool) env('EMAILS_POOL_FOLLOWUP_ENABLED', true),
         'followup_delay_days' => (int) env('EMAILS_POOL_FOLLOWUP_DELAY_DAYS', 2),
         'followup_min_responses' => (int) env('EMAILS_POOL_FOLLOWUP_MIN_RESPONSES', 3),
