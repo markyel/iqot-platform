@@ -234,10 +234,12 @@ class PlanDayCampaign extends Command
         }
 
         // 7. Распределение позиций по конвертам поставщиков.
-        $plan = (new DayPlanAssigner())->plan($positions, $poolMap, $relevantMap, $affinity, $supplierEmail, $senderCaps, $recipientCaps, $senderRecent, $maxPerEmail);
+        $dropped = 0;
+        $assignStats = [];
+        $plan = (new DayPlanAssigner())->plan($positions, $poolMap, $relevantMap, $affinity, $supplierEmail, $senderCaps, $recipientCaps, $senderRecent, $maxPerEmail, $dropped, $assignStats);
 
         // 8. Отчёт по плану (и в dry-run, и перед рендером).
-        $this->reportPlan($plan, $positions, $priced, $yandexOn, $yandexQueried, $yandexCached, count($senderCaps));
+        $this->reportPlan($plan, $positions, $priced, $yandexOn, $yandexQueried, $yandexCached, count($senderCaps), $assignStats);
         if ($dry) {
             return self::SUCCESS;
         }
@@ -279,6 +281,7 @@ class PlanDayCampaign extends Command
             'plan_emails' => count($plan), 'rendered_batches' => $res['batches'],
             'queued' => $res['queued'], 'skipped' => $res['skipped'], 'batch_ids' => $res['batch_ids'],
             'discovery_candidates' => count($discoveryCands), 'discovery_dispatched' => $dispatched,
+            'assign' => $assignStats,
         ]);
         return self::SUCCESS;
     }
@@ -471,7 +474,7 @@ class PlanDayCampaign extends Command
      * @param array<int,array<string,mixed>> $positions
      * @param array<int,int> $priced
      */
-    private function reportPlan(array $plan, array $positions, array $priced, bool $yandexOn, int $yandexQueried, int $yandexCached, int $senders): void
+    private function reportPlan(array $plan, array $positions, array $priced, bool $yandexOn, int $yandexQueried, int $yandexCached, int $senders, array $assignStats = []): void
     {
         $emails = count($plan);
         $byPhase = ['relevant' => 0, 'fill' => 0];
@@ -521,6 +524,27 @@ class PlanDayCampaign extends Command
         ));
         $this->line(sprintf("  Позиций в письме: median=%d avg=%.1f max=%d  (v1 было ~1)", $med, $avg, $sizes ? max($sizes) : 0));
         $this->line(sprintf("  Позиций дойдут до target: %d из %d (%d%%)", $willReach, $activeCnt, $activeCnt ? round(100 * $willReach / $activeCnt) : 0));
+        if ($assignStats !== []) {
+            $sk = $assignStats['skips'] ?? [];
+            $this->line(sprintf(
+                "  [ДИАГ] раундов=%d | ёмкость ящиков: %d/%d исп. | конвертов этап1=%d, дропнуто-без-ящика=%d, оставлено=%d",
+                $assignStats['rounds'] ?? 0,
+                ($assignStats['capacity_total'] ?? 0) - ($assignStats['capacity_left'] ?? 0),
+                $assignStats['capacity_total'] ?? 0,
+                $assignStats['stage1_envelopes'] ?? 0,
+                $assignStats['dropped_no_sender'] ?? 0,
+                $assignStats['kept'] ?? 0,
+            ));
+            $this->line(sprintf(
+                "  [ДИАГ] недобрали пул: %d из %d позиций | отложено на завтра слотов=%d | скипы: пустой-email=%d, кап-получателя=%d, ёмкость=%d",
+                $assignStats['positions_partial'] ?? 0,
+                $assignStats['positions_total'] ?? 0,
+                $assignStats['deferred_slots'] ?? 0,
+                $sk['empty_email'] ?? 0,
+                $sk['recipient_cap'] ?? 0,
+                $sk['capacity'] ?? 0,
+            ));
+        }
     }
 
     /** @return array<int,int> senderId => остаток дневной ёмкости */

@@ -58,9 +58,13 @@ class DayPlanAssigner
         array $senderRecent = [],
         int $maxPerEmail = 4,
         ?int &$droppedNoSender = null,
+        ?array &$stats = null,
     ): array {
         $maxPerEmail = max(1, $maxPerEmail);
         $droppedNoSender = 0;
+        // Диагностика недобора: почему кандидаты не сели сегодня.
+        $skips = ['empty_email' => 0, 'recipient_cap' => 0, 'capacity' => 0];
+        $rounds = 0;
 
         // Кандидаты позиции: релевантные вперёд, затем остальной пул (порядок пула).
         $cand = [];      // itemId => [supplierId,...]
@@ -81,6 +85,7 @@ class DayPlanAssigner
         foreach ($senderCaps as $c) {
             $capacityLeft += max(0, (int) $c);
         }
+        $capacityTotal = $capacityLeft;
 
         // Конверты: idx => {supplier_id, email, item_ids, relevant, urgency}.
         $envelopes = [];
@@ -91,6 +96,7 @@ class DayPlanAssigner
         usort($active, fn ($a, $b) => ($positions[$b]['urgency'] ?? 0) <=> ($positions[$a]['urgency'] ?? 0));
 
         while ($active !== []) {
+            $rounds++;
             $next = [];
             foreach ($active as $item) {
                 $assigned = false;
@@ -99,6 +105,7 @@ class DayPlanAssigner
                     $ptr[$item]++; // пройден навсегда: назначен ЛИБО «не хватило места — завтра»
                     $email = mb_strtolower(trim((string) ($supplierEmail[$sid] ?? '')));
                     if ($email === '') {
+                        $skips['empty_email']++;
                         continue;
                     }
                     $isRel = isset($relFlip[$item][$sid]);
@@ -124,9 +131,11 @@ class DayPlanAssigner
 
                     // 2) Новый конверт: лимит получателя + суммарная ёмкость ящиков.
                     if (($recipientCaps[$email] ?? 0) <= 0) {
+                        $skips['recipient_cap']++;
                         continue; // получатель на сегодня полон — этой позиции он достанется завтра
                     }
                     if ($capacityLeft <= 0) {
+                        $skips['capacity']++;
                         continue; // ёмкость дня исчерпана — подсадки ещё возможны, новые конверты нет
                     }
                     $capacityLeft--;
@@ -148,6 +157,7 @@ class DayPlanAssigner
             }
             $active = $next;
         }
+        $stage1Envelopes = count($envelopes);
 
         // ── Этап 2: ящики группами одинаковых наборов («липкий» ящик на группу). ──
         $groups = [];
@@ -229,6 +239,33 @@ class DayPlanAssigner
                 'phase' => $env['relevant'] ? 'relevant' : 'fill',
             ];
         }
+
+        if ($stats !== null) {
+            // Отложено «на завтра»: кандидаты, до которых курсор не дошёл (позиция вышла из
+            // раундов, НЕ исчерпав свой пул). positions_partial — сколько позиций недобрали.
+            $deferredSlots = 0;
+            $positionsPartial = 0;
+            foreach ($cand as $id => $list) {
+                $rem = count($list) - $ptr[$id];
+                if ($rem > 0) {
+                    $deferredSlots += $rem;
+                    $positionsPartial++;
+                }
+            }
+            $stats = [
+                'rounds' => $rounds,
+                'stage1_envelopes' => $stage1Envelopes,
+                'kept' => count($keep),
+                'dropped_no_sender' => $droppedNoSender,
+                'capacity_total' => $capacityTotal,
+                'capacity_left' => $capacityLeft,
+                'skips' => $skips,
+                'deferred_slots' => $deferredSlots,
+                'positions_partial' => $positionsPartial,
+                'positions_total' => count($positions),
+            ];
+        }
+
         return $plan;
     }
 
