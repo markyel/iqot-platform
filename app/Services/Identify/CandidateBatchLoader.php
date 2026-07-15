@@ -5,15 +5,16 @@ namespace App\Services\Identify;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Сбор кандидат-заявок для неопознанного письма — порт n8n-узла «Find Batches by
- * Domain».
+ * Сбор кандидат-заявок для неопознанного письма.
  *
- * Кандидаты — письма, отправленные с того же ящика (email_queue.from_email =
- * unidentified_emails.to_email) за окно lookback_days по активным статусам, чей
- * поставщик имеет ТОТ ЖЕ домен, что и отправитель ответа, ЛИБО совпавший токен
- * (queue_id/batch_id из MailboxTokenMatcher). Возвращаем с подгруженными позициями
- * заявки (request_items по JSON-массиву email_batches.request_items) и метаданными
- * для AI-промпта. Совпавший по токену кандидат идёт первым (ORDER BY CASE).
+ * Кандидаты — ВСЕ письма, отправленные с того же ящика (email_queue.from_email =
+ * unidentified_emails.to_email) за окно lookback_days по активным статусам. Домен
+ * поставщика и совпавший токен — НЕ жёсткий фильтр, а ПРИОРИТЕТ в ORDER BY (токен →
+ * домен → свежесть), т.к. поставщик часто отвечает с ДРУГОГО адреса (личная/фри-почта,
+ * не с того, куда слали) и без цитаты токена — тогда фильтр по домену давал 0 кандидатов
+ * и реальный ответ падал в manual_review. Теперь AI получает всё, что слали с этого
+ * ящика (ящик сильно сужает — единицы/день), и матчит ПО СОДЕРЖИМОМУ (названиям позиций).
+ * Возвращаем с подгруженными позициями (request_items по JSON email_batches.request_items).
  */
 class CandidateBatchLoader
 {
@@ -64,13 +65,13 @@ class CandidateBatchLoader
             WHERE eq.status IN ({$statuses})
               AND eq.sent_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
               AND eq.from_email = ?
-              AND (
-                SUBSTRING_INDEX(s.email, '@', -1) = ?
-                OR eq.id = ?
-                OR eq.batch_id = ?
-              )
             ORDER BY
-              CASE WHEN eq.id = ? THEN 0 ELSE 1 END,
+              CASE
+                WHEN eq.id = ? THEN 0
+                WHEN eq.batch_id = ? THEN 1
+                WHEN SUBSTRING_INDEX(s.email, '@', -1) = ? THEN 2
+                ELSE 3
+              END,
               eq.sent_at DESC
             LIMIT {$this->limit}
             SQL;
@@ -78,10 +79,9 @@ class CandidateBatchLoader
         return DB::connection('reports')->select($sql, [
             $this->lookbackDays,
             $mailbox,
-            $fromDomain,
             $matchedQueueId,
             $matchedBatchId,
-            $matchedQueueId,
+            $fromDomain,
         ]);
     }
 
