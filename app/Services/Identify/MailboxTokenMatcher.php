@@ -30,7 +30,7 @@ class MailboxTokenMatcher
     /**
      * @return array{queue_id:int,batch_id:?int,supplier_id:?int,tracking_token:string,token_clean:string,match_type:string}|null
      */
-    public function match(string $mailbox, string $subject, ?string $bodyText): ?array
+    public function match(string $mailbox, string $subject, ?string $bodyText, ?string $bodyHtml = null): ?array
     {
         if ($mailbox === '') {
             return null;
@@ -41,7 +41,15 @@ class MailboxTokenMatcher
             return null;
         }
 
-        $searchText = $subject . ' ' . mb_substr((string) $bodyText, 0, 3000);
+        // Ищем и в body_text, и в ОЧИЩЕННОМ body_html: у HTML-only писем body_text пуст,
+        // а токен (в цитате нашего письма) сидит в html. Раньше искали только body_text[:3000]
+        // → такие письма (частый кейс) падали в no_token, хотя токен в них есть.
+        $htmlText = ((string) $bodyHtml) !== ''
+            ? trim((string) preg_replace('/\s+/u', ' ', strip_tags((string) $bodyHtml)))
+            : '';
+        $searchText = $subject
+            . ' ' . mb_substr((string) $bodyText, 0, 8000)
+            . ' ' . mb_substr($htmlText, 0, 8000);
 
         // Сначала — полный токен.
         foreach ($tokens as $t) {

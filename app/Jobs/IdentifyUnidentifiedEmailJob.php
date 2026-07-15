@@ -74,9 +74,9 @@ class IdentifyUnidentifiedEmailJob implements ShouldQueue
             $mailbox = (string) ($email->to_email ?? '');
             $fromEmail = (string) ($email->from_email ?? '');
 
-            // 1. Мягкий матч токена в теме/теле.
+            // 1. Мягкий матч токена в теме/теле (и в очищенном html — токен часто там).
             $tokenMatch = (new MailboxTokenMatcher($lookbackDays))
-                ->match($mailbox, (string) ($email->subject ?? ''), $email->body_text ?? null);
+                ->match($mailbox, (string) ($email->subject ?? ''), $email->body_text ?? null, $email->body_html ?? null);
 
             // 2. Кандидат-заявки по домену/токену.
             $candidates = (new CandidateBatchLoader($lookbackDays, (int) ($ic['candidate_limit'] ?? 50)))

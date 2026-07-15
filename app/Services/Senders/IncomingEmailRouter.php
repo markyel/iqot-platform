@@ -590,8 +590,16 @@ class IncomingEmailRouter
 
     private function searchText(ParsedEmail $email): string
     {
+        // Токен часто в ПРОЦИТИРОВАННОМ оригинале (после свежего ответа+подписи
+        // поставщика). В сыром HTML теги раздувают позицию → цитата с токеном уползала
+        // за отсечку и письмо падало в no_token, хотя токен в нём есть. Ищем в ОЧИЩЕННОМ
+        // тексте (в разы короче сырого HTML) и с бо́льшим запасом окна.
+        $htmlText = $email->bodyHtml !== ''
+            ? trim((string) preg_replace('/\s+/u', ' ', strip_tags($email->bodyHtml)))
+            : '';
+
         return $email->subject
-            . ' ' . mb_substr($email->bodyText, 0, 3000)
-            . ' ' . mb_substr($email->bodyHtml, 0, 3000);
+            . ' ' . mb_substr($email->bodyText, 0, 8000)
+            . ' ' . mb_substr($htmlText, 0, 8000);
     }
 }
