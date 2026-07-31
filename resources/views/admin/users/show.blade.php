@@ -252,9 +252,14 @@
 
 <!-- История транзакций -->
 <div class="card" style="margin-bottom: var(--space-6);">
-    <div class="card-header">
+    <div class="card-header" style="display: flex; align-items: center;">
         <i data-lucide="activity" style="width: 1.25rem; height: 1.25rem;"></i>
         История транзакций
+        <span style="margin-left: auto;">
+            <x-button variant="secondary" size="sm" :href="route('admin.users.transactions', $user)" icon="receipt">
+                Детализация за период
+            </x-button>
+        </span>
     </div>
     <div class="card-body" style="padding: 0;">
         @if($transactions->count() > 0)

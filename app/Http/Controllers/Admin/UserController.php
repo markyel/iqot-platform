@@ -9,6 +9,8 @@ use App\Models\ReportAccess;
 use App\Models\SubscriptionCharge;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class UserController extends Controller
 {
@@ -289,6 +291,99 @@ class UserController extends Controller
             ->paginate(20);
 
         return view('admin.users.invoices', compact('user', 'invoices'));
+    }
+
+    /**
+     * Детализация списаний/операций пользователя за период (для админа).
+     * Переиспользует агрегатор getUserTransactions() и фильтрует по датам.
+     * Время — по серверу (app.timezone, UTC).
+     */
+    public function transactions(Request $request, User $user)
+    {
+        // Период: по умолчанию текущий календарный месяц
+        $from = $request->filled('from')
+            ? Carbon::parse($request->get('from'))->startOfDay()
+            : Carbon::now()->startOfMonth();
+        $to = $request->filled('to')
+            ? Carbon::parse($request->get('to'))->endOfDay()
+            : Carbon::now()->endOfDay();
+
+        // Полная лента (с рассчитанным balance_after), затем срез по периоду
+        $all = $this->getUserTransactions($user);
+        $periodAll = $all->filter(function ($t) use ($from, $to) {
+            $dt = $t['created_at'] ?? null;
+            return $dt && !$dt->lt($from) && !$dt->gt($to);
+        })->values();
+
+        // Типы операций
+        $chargeTypes = ['charge', 'report_access', 'item_purchase', 'subscription'];
+        $topupTypes = ['top_up', 'promo_code'];
+
+        // Сводка за период (стабильна независимо от отображаемого фильтра):
+        // заморозки/возвраты в денежные итоги НЕ входят — это не расход/приход.
+        $summary = [
+            'charged_total' => 0.0,
+            'topped_up_total' => 0.0,
+            'count_charges' => 0,
+            'by_type' => [],
+        ];
+        foreach ($periodAll as $t) {
+            if (in_array($t['type'], $chargeTypes, true)) {
+                $summary['charged_total'] += $t['amount'];
+                $summary['by_type'][$t['type']] = ($summary['by_type'][$t['type']] ?? 0) + $t['amount'];
+                $summary['count_charges']++;
+            } elseif (in_array($t['type'], $topupTypes, true)) {
+                $summary['topped_up_total'] += abs($t['amount']);
+            }
+        }
+
+        // По умолчанию показываем только списания; ?all=1 — вся лента за период
+        $showAll = $request->boolean('all');
+        $display = $showAll
+            ? $periodAll
+            : $periodAll->filter(fn ($t) => in_array($t['type'], $chargeTypes, true))->values();
+
+        if ($request->get('export') === 'csv') {
+            return $this->exportTransactionsCsv($user, $display, $from, $to);
+        }
+
+        return view('admin.users.transactions', [
+            'user' => $user,
+            'transactions' => $display,
+            'summary' => $summary,
+            'from' => $from,
+            'to' => $to,
+            'showAll' => $showAll,
+        ]);
+    }
+
+    /**
+     * Выгрузка отображаемых операций в CSV (разделитель «;», UTF-8 BOM для Excel).
+     * «Изменение баланса» = знак, обратный amount (списание отрицательно, приход положительно).
+     */
+    private function exportTransactionsCsv(User $user, $transactions, Carbon $from, Carbon $to): StreamedResponse
+    {
+        $filename = 'transactions_' . $user->id . '_' . $from->format('Ymd') . '-' . $to->format('Ymd') . '.csv';
+
+        $callback = function () use ($transactions) {
+            $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM
+            fputcsv($out, ['Дата (UTC)', 'Тип', 'Описание', 'Изменение баланса, ₽', 'Баланс после, ₽'], ';');
+            foreach ($transactions as $t) {
+                fputcsv($out, [
+                    optional($t['created_at'])->format('d.m.Y H:i'),
+                    $t['type'],
+                    $t['description'],
+                    number_format(-1 * $t['amount'], 2, ',', ''),
+                    isset($t['balance_after']) ? number_format($t['balance_after'], 2, ',', '') : '',
+                ], ';');
+            }
+            fclose($out);
+        };
+
+        return response()->streamDownload($callback, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
     }
 
     public function updateBalance(Request $request, User $user)

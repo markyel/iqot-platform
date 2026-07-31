@@ -182,6 +182,7 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
     Route::get('/users', [\App\Http\Controllers\Admin\UserController::class, 'index'])->name('users.index');
     Route::get('/users/{user}', [\App\Http\Controllers\Admin\UserController::class, 'show'])->name('users.show');
     Route::get('/users/{user}/invoices', [\App\Http\Controllers\Admin\UserController::class, 'invoices'])->name('users.invoices');
+    Route::get('/users/{user}/transactions', [\App\Http\Controllers\Admin\UserController::class, 'transactions'])->name('users.transactions');
     Route::get('/users/{user}/acts', [\App\Http\Controllers\Admin\ActController::class, 'userActs'])->name('users.acts');
     Route::post('/users/{user}/balance', [\App\Http\Controllers\Admin\UserController::class, 'updateBalance'])->name('users.balance');
 
