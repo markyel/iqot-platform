@@ -201,7 +201,7 @@
 ### ✅ Этап 4 — Пайплайн классификации
 
 **Интеграция AI:**
-- OpenAI-совместимый прокси `ai.lazylift.ru/v1` (headers `Authorization: Bearer` + `X-Proxy-Key`).
+- OpenAI-совместимый прокси `ai2.lazylift.ru/v1` (nginx, Алматы KZ; ранее Cloudflare Worker, ещё раньше `ai.lazylift.ru/v1`) — headers `Authorization: Bearer` + `X-Proxy-Key`.
 - Модели: `gpt-4o-mini` (mini-classifier), `gpt-4o` (full AI). Конфиг в `config/services.php` → `openai_classifier`, .env: `OPENAI_CLASSIFIER_*`.
 
 **`OpenAIClassifierClient`:**

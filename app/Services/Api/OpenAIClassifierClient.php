@@ -6,7 +6,8 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Тонкий HTTP-клиент к OpenAI-совместимому прокси (ai.lazylift.ru).
+ * Тонкий HTTP-клиент к OpenAI-совместимому прокси (nginx ai2.lazylift.ru, Алматы KZ;
+ * ранее Cloudflare Worker, ещё раньше ai.lazylift.ru).
  *
  * Выдаёт JSON-структурированный результат (через `response_format: json_object`)
  * и валидирует корректность структуры на стороне вызывающего сервиса.

@@ -547,11 +547,16 @@ return [
     'email_validation_provider' => env('EMAIL_VALIDATION_PROVIDER', null),
 
     /*
-     * Классификация API-заявок через OpenAI-совместимый прокси (ai.lazylift.ru).
+     * Классификация API-заявок через OpenAI-совместимый прокси (nginx, Алматы KZ).
      * Используется сервисом App\Services\Api\OpenAIClassifierClient.
+     * История прокси: ai.lazylift.ru (Рига, отключён/санкции) → Cloudflare Worker →
+     * ai2.lazylift.ru (nginx reverse-proxy, egress KZ поддерживается OpenAI).
+     * Base URL включает /v1 (клиент дописывает только /chat/completions), заголовок
+     * X-Proxy-Key обязателен. Доступны лишь /v1/chat/completions, /v1/embeddings,
+     * /health (прочее → 404). См. docs/ai-proxy/CLIENT-SETUP.md в LazyLift.
      */
     'openai_classifier' => [
-        'base_url' => env('OPENAI_CLASSIFIER_BASE_URL', 'https://ai.lazylift.ru/v1'),
+        'base_url' => env('OPENAI_CLASSIFIER_BASE_URL', 'https://ai2.lazylift.ru/v1'),
         'api_key' => env('OPENAI_CLASSIFIER_API_KEY'),
         'proxy_key' => env('OPENAI_CLASSIFIER_PROXY_KEY'),
         'model_mini' => env('OPENAI_CLASSIFIER_MODEL_MINI', 'gpt-4o-mini'),
