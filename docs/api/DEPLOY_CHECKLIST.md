@@ -103,7 +103,7 @@ php artisan migrate:status | grep "2026_04_22_1000"
 cat >> /var/www/iqot/.env <<'EOF'
 
 # OpenAI-совместимый прокси для классификации API-заявок (Stage 4)
-OPENAI_CLASSIFIER_BASE_URL=https://ai2.lazylift.ru/v1
+OPENAI_CLASSIFIER_BASE_URL=https://ai3.lazylift.ru:8443/v1
 OPENAI_CLASSIFIER_API_KEY=<скопируй с локалки>
 OPENAI_CLASSIFIER_PROXY_KEY=<скопируй с локалки>
 OPENAI_CLASSIFIER_MODEL_MINI=gpt-4o-mini
