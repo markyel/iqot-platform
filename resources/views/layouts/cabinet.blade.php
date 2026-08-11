@@ -492,6 +492,12 @@
                             <span class="sidebar-item-tooltip">Стоп-лист рассылки</span>
                         </a>
 
+                        <a href="{{ route('admin.tools.headless.index') }}" class="sidebar-item {{ request()->routeIs('admin.tools.headless*') ? 'active' : '' }}">
+                            <i data-lucide="camera" class="sidebar-item-icon"></i>
+                            <span class="sidebar-item-text">Тест рендера страниц</span>
+                            <span class="sidebar-item-tooltip">Тест рендера страниц</span>
+                        </a>
+
                         <a href="{{ route('admin.billing.settings.index') }}" class="sidebar-item {{ request()->routeIs('admin.billing.settings*') ? 'active' : '' }}">
                             <i data-lucide="settings" class="sidebar-item-icon"></i>
                             <span class="sidebar-item-text">Настройки биллинга</span>

@@ -240,6 +240,9 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
     Route::get('/emails/campaigns', [\App\Http\Controllers\Admin\EmailCampaignStatsController::class, 'index'])->name('emails.campaigns');
 
     // Диагностика
+    Route::get('/tools/headless', [\App\Http\Controllers\Admin\HeadlessTestController::class, 'index'])->name('tools.headless.index');
+    Route::post('/tools/headless', [\App\Http\Controllers\Admin\HeadlessTestController::class, 'render'])->name('tools.headless.render');
+
     Route::get('/diagnostics', [\App\Http\Controllers\Admin\DiagnosticsController::class, 'index'])->name('diagnostics.index');
     Route::post('/diagnostics/test-parse', [\App\Http\Controllers\Admin\DiagnosticsController::class, 'testParse'])->name('diagnostics.test-parse');
     Route::get('/diagnostics/test-connection', [\App\Http\Controllers\Admin\DiagnosticsController::class, 'testConnection'])->name('diagnostics.test-connection');
