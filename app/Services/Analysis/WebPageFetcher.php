@@ -23,6 +23,7 @@ class WebPageFetcher
         private readonly int $timeout = 15,
         private readonly ?HeadlessPageRenderer $headless = null,
         private readonly int $httpMinChars = 200,
+        private readonly string $userAgent = 'Mozilla/5.0 (compatible; IQOTBot/1.0)',
     ) {
     }
 
@@ -55,7 +56,7 @@ class WebPageFetcher
         try {
             $response = Http::timeout($this->timeout)
                 ->withHeaders([
-                    'User-Agent' => 'Mozilla/5.0 (compatible; IQOTBot/1.0)',
+                    'User-Agent' => $this->userAgent,
                     'Accept' => 'text/html,application/xhtml+xml',
                 ])
                 ->get($url);

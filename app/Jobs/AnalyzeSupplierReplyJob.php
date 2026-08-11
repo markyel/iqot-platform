@@ -202,11 +202,14 @@ class AnalyzeSupplierReplyJob implements ShouldQueue
             timeout: (int) ($ec['timeout'] ?? 120),
         );
 
+        $userAgent = (string) ($ec['user_agent'] ?? '');
+
         $headless = ($ec['headless_enabled'] ?? true)
             ? new HeadlessPageRenderer(
                 (string) ($ec['headless_chrome_path'] ?? '/usr/bin/google-chrome-stable'),
                 (string) ($ec['headless_home'] ?? ''),
                 (int) ($ec['headless_timeout'] ?? 30),
+                $userAgent,
             )
             : null;
 
@@ -215,6 +218,7 @@ class AnalyzeSupplierReplyJob implements ShouldQueue
             (int) ($ec['fetch_timeout'] ?? 15),
             $headless,
             (int) ($ec['http_min_chars'] ?? 200),
+            $userAgent !== '' ? $userAgent : 'Mozilla/5.0 (compatible; IQOTBot/1.0)',
         );
 
         return new SupplierReplyAnalyzer($client, $fetcher, [

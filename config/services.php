@@ -336,6 +336,10 @@ return [
         // Писчий HOME для Chrome (воркеры под www-data, чей /var/www не пишется).
         'headless_home' => env('EMAILS_ANALYZE_HEADLESS_HOME', storage_path('app/headless')),
         'headless_timeout' => (int) env('EMAILS_ANALYZE_HEADLESS_TIMEOUT', 30),
+        // User-Agent для веб-сёрфинга (HTTP-шаг + headless-Chrome). Дефолтный UA
+        // Chrome содержит маркер «HeadlessChrome» → антибот-защиты его режут; здесь
+        // выдаём себя за обычный десктопный Chrome, чтобы цены отдавались чаще.
+        'user_agent' => env('EMAILS_ANALYZE_UA', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36'),
         // Порог «огрызка»: HTTP-текст короче → пробуем headless.
         'http_min_chars' => (int) env('EMAILS_ANALYZE_HTTP_MIN_CHARS', 200),
         // Предохранитель от «ядовитого» письма: сколько раз пытаемся проанализировать

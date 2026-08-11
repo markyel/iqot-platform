@@ -26,6 +26,7 @@ class HeadlessPageRenderer
         private readonly string $chromePath = '/usr/bin/google-chrome-stable',
         private readonly string $homeDir = '',
         private readonly int $timeout = 30,
+        private readonly string $userAgent = '',
     ) {
     }
 
@@ -41,6 +42,7 @@ class HeadlessPageRenderer
             (string) ($ec['headless_chrome_path'] ?? '/usr/bin/google-chrome-stable'),
             (string) ($ec['headless_home'] ?? ''),
             (int) ($ec['headless_timeout'] ?? 30),
+            (string) ($ec['user_agent'] ?? ''),
         );
     }
 
@@ -120,7 +122,7 @@ class HeadlessPageRenderer
         $_SERVER['HOME'] = $home;
         $_ENV['HOME'] = $home;
 
-        return Browsershot::url($url)
+        $browsershot = Browsershot::url($url)
             ->setChromePath($this->chromePath)
             ->noSandbox()
             ->setOption('args', [
@@ -131,6 +133,14 @@ class HeadlessPageRenderer
             ])
             ->timeout($this->timeout)
             ->waitUntilNetworkIdle();
+
+        // Дефолтный headless-UA содержит «HeadlessChrome» → часть сайтов режет.
+        // Выдаём обычный десктопный Chrome (если задан в конфиге).
+        if ($this->userAgent !== '') {
+            $browsershot->userAgent($this->userAgent);
+        }
+
+        return $browsershot;
     }
 
     private function logFailure(string $op, string $url, \Throwable $e): void
