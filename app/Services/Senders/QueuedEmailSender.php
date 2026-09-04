@@ -64,7 +64,7 @@ class QueuedEmailSender
                 'reply_to' => $fromEmail,
                 'attachments' => $this->microserviceAttachments($email->batch_id),
                 'verify_cert' => ($encryption === 'ssl' && $isBeget),
-            ], (int) $email->id);
+            ], (int) $email->id, (int) ($email->retry_count ?? 0));
 
             return;
         }

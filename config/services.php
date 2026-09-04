@@ -109,6 +109,10 @@ return [
             array_filter(array_map('trim', explode(',', (string) env('EMAILS_MICROSERVICE_SENDER_IDS', ''))), 'strlen')
         ))),
         'microservice_timeout' => (int) env('EMAILS_MICROSERVICE_TIMEOUT', 60),
+        // Предохранитель релея: после транспортного сбоя (connect-ошибка/таймаут чтения)
+        // узел помечается «down» в кеше на N сек — остальные письма идут в живые релеи,
+        // не ожидая по таймауту на каждом. По истечении TTL узел пробуется снова. 0 = выкл.
+        'microservice_down_ttl' => (int) env('EMAILS_MICROSERVICE_DOWN_TTL', 180),
 
         // Адаптивный пейсинг по получателю (to_email): чтобы не задолбить поставщика
         // пачкой. На каждом тике интервал между письмами одному получателю =

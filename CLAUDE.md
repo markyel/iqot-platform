@@ -194,6 +194,11 @@ Upsert офферов идемпотентен, но вставки в `request_
 - **Очередь `questions`** — нужен отдельный systemd-воркер на проде (`queue:work database --queue=questions --tries=1 --timeout=120`), по аналогии с `iqot-receive-worker@`. Заводить ТОЛЬКО когда флаг ON.
 - Конфиг (`services.email_questions`): `EMAILS_QUESTIONS_MODEL` (дефолт `gpt-4o-mini`), `EMAILS_QUESTIONS_TIMEOUT` (60), `EMAILS_QUESTIONS_MAX_TOKENS` (1024), `EMAILS_QUESTIONS_BATCH_LIMIT` (10), `EMAILS_QUESTIONS_HISTORY_LIMIT` (15).
 
+### Релеи отправки (RelayHttpMailer) — устойчивость к падению узла (04.09.2026)
+Боевая отправка идёт через пул HTTP-релеев (`EMAILS_SEND_VIA_MICROSERVICE=true`, `EMAILS_MICROSERVICE_URLS` — два узла, вес 1/1). **Инцидент 30.07–31.08:** один релей месяц висел на чтении (cURL 28 через 60 с) → 48% писем (~8 000) ушли в terminal `error` после 3 ретраев. Причины: (1) read-таймаут не считался «релей down» → без failover; (2) узел выбирался по `id % pool`, поэтому ретрай того же письма бил в тот же мёртвый узел. Никто не заметил, т.к. доля `error` не мониторится.
+- **Фикс (`RelayHttpMailer`):** предохранитель в кеше — любой транспортный сбой узла (connect-ошибка ИЛИ таймаут чтения) ставит метку `relay:down:{md5(url)}` на `EMAILS_MICROSERVICE_DOWN_TTL` сек (дефолт 180; 0 = выкл.), живые узлы идут первыми, помеченные — в хвосте (пробуются, если живых нет); успех снимает метку. Ретрай письма (`retry_count` → параметр `$attempt` в `send()`) сдвигает выбор узла на другой релей. Read-таймаут в рамках одного вызова по-прежнему НЕ фейловерится (SMTP мог уйти → дубль), но ретрай джоба через 5 мин уходит уже в другой узел.
+- **Диагностика:** `SELECT date(updated_at), count(*) FROM email_queue WHERE status='error' GROUP BY 1` — нормальный фон 0–5/день; сотни/день с текстом `cURL error 28` = релей висит. Лог: `RelayHttpMailer: релей помечен down`. Живой тест релея: POST `/send` с нашего ящика на наш же (см. историю 04.09).
+
 ## Отправка готовых ответов поставщикам (заменяет n8n «Send Outgoing Replies»)
 Последний шаг конвейера вопросов: триаж (`emails:process-questions`) складывает готовые ответы в `reports.outgoing_replies` (status='pending'), а этот шаг их отправляет по SMTP, пишет в `email_messages` (direction='outgoing') и переводит ответ в 'sent'/'failed'. БД та же — `reports`.
 

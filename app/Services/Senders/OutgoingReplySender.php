@@ -83,7 +83,7 @@ class OutgoingReplySender
                 $payload['references'] = $references;
             }
 
-            $relayMailer->send($payload, (int) $reply->id);
+            $relayMailer->send($payload, (int) $reply->id, (int) ($reply->retry_count ?? 0));
 
             return '<' . $messageId . '>';
         }

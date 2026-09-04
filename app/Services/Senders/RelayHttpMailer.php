@@ -3,7 +3,9 @@
 namespace App\Services\Senders;
 
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Генерик-транспорт отправки через микросервис релея (universal-email-service, FastAPI
@@ -18,6 +20,20 @@ use Illuminate\Support\Facades\Http;
  * (535/550/ratelimit) приходит как HTTP 500 с текстом — её НЕ фейловерим и НЕ ретраим
  * здесь (иначе двойная отправка / повторная неудачная авторизация → бан IP); её
  * пробрасываем джобу, он классифицирует (деактивация ящика/ретрай).
+ *
+ * УСТОЙЧИВОСТЬ К ПАДЕНИЮ РЕЛЕЯ (инцидент 30.07–31.08.2026: один из двух релеев месяц
+ * висел на чтении → 48% писем терялись после 3 ретраев, т.к. ретрай письма шёл в ТОТ ЖЕ
+ * узел по тому же id, а read-таймаут не фейловерился):
+ *   1. ПРЕДОХРАНИТЕЛЬ (circuit breaker) в кеше: любой транспортный сбой узла (connect-
+ *      ошибка ИЛИ таймаут чтения) помечает его «down» на microservice_down_ttl секунд;
+ *      порядок обхода ставит живые узлы первыми. Следующие письма сразу идут в живой
+ *      релей, а не ждут по 60 с каждое. По истечении TTL узел пробуется снова (half-open);
+ *      успех снимает метку досрочно.
+ *   2. РОТАЦИЯ РЕТРАЕВ: $attempt (retry_count письма) сдвигает выбор узла — повторная
+ *      попытка того же письма стартует с ДРУГОГО релея.
+ * Таймаут чтения по-прежнему НЕ фейловерится в рамках одного вызова (SMTP мог уйти —
+ * дубль недопустим); он пробрасывается джобу как транзиентный, а ретрай джоба (через
+ * 5 мин, с attempt+1) уже уйдёт в другой узел.
  *
  * За флагом services.email_dispatch.via_microservice. Опциональный белый список
  * sender_id (microservice_sender_ids) — для обкатки. Применяется вызывающим ТОЛЬКО к
@@ -94,11 +110,13 @@ class RelayHttpMailer
      *   message_id/in_reply_to/references (threading), verify_cert.
      * @param int|null $routingKey ключ распределения по пулу (id письма/ответа) — поток
      *   каждого ящика ровно раскладывается по всем релеям. null → первый узел.
+     * @param int $attempt номер повторной попытки этого письма (retry_count) — сдвигает
+     *   выбор узла, чтобы ретрай не упирался в тот же (возможно, висящий) релей.
      * @return string|null Message-ID отправленного письма (из ответа), если вернулся
      * @throws \RuntimeException при не-2xx / success=false (текст SMTP-ошибки) или если
      *   все релеи недоступны
      */
-    public function send(array $payload, ?int $routingKey = null): ?string
+    public function send(array $payload, ?int $routingKey = null, int $attempt = 0): ?string
     {
         $pool = $this->endpoints();
         if ($pool === []) {
@@ -113,8 +131,9 @@ class RelayHttpMailer
         $payload['retry_attempts'] = 1;
         $payload['timeout'] = (int) ($payload['timeout'] ?? max(15, $timeout - 10));
 
-        // Порядок обхода: выбранный по ключу узел первым, остальные — резерв для failover.
-        $order = $this->failoverOrder($pool, $routingKey);
+        // Порядок обхода: живые узлы первыми; среди них — выбранный по ключу (со сдвигом
+        // на номер попытки), остальные — резерв для failover; помеченные «down» — в хвосте.
+        $order = $this->failoverOrder($pool, $routingKey, $attempt);
         $lastConnError = null;
 
         foreach ($order as $ep) {
@@ -126,14 +145,22 @@ class RelayHttpMailer
                     ->asJson()
                     ->post($ep['url'] . '/send', $payload);
             } catch (ConnectionException $e) {
+                // Любой транспортный сбой узла взводит предохранитель: следующие письма
+                // пойдут в другие релеи, не дожидаясь таймаута на этом.
+                $this->markDown($ep['url'], $e->getMessage());
+
                 // Различаем НЕДОСТУПНОСТЬ релея (failover на следующий) и таймаут ЧТЕНИЯ
-                // (SMTP уже мог уйти — НЕ фейловерим, иначе дубль; пробрасываем джобу).
+                // (SMTP уже мог уйти — НЕ фейловерим, иначе дубль; пробрасываем джобу,
+                // его ретрай с attempt+1 стартует с другого узла).
                 if ($this->isRelayDown($e->getMessage())) {
                     $lastConnError = $e;
                     continue;
                 }
                 throw new \RuntimeException('microservice /send transport: ' . $e->getMessage(), 0, $e);
             }
+
+            // Узел ответил по HTTP — жив; снимаем метку «down», если была.
+            $this->markUp($ep['url']);
 
             // Получили HTTP-ответ от релея → обрабатываем как есть (SMTP-ошибки НЕ фейловерим).
             if (!$response->successful()) {
@@ -168,14 +195,21 @@ class RelayHttpMailer
 
     /**
      * Порядок обхода пула: сначала выбранный по routing-ключу (взвешенно, стабильно —
-     * поток ящика ровно раскладывается по релеям), затем остальные как резерв failover.
+     * поток ящика ровно раскладывается по релеям; $attempt сдвигает выбор), затем
+     * остальные как резерв failover. Узлы с меткой «down» (предохранитель) — в хвосте
+     * в том же относительном порядке: их всё равно пробуем, если живые не ответили.
      *
      * @param array<int, array{url:string, weight:int}> $pool
      * @return array<int, array{url:string, weight:int}>
      */
-    private function failoverOrder(array $pool, ?int $routingKey): array
+    private function failoverOrder(array $pool, ?int $routingKey, int $attempt = 0): array
     {
+        // Сдвиг на попытку — на «единицу пула», а не на единицу веса: при весах {3,1}
+        // ретрай гарантированно уходит в ДРУГОЙ узел, а не в следующий слот того же.
         $picked = $this->pickIndex($pool, $routingKey);
+        $n = count($pool);
+        $picked = ($picked + max(0, $attempt)) % $n;
+
         $order = [$pool[$picked]];
         foreach ($pool as $i => $ep) {
             if ($i !== $picked) {
@@ -183,7 +217,59 @@ class RelayHttpMailer
             }
         }
 
-        return $order;
+        $alive = [];
+        $down = [];
+        foreach ($order as $ep) {
+            if ($this->isDown($ep['url'])) {
+                $down[] = $ep;
+            } else {
+                $alive[] = $ep;
+            }
+        }
+
+        return array_merge($alive, $down);
+    }
+
+    /**
+     * Предохранитель: метка «узел down» в кеше на microservice_down_ttl секунд.
+     * Кеш общий для всех воркеров → один таймаут уводит от узла весь поток.
+     */
+    private function markDown(string $url, string $reason): void
+    {
+        $ttl = max(0, (int) config('services.email_dispatch.microservice_down_ttl', 180));
+        if ($ttl === 0) {
+            return;
+        }
+        $wasDown = $this->isDown($url);
+        Cache::put($this->downKey($url), now()->toDateTimeString(), $ttl);
+        if (!$wasDown) {
+            Log::warning('RelayHttpMailer: релей помечен down (предохранитель)', [
+                'relay' => $url,
+                'ttl' => $ttl,
+                'reason' => mb_substr($reason, 0, 200),
+            ]);
+        }
+    }
+
+    private function markUp(string $url): void
+    {
+        if ($this->isDown($url)) {
+            Cache::forget($this->downKey($url));
+            Log::info('RelayHttpMailer: релей снова отвечает, метка down снята', ['relay' => $url]);
+        }
+    }
+
+    /**
+     * Помечен ли узел как недоступный (предохранитель взведён и TTL не истёк).
+     */
+    public function isDown(string $url): bool
+    {
+        return Cache::has($this->downKey($url));
+    }
+
+    private function downKey(string $url): string
+    {
+        return 'relay:down:' . md5(rtrim($url, '/'));
     }
 
     /**
