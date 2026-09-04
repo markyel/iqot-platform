@@ -203,7 +203,16 @@ Upsert офферов идемпотентен, но вставки в `request_
 ### Чистка пулов поставщиков по доменам (04.09.2026)
 - Дискавери (`SupplierDiscoveryService`, Яндекс-выдача по названию позиции) заводит поставщика с `ai_inferred/0.9` по любому сайту, где встретилось слово из позиции («цепи», «гребёнки», «поручни», «ступени») → в домен «Эскалаторы» (id 2) попали магазины стульев, стиральных машин, велосипедов, цветов, потолков и т.п. Профиль не проверяется по тематике сайта.
 - **Ручное исключение из домена:** `UPDATE supplier_domains SET is_included=0, is_manual=1, source='manual', negative_signals=negative_signals+1 WHERE domain_id=? AND supplier_id IN (...)`. Дискавери только вставляет НОВЫЕ строки и существующую с `is_included=0` не флипает; `auto_refine_suppliers` в `migration_flags` выключен → исключение держится. Поставщик без включённых доменов в пул не попадает (`CampaignSupplierSelector`, NEW-роутинг).
-- 04.09: из «Эскалаторов» исключено 46 посторонних (226 → 180 включённых; «только эскалаторы» 86 → 40). Список — в истории чата/git log. Лифтовый пул (домен 1 «Лифты», 108 «Эскалаторы и лифты») не трогали.
+- 04.09: из «Эскалаторов» исключено 46 посторонних (226 → 180 включённых; «только эскалаторы» 86 → 40). Список — в истории чата/git log. Лифтовый пул (домен 1 «Лифты», 108 «Эскалаторы и лифты») не трогали. В «Лифты» вручную добавлены Eurolifttorg (2103), LIFT-IMPORT (2342), SJEC (2376), Точка Лифт (1807, без email).
+
+### Гейт принадлежности домену в дискавери (коммит 71e91d9+, 04.09.2026)
+`SupplierDiscoveryService::extractAndValidate` теперь возвращает `domain_match`/`domain_confidence`/`domain_reason` (в промпте явно: `is_supplier` оценивать БЕЗ учёта области, домен — отдельно; названия типов многозначны). Связь `supplier_domains` заводит/повышает `upsertDomainLink()`:
+- **включена сразу** — `domain_match=true` и `domain_confidence ≥ services.supplier_discovery.domain_min_confidence` (`DISCOVERY_DOMAIN_MIN_CONFIDENCE`, 0.75);
+- иначе **кандидат** `is_included=0`, `discovery_hits=1`; каждое новое попадание по тому же домену — `discovery_hits+1`; при `discovery_hits ≥ domain_hits_to_include` (`DISCOVERY_DOMAIN_HITS_TO_INCLUDE`, 3) включается по накоплению — но НЕ если AI в этот прогон дал уверенное «нет» (`domain_match=false`, conf ≥ порога);
+- **заблокированы от авто-включения**: `is_manual=1` и `source='response_negative'` (поставщик сам ответил «не наше») — только считаем попадания.
+- Счётчик `discovery_hits`/`last_discovery_at` (миграция `2026_09_04_150000_..._on_reports`) есть и на `supplier_product_types`; связь с ТИПОМ включается как раньше (по `is_supplier`/conf ≥ 0.6). **`positive_signals`/`negative_signals` — карма по ОТВЕТАМ** (гейт пула в `CampaignSupplierSelector` считает trusted по `positive_signals>0`), дискавери их не трогает.
+- Живой тест на проде: kitfort.ru → `rejected`; latres.ru → включён в «Лифты» (conf 0.9); metiz-dvor.ru → кандидат, 3 прогона → включён по hits (тестовые строки откачены).
+- Ревалидация уже существующих `ai_inferred`-связей (команда с `--dry-run`) — НЕ делалась, отложена по решению пользователя.
 
 ## Отправка готовых ответов поставщикам (заменяет n8n «Send Outgoing Replies»)
 Последний шаг конвейера вопросов: триаж (`emails:process-questions`) складывает готовые ответы в `reports.outgoing_replies` (status='pending'), а этот шаг их отправляет по SMTP, пишет в `email_messages` (direction='outgoing') и переводит ответ в 'sent'/'failed'. БД та же — `reports`.
