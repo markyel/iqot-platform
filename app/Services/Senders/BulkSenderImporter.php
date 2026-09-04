@@ -419,7 +419,12 @@ PROMPT;
     private function loadTemplateIds(): void
     {
         $this->tokenTemplateIds = $this->activeIds('token_templates');
-        $this->emailTemplateIds = $this->activeIds('email_templates');
+        // Шаблоны письма для НОВЫХ ящиков: активные минус стабильно слабые по отклику
+        // (services.sender_import.template_exclude_ids). У текущих владельцев эти шаблоны
+        // остаются (стиль ящика стабилен — анти-фингерпринтинг), просто новым не раздаём.
+        $exclude = array_map('intval', (array) config('services.sender_import.template_exclude_ids', []));
+        $pool = array_values(array_diff($this->activeIds('email_templates'), $exclude));
+        $this->emailTemplateIds = $pool !== [] ? $pool : $this->activeIds('email_templates');
     }
 
     /**
