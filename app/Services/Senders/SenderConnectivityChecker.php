@@ -13,6 +13,13 @@ use Webklex\PHPIMAP\ClientManager;
  * не валидируем — проверяем ИМЕННО логин/пароль, а не цепочку доверия.
  *
  * Переиспользуется веб-кнопкой на странице импорта и командой emails:check-senders.
+ *
+ * ПУТЬ ПРОВЕРКИ = ПУТЬ БОЯ. SMTP в проде уходит через релей (RelayHttpMailer), и ряд
+ * провайдеров (напр. wwwsend/sprinthost: smtp.wwwsend.ru резолвится в IP релея, наружу
+ * пускает только с него) с app-сервера отдают 535 даже на верных кредах. Поэтому если
+ * ящик обслуживает релей — SMTP проверяем через его /test-smtp (тот же хост/креды,
+ * что и при отправке); прямой EsmtpTransport — фолбэк при недоступности релея и путь
+ * для ящиков вне релея. IMAP всегда напрямую: приём (ImapMailboxReader) идёт с app-сервера.
  */
 class SenderConnectivityChecker
 {
@@ -56,6 +63,37 @@ class SenderConnectivityChecker
         if (!$s->smtp_server || !$s->smtp_user || !$s->smtp_password) {
             return [false, 'нет SMTP-кредов'];
         }
+
+        // Боевой путь — релей: проверяем оттуда же, откуда шлём.
+        $relay = new RelayHttpMailer();
+        if ($relay->handlesSender((int) $s->id)) {
+            $r = $relay->testSmtp([
+                'smtp_server' => (string) $s->smtp_server,
+                'smtp_port' => (int) ($s->smtp_port ?: 465),
+                'smtp_user' => (string) $s->smtp_user,
+                'smtp_password' => (string) $s->smtp_password,
+                'smtp_encryption' => (string) ($s->smtp_encryption ?: 'ssl'),
+                'timeout' => $this->timeout,
+            ]);
+            if ($r !== null) {
+                return [$r['ok'], $r['ok'] ? null : $this->clean('через релей: ' . ($r['error'] ?? 'ошибка'))];
+            }
+            // Релеи недоступны → прямой фолбэк (результат помечаем, он может быть ложным).
+            [$ok, $err] = $this->checkSmtpDirect($s);
+
+            return [$ok, $ok ? null : $this->clean('релей недоступен, прямая проверка: ' . $err)];
+        }
+
+        return $this->checkSmtpDirect($s);
+    }
+
+    /**
+     * Прямой SMTP-AUTH с app-сервера (EsmtpTransport). Для ящиков вне релея и как фолбэк.
+     *
+     * @return array{0:bool,1:?string}
+     */
+    private function checkSmtpDirect(Sender $s): array
+    {
         try {
             $tls = ((string) $s->smtp_encryption === 'ssl') || (int) $s->smtp_port === 465;
             $t = new EsmtpTransport((string) $s->smtp_server, (int) ($s->smtp_port ?: 465), $tls);

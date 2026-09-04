@@ -194,6 +194,53 @@ class RelayHttpMailer
     }
 
     /**
+     * Проверка SMTP-кредов С РЕЛЕЯ (POST /test-smtp — коннект + AUTH без отправки).
+     * Тот же хост/порт/креды, что при боевой отправке → результат отражает реальный
+     * путь письма (прямой AUTH с app-сервера у ряда провайдеров ложно даёт 535).
+     * Обход пула: живые узлы первыми; транспортный сбой узла взводит предохранитель
+     * и переводит на следующий.
+     *
+     * @param array{smtp_server:string,smtp_port:int,smtp_user:string,smtp_password:string,smtp_encryption?:string,timeout?:int} $creds
+     * @return array{ok:bool,error:?string}|null null — ни один релей не ответил
+     */
+    public function testSmtp(array $creds): ?array
+    {
+        $pool = $this->endpoints();
+        if ($pool === []) {
+            return null;
+        }
+        $key = (string) config('services.email_dispatch.microservice_api_key', '');
+        $smtpTimeout = max(5, (int) ($creds['timeout'] ?? 15));
+        $creds['timeout'] = $smtpTimeout;
+
+        foreach ($this->failoverOrder($pool, null) as $ep) {
+            try {
+                $response = Http::timeout($smtpTimeout + 15)
+                    ->connectTimeout(12)
+                    ->withHeaders(['X-API-Key' => $key])
+                    ->acceptJson()
+                    ->asJson()
+                    ->post($ep['url'] . '/test-smtp', $creds);
+            } catch (ConnectionException $e) {
+                $this->markDown($ep['url'], $e->getMessage());
+                continue;
+            }
+            $this->markUp($ep['url']);
+
+            $json = $response->json();
+            if (!$response->successful() || !is_array($json)) {
+                // Ответ есть, но не по контракту (401/500/не-JSON) — узел жив, проверка не удалась.
+                return ['ok' => false, 'error' => 'relay HTTP ' . $response->status() . ': ' . mb_substr((string) $response->body(), 0, 200)];
+            }
+            $ok = (bool) ($json['success'] ?? false);
+
+            return ['ok' => $ok, 'error' => $ok ? null : (string) ($json['message'] ?? 'SMTP connection failed')];
+        }
+
+        return null;
+    }
+
+    /**
      * Порядок обхода пула: сначала выбранный по routing-ключу (взвешенно, стабильно —
      * поток ящика ровно раскладывается по релеям; $attempt сдвигает выбор), затем
      * остальные как резерв failover. Узлы с меткой «down» (предохранитель) — в хвосте
