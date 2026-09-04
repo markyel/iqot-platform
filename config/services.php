@@ -436,6 +436,19 @@ return [
     // Фаза 2: capacity-планировщик (backlog send_intents + ленивый рендер под ёмкость).
     // Пока OFF — строится параллельно текущему генератору. Включать ТОЛЬКО вместе с
     // выключением EMAILS_GENERATE_ENABLED (иначе оба обрабатывают заявки).
+    // Дискавери поставщиков (SupplierDiscoveryService): подтверждение принадлежности ДОМЕНУ.
+    // Раньше AI-валидатор проверял только «B2B-поставщик товара категории X» (X = тип позиции:
+    // «цепи», «гребёнки»), и магазин цепей для бензопил попадал в домен «Эскалаторы» с
+    // is_included=1. Теперь связь с доменом включается в пул, если:
+    //   (а) AI подтвердил domain_match с domain_confidence ≥ domain_min_confidence, ЛИБО
+    //   (б) сайт всплыл в дискавери по этому домену domain_hits_to_include раз
+    //       (supplier_domains.discovery_hits — ОТДЕЛЬНО от кармы positive_signals).
+    // Иначе строка пишется с is_included=0 (кандидат, в пул не идёт). is_manual=1 не трогаем.
+    'supplier_discovery' => [
+        'domain_min_confidence' => (float) env('DISCOVERY_DOMAIN_MIN_CONFIDENCE', 0.75),
+        'domain_hits_to_include' => (int) env('DISCOVERY_DOMAIN_HITS_TO_INCLUDE', 3),
+    ],
+
     'email_planner' => [
         'enabled' => (bool) env('EMAILS_PLANNER_ENABLED', false),
         // Заявок за тик билдера интентов.

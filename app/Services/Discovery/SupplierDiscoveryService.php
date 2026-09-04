@@ -18,10 +18,18 @@ use Illuminate\Support\Facades\Log;
  *   2. Multi-search через YandexSearchClient.
  *   3. Fetch страниц + strip HTML → текст.
  *   4. AI-экстрактор контактов (name/email/phone/website).
- *   5. AI-валидатор: действительно ли это B2B-поставщик данного pt?
+ *   5. AI-валидатор: действительно ли это B2B-поставщик данного pt? И (если задана
+ *      область) работает ли он ИМЕННО для этой области (domain_match/domain_confidence).
  *   6. INSERT reports.suppliers + supplier_product_types + supplier_domains.
  *
- * Возвращает число найденных и сохранённых поставщиков.
+ * ГЕЙТ ДОМЕНА (04.09.2026). Название типа многозначно («цепи», «гребёнки», «поручни»),
+ * и валидация только типа заводила в домен «Эскалаторы» магазины бензопил/мебели/
+ * стиралок с confidence 0.9. Связь с доменом включается (is_included=1), если AI
+ * подтвердил domain_match с confidence ≥ services.supplier_discovery.domain_min_confidence,
+ * ЛИБО сайт всплыл по этому домену domain_hits_to_include раз (supplier_domains.discovery_hits
+ * — отдельный счётчик; positive_signals = карма по ответам, её не трогаем). Иначе строка
+ * пишется с is_included=0 (кандидат). is_manual=1 не переписываем (только считаем попадания).
+ * Связь с ТИПОМ продукции включается как раньше (по is_supplier/confidence ≥ 0.6).
  */
 class SupplierDiscoveryService
 {
@@ -316,15 +324,22 @@ class SupplierDiscoveryService
             . 'Тебе дан текст web-страницы компании. '
             . 'Определи: '
             . '(1) является ли эта компания B2B-поставщиком товара/оборудования данной категории (не интернет-магазин для физлиц, не новостной сайт, не агрегатор); '
-            . '(2) извлеки контакты: название компании, основной email (общий), основной телефон, website (главный домен). '
+            . '(2) если указана ОБЛАСТЬ ПРИМЕНЕНИЯ — работает ли компания ИМЕННО для этой области. '
+            . 'Название категории товара многозначно: «цепи» бывают для бензопил, велосипедов и эскалаторов, «поручни» — для лестниц и для эскалаторов, «ступени» — для крыльца и для эскалатора. '
+            . 'domain_match=true ТОЛЬКО если на сайте есть признаки работы с этой областью (лифты, эскалаторы, соответствующее оборудование, бренды отрасли, запчасти к нему). '
+            . 'Магазин бытовых товаров, инструмента, автозапчастей, мебели, сантехники и т.п., у которого просто есть товар с таким словом, — domain_match=false; '
+            . '(3) извлеки контакты: название компании, основной email (общий), основной телефон, website (главный домен). '
             . 'Отвечай строго JSON: '
-            . '{"is_supplier": bool, "confidence": float (0..1), "name": string|null, "email": string|null, "phone": string|null, "website": string|null, "categories": string[], "reason": string}. '
-            . 'Если нет уверенности — is_supplier=false. Если контакты не нашлись — null. '
+            . '{"is_supplier": bool, "confidence": float (0..1), "domain_match": bool|null, "domain_confidence": float (0..1), "domain_reason": string, "name": string|null, "email": string|null, "phone": string|null, "website": string|null, "categories": string[], "reason": string}. '
+            . 'Если область не указана — domain_match=null. Если нет уверенности — is_supplier=false. Если контакты не нашлись — null. '
             . 'categories — список 1-5 категорий товаров которыми занимается компания (в свободной форме).';
 
         $contextHint = "product_type который интересует: {$pt->name}\n";
         if ($domain) {
-            $contextHint .= "область: {$domain->name}\n";
+            $contextHint .= "область применения: {$domain->name}\n";
+            if (!empty($domain->description)) {
+                $contextHint .= "описание области: " . mb_substr((string) $domain->description, 0, 300) . "\n";
+            }
         }
 
         $userPrompt = $contextHint
@@ -335,9 +350,17 @@ class SupplierDiscoveryService
 
         $result = $this->ai->jsonCompletion($this->ai->modelMini(), $systemPrompt, $userPrompt, 700);
 
+        // domain_match: null — область не задана/AI не ответил (в код включения идёт как «не подтверждено»).
+        $domainMatch = array_key_exists('domain_match', $result) && $result['domain_match'] !== null
+            ? (bool) $result['domain_match']
+            : null;
+
         return [
             'is_supplier' => (bool) ($result['is_supplier'] ?? false),
             'confidence' => (float) ($result['confidence'] ?? 0),
+            'domain_match' => $domain ? $domainMatch : null,
+            'domain_confidence' => (float) ($result['domain_confidence'] ?? 0),
+            'domain_reason' => $this->s($result['domain_reason'] ?? null, 300) ?? '',
             'name' => $this->s($result['name'] ?? null, 255),
             'email' => $this->validEmail($result['email'] ?? null),
             'phone' => $this->s($result['phone'] ?? null, 50),
@@ -401,6 +424,14 @@ class SupplierDiscoveryService
         }
         if (!empty($enriched['categories']) && empty($merged['categories'])) {
             $merged['categories'] = $enriched['categories'];
+        }
+        // Принадлежность домену: страница контактов обычно беднее главной, поэтому
+        // берём вердикт повторного прогона только если он ПОДТВЕРЖДАЕТ домен увереннее.
+        if (($enriched['domain_match'] ?? null) === true
+            && (float) ($enriched['domain_confidence'] ?? 0) > (float) ($merged['domain_confidence'] ?? 0)) {
+            $merged['domain_match'] = true;
+            $merged['domain_confidence'] = (float) $enriched['domain_confidence'];
+            $merged['domain_reason'] = $enriched['domain_reason'] ?? ($merged['domain_reason'] ?? '');
         }
         if (!empty($merged['email'])) {
             Log::info('SupplierDiscovery: email found on contact page', [
@@ -529,42 +560,12 @@ class SupplierDiscoveryService
         $changed = false;
 
         // supplier_product_types (supplier_id + product_type_id — composite PK).
-        $hasPt = DB::connection('reports')->table('supplier_product_types')
-            ->where('supplier_id', $supplierId)
-            ->where('product_type_id', $productTypeId)
-            ->exists();
-        if (!$hasPt) {
-            DB::connection('reports')->table('supplier_product_types')->insert([
-                'supplier_id' => $supplierId,
-                'product_type_id' => $productTypeId,
-                'is_included' => 1,
-                'source' => 'ai_inferred',
-                'confidence' => (float) $info['confidence'],
-                'is_manual' => 0,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ]);
+        if ($this->upsertProductTypeLink($supplierId, $productTypeId, $info, $now)) {
             $changed = true;
         }
 
-        if ($domainId) {
-            $hasDom = DB::connection('reports')->table('supplier_domains')
-                ->where('supplier_id', $supplierId)
-                ->where('domain_id', $domainId)
-                ->exists();
-            if (!$hasDom) {
-                DB::connection('reports')->table('supplier_domains')->insert([
-                    'supplier_id' => $supplierId,
-                    'domain_id' => $domainId,
-                    'is_included' => 1,
-                    'source' => 'ai_inferred',
-                    'confidence' => (float) $info['confidence'],
-                    'is_manual' => 0,
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ]);
-                $changed = true;
-            }
+        if ($domainId && $this->upsertDomainLink($supplierId, $domainId, $info, $now)) {
+            $changed = true;
         }
 
         if ($changed) {
@@ -612,33 +613,150 @@ class SupplierDiscoveryService
                 'updated_at' => $now,
             ]);
 
-            // Pivot с product_type
-            DB::connection('reports')->table('supplier_product_types')->insertOrIgnore([
-                'supplier_id' => $supplierId,
-                'product_type_id' => $productTypeId,
-                'is_included' => 1,
-                'source' => 'ai_inferred',
-                'confidence' => $info['confidence'],
-                'is_manual' => 0,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ]);
-
+            // Pivot с product_type (включается по валидации типа — как раньше) и с доменом
+            // (включается ТОЛЬКО по подтверждению домена / накоплению попаданий).
+            $this->upsertProductTypeLink($supplierId, $productTypeId, $info, $now);
             if ($domainId) {
-                DB::connection('reports')->table('supplier_domains')->insertOrIgnore([
-                    'supplier_id' => $supplierId,
-                    'domain_id' => $domainId,
-                    'is_included' => 1,
-                    'source' => 'ai_inferred',
-                    'confidence' => $info['confidence'],
-                    'is_manual' => 0,
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ]);
+                $this->upsertDomainLink($supplierId, $domainId, $info, $now);
             }
 
             return $supplierId;
         });
+    }
+
+    /**
+     * Подтверждён ли домен AI: domain_match=true и domain_confidence ≥ порога.
+     */
+    private function domainConfirmedByAi(array $info): bool
+    {
+        $min = (float) config('services.supplier_discovery.domain_min_confidence', 0.75);
+
+        return ($info['domain_match'] ?? null) === true
+            && (float) ($info['domain_confidence'] ?? 0) >= $min;
+    }
+
+    /**
+     * Связь поставщик↔домен с гейтом включения.
+     *   Новая строка: is_included = AI подтвердил домен (иначе кандидат с is_included=0), discovery_hits=1.
+     *   Существующая: discovery_hits+1; если is_manual — больше ничего не трогаем;
+     *   если ещё не включена — включаем при AI-подтверждении ИЛИ hits ≥ domain_hits_to_include.
+     * Возвращает true, если связь создана или переведена во включённую.
+     */
+    private function upsertDomainLink(int $supplierId, int $domainId, array $info, $now): bool
+    {
+        $conn = DB::connection('reports');
+        $confirmed = $this->domainConfirmedByAi($info);
+        $domConf = (float) ($info['domain_confidence'] ?? 0);
+        $hitsToInclude = max(1, (int) config('services.supplier_discovery.domain_hits_to_include', 3));
+
+        $row = $conn->table('supplier_domains')
+            ->where('supplier_id', $supplierId)
+            ->where('domain_id', $domainId)
+            ->first();
+
+        if (!$row) {
+            $conn->table('supplier_domains')->insert([
+                'supplier_id' => $supplierId,
+                'domain_id' => $domainId,
+                'is_included' => $confirmed ? 1 : 0,
+                'source' => 'ai_inferred',
+                'confidence' => $domConf,
+                'is_manual' => 0,
+                'discovery_hits' => 1,
+                'last_discovery_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+            if (!$confirmed) {
+                Log::info('SupplierDiscovery: домен не подтверждён — кандидат (is_included=0)', [
+                    'supplier_id' => $supplierId,
+                    'domain_id' => $domainId,
+                    'domain_match' => $info['domain_match'] ?? null,
+                    'domain_confidence' => $domConf,
+                    'reason' => $info['domain_reason'] ?? '',
+                ]);
+            }
+
+            return $confirmed;
+        }
+
+        $hits = (int) ($row->discovery_hits ?? 0) + 1;
+        $update = [
+            'discovery_hits' => $hits,
+            'last_discovery_at' => $now,
+            'updated_at' => $now,
+        ];
+
+        // Ручную привязку/исключение не переписываем — только считаем попадания.
+        if ((int) $row->is_manual === 1 || (int) $row->is_included === 1) {
+            if ((int) $row->is_manual !== 1 && $domConf > (float) $row->confidence) {
+                $update['confidence'] = $domConf;
+            }
+            $conn->table('supplier_domains')
+                ->where('supplier_id', $supplierId)->where('domain_id', $domainId)
+                ->update($update);
+
+            return false;
+        }
+
+        $promote = $confirmed || $hits >= $hitsToInclude;
+        if ($promote) {
+            $update['is_included'] = 1;
+            $update['confidence'] = max((float) $row->confidence, $domConf);
+            Log::info('SupplierDiscovery: кандидат включён в домен', [
+                'supplier_id' => $supplierId,
+                'domain_id' => $domainId,
+                'by' => $confirmed ? 'ai_confirmed' : 'hits',
+                'hits' => $hits,
+                'domain_confidence' => $domConf,
+            ]);
+        }
+        $conn->table('supplier_domains')
+            ->where('supplier_id', $supplierId)->where('domain_id', $domainId)
+            ->update($update);
+
+        return $promote;
+    }
+
+    /**
+     * Связь поставщик↔тип продукции: включение по валидации типа (как раньше — сюда
+     * попадаем только при is_supplier && confidence ≥ 0.6); discovery_hits считаем.
+     * Возвращает true, если связь создана.
+     */
+    private function upsertProductTypeLink(int $supplierId, int $productTypeId, array $info, $now): bool
+    {
+        $conn = DB::connection('reports');
+        $row = $conn->table('supplier_product_types')
+            ->where('supplier_id', $supplierId)
+            ->where('product_type_id', $productTypeId)
+            ->first();
+
+        if (!$row) {
+            $conn->table('supplier_product_types')->insert([
+                'supplier_id' => $supplierId,
+                'product_type_id' => $productTypeId,
+                'is_included' => 1,
+                'source' => 'ai_inferred',
+                'confidence' => (float) $info['confidence'],
+                'is_manual' => 0,
+                'discovery_hits' => 1,
+                'last_discovery_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            return true;
+        }
+
+        $conn->table('supplier_product_types')
+            ->where('supplier_id', $supplierId)->where('product_type_id', $productTypeId)
+            ->update([
+                'discovery_hits' => (int) ($row->discovery_hits ?? 0) + 1,
+                'last_discovery_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+        return false;
     }
 
     private function s(?string $value, int $max): ?string
