@@ -43,8 +43,9 @@ class DayPlanAssigner
      * @param array<int,int> $senderCaps             senderId => остаток писем (декрементим)
      * @param array<string,int> $recipientCaps       email => остаток конвертов сегодня (декрементим)
      * @param array<string,bool> $senderRecent       "senderId|email" => true (ящик писал получателю за окно ротации)
-     * @param int $maxPerEmail                       максимум позиций в одном конверте
+     * @param int $maxPerEmail                       максимум позиций в одном конверте (потолок)
      * @param int|null $droppedNoSender              out: конверты, не получившие ящик (дропнуты)
+     * @param bool $adaptivePerEmail                 размер конверта ПО ПОСТАВЩИКУ: K = clamp(ceil(спрос/кап), 1, max)
      * @return array<int,array{supplier_id:int,sender_id:int,item_ids:array<int,int>,order:int,phase:string}>
      */
     public function plan(
@@ -60,9 +61,34 @@ class DayPlanAssigner
         ?int &$droppedNoSender = null,
         ?array &$stats = null,
         bool $densify = false,
+        bool $adaptivePerEmail = false,
     ): array {
         $maxPerEmail = max(1, $maxPerEmail);
         $droppedNoSender = 0;
+
+        // ── Адаптивный размер конверта по поставщику. Отклик на письмо падает и с числом
+        // позиций в нём, и с числом писем получателю за день (1 письмо/день → 16.8% ответов,
+        // 13+ → 7.5%). Поэтому дробим ровно настолько, насколько позволяет дневной кап
+        // получателя: спрос = сколько позиций дня имеют поставщика в пуле (в раундах позиция
+        // хочет ВЕСЬ свой пул, так что без капа он получил бы их все); K = ceil(спрос/кап).
+        // Малый спрос → по одной позиции в письме; «универсал» с 60 позициями → потолок. ──
+        $kOf = [];   // supplierId => K
+        if ($adaptivePerEmail) {
+            $demand = [];
+            foreach ($positions as $id => $m) {
+                foreach (array_unique(array_map('intval', $pool[$id] ?? [])) as $sid) {
+                    $demand[$sid] = ($demand[$sid] ?? 0) + 1;
+                }
+            }
+            foreach ($demand as $sid => $d) {
+                $email = mb_strtolower(trim((string) ($supplierEmail[$sid] ?? '')));
+                $cap = (int) ($recipientCaps[$email] ?? 0);
+                $kOf[$sid] = $cap > 0
+                    ? max(1, min($maxPerEmail, (int) ceil($d / $cap)))
+                    : $maxPerEmail; // кап уже исчерпан — новых конвертов не будет, размер не важен
+            }
+        }
+        $limitFor = static fn (int $sid): int => $kOf[$sid] ?? $maxPerEmail;
         // Диагностика недобора: почему кандидаты не сели сегодня.
         $skips = ['empty_email' => 0, 'recipient_cap' => 0, 'capacity' => 0];
         $rounds = 0;
@@ -117,7 +143,7 @@ class DayPlanAssigner
                     // 1) Подсадка в открытый конверт (бесплатно по ёмкости) — ТОЛЬКО
                     // совместимые (качество письма). Несовместимый остаток добьёт раунд 2.
                     foreach ($bySupplier[$sid] ?? [] as $ei) {
-                        if (count($envelopes[$ei]['item_ids']) >= $maxPerEmail) {
+                        if (count($envelopes[$ei]['item_ids']) >= $limitFor($sid)) {
                             continue;
                         }
                         if (!$this->compatibleWithAll($item, $envelopes[$ei]['item_ids'], $compatible)) {
@@ -176,6 +202,8 @@ class DayPlanAssigner
         if ($densify) {
             foreach ($leftover as [$item, $sid]) {
                 $best = null;
+                // Хвост капа докладываем до ПОТОЛКА (не адаптивного K): кап получателя
+                // полон, альтернатива — отложить позицию на завтра.
                 $bestFill = $maxPerEmail;
                 foreach ($bySupplier[$sid] ?? [] as $ei) {
                     $fill = count($envelopes[$ei]['item_ids']);
@@ -287,8 +315,23 @@ class DayPlanAssigner
                     $positionsPartial++;
                 }
             }
+            // Размер конвертов плана: сколько писем с 1/2/3/… позициями (и по K поставщиков).
+            $sizeDist = [];
+            foreach ($keep as $env) {
+                $sz = count($env['item_ids']);
+                $sizeDist[$sz] = ($sizeDist[$sz] ?? 0) + 1;
+            }
+            ksort($sizeDist);
+            $kDist = [];
+            foreach ($kOf as $k) {
+                $kDist[$k] = ($kDist[$k] ?? 0) + 1;
+            }
+            ksort($kDist);
             $stats = [
                 'rounds' => $rounds,
+                'adaptive_per_email' => $adaptivePerEmail,
+                'envelope_size_dist' => $sizeDist,
+                'supplier_k_dist' => $kDist,
                 'stage1_envelopes' => $stage1Envelopes,
                 'densify_added' => $densifyAdded,
                 'kept' => count($keep),

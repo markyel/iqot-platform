@@ -237,7 +237,8 @@ class PlanDayCampaign extends Command
         $dropped = 0;
         $assignStats = [];
         $densify = (bool) config('services.email_planner.dayplan_densify', false);
-        $plan = (new DayPlanAssigner())->plan($positions, $poolMap, $relevantMap, $affinity, $supplierEmail, $senderCaps, $recipientCaps, $senderRecent, $maxPerEmail, $dropped, $assignStats, $densify);
+        $adaptiveK = (bool) config('services.email_planner.dayplan_adaptive_per_email', false);
+        $plan = (new DayPlanAssigner())->plan($positions, $poolMap, $relevantMap, $affinity, $supplierEmail, $senderCaps, $recipientCaps, $senderRecent, $maxPerEmail, $dropped, $assignStats, $densify, $adaptiveK);
 
         // 8. Отчёт по плану (и в dry-run, и перед рендером).
         $this->reportPlan($plan, $positions, $priced, $yandexOn, $yandexQueried, $yandexCached, count($senderCaps), $assignStats);
@@ -545,6 +546,13 @@ class PlanDayCampaign extends Command
                 $sk['empty_email'] ?? 0,
                 $sk['recipient_cap'] ?? 0,
                 $sk['capacity'] ?? 0,
+            ));
+            $fmt = static fn (array $d): string => $d === [] ? '—' : implode(', ', array_map(static fn ($k, $v) => "{$k}:{$v}", array_keys($d), $d));
+            $this->line(sprintf(
+                "  [ДИАГ] адаптивный размер письма: %s | писем по числу позиций {%s} | поставщиков по K {%s}",
+                !empty($assignStats['adaptive_per_email']) ? 'ВКЛ' : 'выкл',
+                $fmt($assignStats['envelope_size_dist'] ?? []),
+                $fmt($assignStats['supplier_k_dist'] ?? []),
             ));
         }
     }

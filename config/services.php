@@ -459,7 +459,12 @@ return [
         'fresh_days' => (int) env('EMAILS_PLANNER_FRESH_DAYS', 7),
         // v2 дневной планировщик (emails:plan-day): за флагом, параллельно v1 top-up.
         'dayplan_enabled' => (bool) env('EMAILS_DAYPLAN_ENABLED', false),
-        'dayplan_max_per_email' => (int) env('EMAILS_DAYPLAN_MAX_PER_EMAIL', 4),  // позиций в письме
+        'dayplan_max_per_email' => (int) env('EMAILS_DAYPLAN_MAX_PER_EMAIL', 4),  // позиций в письме (потолок)
+        // Адаптивный размер письма ПО ПОСТАВЩИКУ: K = clamp(ceil(спрос_поставщика / его кап), 1, max_per_email),
+        // где спрос = сколько позиций дня имеют его в пуле. Поставщику с малым спросом — по одной
+        // позиции в письме (отклик у коротких писем/первых писем дня в 2 раза выше), «универсалу»
+        // с 40–60 позициями — по-прежнему max_per_email, иначе не влезает в кап. OFF = все письма до max_per_email.
+        'dayplan_adaptive_per_email' => (bool) env('EMAILS_DAYPLAN_ADAPTIVE_K', false),
         // densify: 2-й проход добивает недозаполненные конверты позициями, которые
         // матчит поставщик, ИГНОРИРУЯ доменную совместимость (он в пуле = торгует типом).
         // Плотнее конверт → тот же кап получателя накрывает больше позиций. Деф OFF.
