@@ -31,7 +31,12 @@ class IndexSitePagesJob implements ShouldQueue
 
     public int $tries = 1;
 
-    private const TIME_BUDGET = 780;
+    /**
+     * Меньше retry_after очереди database (умолчание фреймворка — 90 с, config/queue.php нет):
+     * задача дольше считается зависшей и отдаётся второму воркеру → MaxAttemptsExceeded.
+     * Остаток порции задача ставит следующей задачей сама — поток по сайту не прерывается.
+     */
+    private const TIME_BUDGET = 70;
 
     private const CAPTCHA_RE = '~captcha|подтвердите, что вы не робот|checking your browser|ddos-guard|cf-chl|проверка безопасности~u';
 
@@ -47,13 +52,18 @@ class IndexSitePagesJob implements ShouldQueue
         $site = MpSite::find($this->siteId);
         $pool = EgressPool::make();
         $done = [];
+        $continue = false; // остановились только по времени — остаток продолжит следующая задача
         try {
             if (!$site || $site->isBlocked()) {
                 return;
             }
             $pages = DB::table('mp_site_pages')->whereIn('id', $this->pageIds)->get(['id', 'url']);
             foreach ($pages as $page) {
-                if (time() - $started > self::TIME_BUDGET || !$governor->available('fetch_index')) {
+                if (time() - $started > self::TIME_BUDGET) {
+                    $continue = true;
+                    break;
+                }
+                if (!$governor->available('fetch_index')) {
                     break;
                 }
                 $channel = $pool->exhaustedFor($site->domain) ? null : $pool->pick($site->domain, $site->egress);
@@ -61,14 +71,15 @@ class IndexSitePagesJob implements ShouldQueue
                     break;
                 }
                 $res = null;
-                for ($i = 0; $i < 30; $i++) {
+                while (time() - $started <= self::TIME_BUDGET) {
                     $res = $fetcher->fetch($page->url, ['egress' => $channel, 'rate_ms' => (int) $site->rate_limit_ms, 'max_bytes' => 800_000]);
                     if (!$res->deferred()) {
                         break;
                     }
-                    usleep(max(200, $res->retryAfterMs) * 1000);
+                    usleep(min(5000, max(200, $res->retryAfterMs)) * 1000);
                 }
                 if ($res === null || $res->deferred()) {
+                    $continue = true; // слот домена занят до конца бюджета — продолжит следующая задача
                     break;
                 }
                 $governor->record('fetch_index', 1, 0.0);
@@ -96,8 +107,11 @@ class IndexSitePagesJob implements ShouldQueue
                 $done[] = $page->id;
             }
         } finally {
-            $left = array_diff($this->pageIds, $done);
-            if ($left !== []) {
+            $left = array_values(array_diff($this->pageIds, $done));
+            if ($left !== [] && $continue) {
+                DB::table('mp_site_pages')->whereIn('id', $left)->update(['index_queued_at' => now()]);
+                self::dispatch($this->siteId, $left);
+            } elseif ($left !== []) {
                 DB::table('mp_site_pages')->whereIn('id', $left)->update(['index_queued_at' => null]);
             }
         }
