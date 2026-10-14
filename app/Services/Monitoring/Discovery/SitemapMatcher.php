@@ -79,9 +79,13 @@ class SitemapMatcher
             }
 
             if ($p['words'] !== []) {
+                // Слова, которых нет ни в одном адресе сайта, страницы этого сайта не различают
+                // (сайт так не пишет) — в балл не идут, иначе любой адрес «проседает».
                 $weights = [];
                 foreach ($p['words'] as $w => $_) {
-                    $weights[$w] = $idf($w);
+                    if (isset($byWord[$w])) {
+                        $weights[$w] = $idf($w);
+                    }
                 }
                 $total = array_sum($weights);
                 // Кандидаты — страницы с любым из 3 самых редких слов товара.
@@ -108,7 +112,9 @@ class SitemapMatcher
                     if ($p['nums'] !== [] && $pageNums[$id] !== [] && array_intersect_key($p['nums'], $pageNums[$id]) === []) {
                         $score *= 0.5; // размеры/мощность в адресе есть, но не наши
                     }
-                    if ($matched >= 2 && $score >= $this->minScore) {
+                    // ≥3 совпавших слова (или все, если различающих слов у товара на сайте меньше,
+                    // но не меньше 2): «ролик + kone» — не совпадение.
+                    if ($matched >= max(2, min(3, count($weights))) && $score >= $this->minScore) {
                         $cands[$id] = ['score' => round($score, 3), 'via' => 'name'];
                     }
                 }
@@ -194,6 +200,9 @@ class SitemapMatcher
     private static function isCode(string $norm): bool
     {
         $len = mb_strlen($norm);
+        if (preg_match('~\p{Cyrillic}~u', $norm)) {
+            return false; // склейка слова с кодом («КАБИНЫBFK16»)
+        }
         if (preg_match('~^\d+$~', $norm)) {
             return $len >= 7;
         }
