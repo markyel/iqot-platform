@@ -84,6 +84,21 @@ class ProductIdentityResolver
         if ($productId === null) {
             $productId = $this->createProduct($item, $brandNorm, $codes)->id;
         } else {
+            // Тот же код у другой позиции ЭТОЙ ЖЕ программы с заметно другим названием —
+            // вероятно варианты одного артикула (цвет/исполнение), склеивать молча нельзя.
+            $sibling = ProgramItem::query()
+                ->where('program_id', $item->program_id)->where('product_id', $productId)
+                ->where('id', '!=', $item->id)->where('active', true)
+                ->first(['client_ref', 'raw_name']);
+            if ($sibling && $this->namesDiffer((string) $sibling->raw_name, (string) $item->raw_name)) {
+                $item->forceFill([
+                    'product_id' => null,
+                    'match_status' => ProgramItem::MATCH_AMBIGUOUS,
+                    'match_note' => mb_substr('same_article_as: ' . $sibling->client_ref, 0, 255),
+                ])->save();
+
+                return;
+            }
             $this->addMissingCodes($productId, $codes, $brandNorm, $item);
         }
 
@@ -127,6 +142,20 @@ class ProductIdentityResolver
 
         // Числовые ключи PHP превращает в int — возвращаем строки (артикул «10283573»).
         return array_map('strval', array_keys($codes));
+    }
+
+    /** Наименования заметно различаются (не просто регистр/пробелы/пунктуация). */
+    public function namesDiffer(string $a, string $b): bool
+    {
+        $norm = fn (string $s) => preg_replace('/[^\p{L}\p{N}]+/u', '', mb_strtolower($s)) ?? '';
+        $x = $norm($a);
+        $y = $norm($b);
+        if ($x === '' || $y === '' || $x === $y) {
+            return false;
+        }
+        similar_text($x, $y, $pct);
+
+        return $pct < 95.0;
     }
 
     private function isInternalCode(string $article, string $brandNorm): bool

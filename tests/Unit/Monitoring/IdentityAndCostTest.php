@@ -75,6 +75,16 @@ class IdentityAndCostTest extends TestCase
         $this->assertSame(['1234567890123'], $r->extractCodes('1234567890123', 'Позиция', 'OTIS'));
     }
 
+    public function test_variant_names_differ_but_formatting_does_not(): void
+    {
+        $r = new ProductIdentityResolver();
+        $this->assertTrue($r->namesDiffer(
+            'Кнопка в сборе Отис 2000 и GEN2 D посадка 27,5мм КРАСНЫЙ ареол полированная нержа, AMP',
+            'Кнопка в сборе Отис 2000 и GEN2 D посадка 27,5мм СИНИЙ ореол полированная нержа AMP для MCS220'
+        ));
+        $this->assertFalse($r->namesDiffer('Ролик KM763640G01', 'ролик  KM763640G01.'));
+    }
+
     public function test_html_window_around_article(): void
     {
         $text = str_repeat('шапка сайта ', 2000) . ' Ролик KM763640G01 цена 4 520 ₽ в наличии ' . str_repeat('футер ', 500);
