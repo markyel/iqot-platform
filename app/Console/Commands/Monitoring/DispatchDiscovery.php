@@ -57,8 +57,9 @@ class DispatchDiscovery extends Command
                             $q->whereIn('p.search_state', ['found', 'not_found'])->whereNotNull('p.next_search_at')->where('p.next_search_at', '<=', now());
                         });
                 })
-                ->orderByRaw("p.search_state = 'new' DESC")->orderByDesc('pi.priority')->orderBy('pi.id')
-                ->limit($budget)->distinct()->pluck('p.id');
+                ->groupBy('p.id')
+                ->orderByRaw("MAX(p.search_state = 'new') DESC, MAX(pi.priority) DESC, MIN(pi.id) ASC")
+                ->limit($budget)->pluck('p.id');
 
             if ($ids->isNotEmpty()) {
                 // Отметка «в поиске», чтобы следующий тик не продублировал.
