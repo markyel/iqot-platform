@@ -35,6 +35,23 @@ class MonitoringGovernor
         return true;
     }
 
+    /**
+     * Остался ли суточный лимит ресурса — БЕЗ списания. Для загрузок: списываем только
+     * реально выполненный запрос (record), а не попытку, отложенную слотом домена.
+     */
+    public function available(string $resource, int $units = 1): bool
+    {
+        $quota = (int) (config("monitoring.quotas.{$resource}") ?? 0);
+        if ($quota <= 0) {
+            return true;
+        }
+        $used = (int) DB::table('mp_budget_ledger')
+            ->where('day', now()->toDateString())->where('resource', $resource)
+            ->sum('units');
+
+        return $used + $units <= $quota;
+    }
+
     /** Есть ли ещё суточный бюджет на LLM ($). */
     public function hasLlmBudget(): bool
     {

@@ -80,7 +80,10 @@ class ListingChecker
 
             return $this->result('blocked', null, null, 'site blocked until ' . $site->blocked_until);
         }
-        if (!$this->governor->reserve('fetch_http')) {
+        // Только проверка остатка: списываем ниже, когда загрузка реально выполнена. Раньше
+        // reserve() списывал и попытки, отложенные слотом домена (повтор джоба) — на пилоте
+        // 14.10 из 20 000 единиц квоты ~половина ушла на такие повторы.
+        if (!$this->governor->available('fetch_http')) {
             $listing->forceFill(['next_check_at' => now()->addDay()->startOfDay()->addHours(2)])->save();
 
             return $this->result('quota', null, null, 'fetch quota exhausted');
@@ -106,6 +109,7 @@ class ListingChecker
         if ($res->deferred()) {
             return $this->result('deferred', null, null, 'domain slot busy') + ['retry_after_ms' => $res->retryAfterMs];
         }
+        $this->governor->record('fetch_http', 1, 0.0);
         // Отказал сам прокси (не сайт) — канал «down», проверка повторится через минуту
         // уже по другому каналу. Ни сайт, ни листинг не штрафуем.
         if ($res->proxyFailed) {
