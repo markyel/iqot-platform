@@ -65,6 +65,10 @@ class LlmPriceExtractor
         if ($price !== null && NonItemPriceEvidence::check($evidencePrice, $price)) {
             $price = null; // цена доставки / порога заказа, не товара
         }
+        // Цена-заглушка / эхо примера из шаблона (бенч 14.10: модель вернула «12345» со страницы категории).
+        if ($price !== null && ($price <= 1.0 || in_array($price, [12345.0, 123456.0, 1234.0, 99999.0], true))) {
+            $price = null;
+        }
         $kind = in_array($json['price_kind'] ?? null, self::KINDS, true) ? $json['price_kind'] : null;
         if ($price === null && $kind !== 'on_request') {
             $kind = null;
@@ -147,7 +151,7 @@ URL: {$url}
 Фрагменты страницы:
 {$text}
 
-JSON: {"is_same_product": true|false|null, "is_analog": true|false, "found": true|false, "price": 12345.00|null, "currency": "RUB|USD|EUR|CNY", "price_kind": "retail|from|wholesale_tier|on_request|null", "vat_included": true|false|null, "price_unit": "шт|м|кг|л|компл|уп|null", "price_unit_qty": число|null, "min_order_qty": число|null, "availability": "in_stock|on_order|out_of_stock|unknown", "stock_qty": число|null, "lead_days": число|null, "evidence_price": "…", "evidence_identity": "…"}
+JSON: {"is_same_product": true|false|null, "is_analog": true|false, "found": true|false, "price": число|null, "currency": "RUB|USD|EUR|CNY", "price_kind": "retail|from|wholesale_tier|on_request|null", "vat_included": true|false|null, "price_unit": "шт|м|кг|л|компл|уп|null", "price_unit_qty": число|null, "min_order_qty": число|null, "availability": "in_stock|on_order|out_of_stock|unknown", "stock_qty": число|null, "lead_days": число|null, "evidence_price": "…", "evidence_identity": "…"}
 TXT;
     }
 }

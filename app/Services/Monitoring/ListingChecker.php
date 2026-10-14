@@ -183,9 +183,22 @@ class ListingChecker
             return $this->result(MpPriceObservation::STATUS_MISMATCH, null, null, $identity['reason']) + ['cost_usd' => $cost];
         }
 
-        $method = ($structured !== null && ($structured['sku_matched'] || $pageTokensHaveCode || $llm === null || $llm['found'] === false)) ? 'structured' : 'llm';
+        // Разметка описывает основной товар страницы — её цена приоритетнее цены от модели
+        // (бенч 14.10, nlp-group: разметка 268 ₽ верна, модель взяла 600 ₽ соседнего товара).
+        // Модель при наличии разметки — только для проверки идентичности.
+        $method = $structured !== null ? 'structured' : 'llm';
         $found = $method === 'structured' ? $structured : $llm;
         $price = $found['price'] ?? null;
+
+        // Страница-список (категория, «похожие товары»): цену от модели принимаем, только если
+        // в цитате с ценой есть наш артикул — иначе высок риск взять цену чужой позиции.
+        if ($method === 'llm' && $price !== null && $codes !== [] && $this->looksLikeListingPage($window)) {
+            $evidenceTokens = ArticleNormalizer::tokens((string) ($llm['evidence_price'] ?? '') . ' ' . (string) ($llm['evidence_identity'] ?? ''));
+            if (array_intersect($codes, array_map('strval', array_keys($evidenceTokens))) === []) {
+                $price = null;
+                $found['price_kind'] = null;
+            }
+        }
         $fields = [
             'currency' => $price !== null ? (string) ($found['currency'] ?? 'RUB') : null,
             'price_kind' => $found['price_kind'] ?? ($price === null ? 'on_request' : 'retail'),
@@ -357,6 +370,17 @@ class ListingChecker
             'cost_usd' => $cost,
             'observed_at' => now(),
         ]);
+    }
+
+    /** В окне вокруг товара много разных цен — похоже на категорию/список товаров. */
+    private function looksLikeListingPage(string $window): bool
+    {
+        if (!preg_match_all('~(\d[\d \x{00A0}]{1,9}(?:[.,]\d{1,2})?)\s?(?:₽|руб|р\.)~u', $window, $m)) {
+            return false;
+        }
+        $distinct = array_unique(array_map(fn ($v) => preg_replace('~[\s\x{00A0}]~u', '', $v), $m[1]));
+
+        return count($distinct) >= 4;
     }
 
     private function looksLikeCaptcha(string $body): bool

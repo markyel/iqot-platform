@@ -37,24 +37,25 @@ class MpProduct extends Model
     /** Нормализованные коды товара (oem/mpn) — для проверки страницы «по токену». */
     public function articleCodes(): array
     {
-        return $this->identifiers
-            ->whereIn('kind', [MpIdentifier::KIND_OEM, MpIdentifier::KIND_MPN])
-            ->pluck('value_norm')
-            ->filter()
-            ->unique()
-            ->values()
-            ->all();
+        return $this->codeIdentifiers()->pluck('value_norm')->filter()->unique()->values()->all();
     }
 
     /** Исходные написания кодов (для промпта и окна текста). */
     public function articleValues(): array
     {
-        return $this->identifiers
-            ->whereIn('kind', [MpIdentifier::KIND_OEM, MpIdentifier::KIND_MPN])
-            ->pluck('value')
-            ->filter()
-            ->unique()
-            ->values()
-            ->all();
+        return $this->codeIdentifiers()->pluck('value')->filter()->unique()->values()->all();
+    }
+
+    /**
+     * OEM/MPN + коды-алиасы, похожие на код модели (напр. каталожный код клиента
+     * «LW-0002478» — партнёрские сайты LazyLift ставят его в sku). Алиасы-наименования
+     * (товар без артикула) сюда не попадают.
+     */
+    private function codeIdentifiers(): \Illuminate\Support\Collection
+    {
+        return $this->identifiers->filter(fn (MpIdentifier $i) => in_array($i->kind, [MpIdentifier::KIND_OEM, MpIdentifier::KIND_MPN], true)
+            || ($i->kind === MpIdentifier::KIND_ALIAS && mb_strlen((string) $i->value_norm) <= 30
+                && !str_contains((string) $i->value_norm, ' ')
+                && \App\Support\Monitoring\ArticleNormalizer::looksLikeModelCode((string) $i->value_norm)));
     }
 }

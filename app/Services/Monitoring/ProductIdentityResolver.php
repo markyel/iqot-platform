@@ -107,6 +107,29 @@ class ProductIdentityResolver
             'match_status' => ProgramItem::MATCH_MATCHED,
             'match_note' => $note,
         ])->save();
+        $this->attachClientRefAlias($productId, $item, $brandNorm);
+    }
+
+    /**
+     * Каталожный код клиента, похожий на код модели («LW-0002478»), — алиас товара:
+     * партнёрские сайты клиента публикуют его как sku (бенч 14.10: s-mechanics.ru).
+     */
+    private function attachClientRefAlias(int $productId, ProgramItem $item, string $brandNorm): void
+    {
+        $norm = ArticleNormalizer::normalize($item->client_ref);
+        if ($norm === '' || mb_strlen($norm) > 30 || !ArticleNormalizer::looksLikeModelCode($norm) || !preg_match('/[A-Z]/', $norm)) {
+            return;
+        }
+        DB::table('mp_identifiers')->insertOrIgnore([
+            'product_id' => $productId,
+            'kind' => MpIdentifier::KIND_ALIAS,
+            'value' => mb_substr((string) $item->client_ref, 0, 255),
+            'value_norm' => $norm,
+            'brand_norm' => $brandNorm,
+            'source' => 'client_ref:' . $item->program_id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     /**
