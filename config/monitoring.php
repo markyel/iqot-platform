@@ -17,7 +17,8 @@ return [
         'max_bytes' => 5_000_000,
         'respect_robots' => true,
         'robots_cache_hours' => 12,
-        'default_rate_ms' => (int) env('MONITORING_DOMAIN_RATE_MS', 1000),
+        // Пилот 14.10: 1 запрос/с к небольшому B2B-сайту (lift-snab, Bitrix «Метрика») → бан IP сервера.
+        'default_rate_ms' => (int) env('MONITORING_DOMAIN_RATE_MS', 4000),
         // Текста меньше порога → вероятная JS-заглушка → headless-фолбэк.
         'http_min_chars' => 300,
         'block_days' => 7,
@@ -99,6 +100,8 @@ return [
     ],
 
     'blocked_domains' => [
+        'ozon.', 'wildberries.', 'joom.', 'dns-shop.ru', 'onlinetrade.ru', 'vseinstrumenti.ru', 'lemanapro.ru',
+        'megastroy.com', 'livemaster.ru', 'autopiter.ru', 'euroauto.ru', 'citilink.ru', 'mvideo.ru', 'eldorado.ru',
         'ozon.ru', 'wildberries.ru', 'market.yandex.ru', 'avito.ru', 'sbermegamarket.ru', 'megamarket.ru',
         'kazanexpress.ru', 'aliexpress.', 'alibaba.', 'made-in-china.', 'amazon.', 'ebay.', 'youla.ru',
         'tiu.ru', 'pulscen.ru', 'satom.ru', 'blizko.ru', 'all.biz', 'prom.ua',

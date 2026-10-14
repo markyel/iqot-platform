@@ -95,7 +95,18 @@ class ListingChecker
         if (in_array($res->status, [404, 410], true)) {
             return $this->gone($listing, MpPriceObservation::STATUS_GONE, "HTTP {$res->status}");
         }
-        if (in_array($res->status, [401, 403, 429], true) || ($res->ok() && $this->looksLikeCaptcha($res->body))) {
+        // 429 «слишком часто» — не бан: удваиваем интервал к сайту и пауза 1 ч.
+        if ($res->status === 429) {
+            $site->forceFill([
+                'rate_limit_ms' => min(60000, max((int) $site->rate_limit_ms, 1000) * 2),
+                'blocked_until' => now()->addHour(),
+                'blocked_reason' => 'HTTP 429 (rate)',
+            ])->save();
+            $listing->forceFill(['checked_at' => now(), 'next_check_at' => now()->addHours(2)])->save();
+
+            return $this->result('deferred_rate', null, null, 'HTTP 429');
+        }
+        if (in_array($res->status, [401, 403], true) || ($res->ok() && $this->looksLikeCaptcha($res->body))) {
             $site->block($res->ok() ? 'captcha' : "HTTP {$res->status}");
             $this->observe($listing, null, MpPriceObservation::STATUS_BLOCKED, 'none', $res->ok() ? 'captcha' : "HTTP {$res->status}");
             $listing->forceFill(['status' => MpListing::STATUS_BLOCKED, 'checked_at' => now(), 'next_check_at' => $site->blocked_until])->save();
