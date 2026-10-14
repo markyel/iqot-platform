@@ -33,7 +33,14 @@ class ClassifyMonitoringProductsJob implements ShouldQueue
 
     public function handle(ClientCategoryClassifierService $classifier, MonitoringGovernor $governor): void
     {
-        foreach (array_chunk($this->productIds, 50) as $ids) {
+        // Порция на джоб — 40 товаров (полный AI ~10–20 с на товар, таймаут 900 с); остаток —
+        // следующим джобом цепочкой (пилот 14.10: 1051 товар в одном джобе упал по таймауту).
+        $batch = array_slice($this->productIds, 0, 40);
+        $rest = array_slice($this->productIds, 40);
+        if ($rest !== []) {
+            self::dispatch($rest);
+        }
+        foreach ([$batch] as $ids) {
             $products = MpProduct::query()->with('identifiers')->whereIn('id', $ids)->whereNull('product_type_id')->get();
             foreach ($products as $product) {
                 if (!$governor->hasLlmBudget()) {
