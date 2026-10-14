@@ -16,7 +16,7 @@
     @if (session('success'))
         <div class="alert alert-success" style="margin-bottom: var(--space-4);">{{ session('success') }}</div>
     @endif
-    @if ($errors->any())
+    @if (isset($errors) && $errors->any())
         <div class="alert alert-danger" style="margin-bottom: var(--space-4);">{{ $errors->first() }}</div>
     @endif
 
