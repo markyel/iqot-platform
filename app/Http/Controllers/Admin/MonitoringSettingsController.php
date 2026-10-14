@@ -41,6 +41,7 @@ class MonitoringSettingsController extends Controller
             'fetch_per_day' => 'required|integer|min:0|max:500000',
             'headless_per_day' => 'required|integer|min:0|max:50000',
             'llm_usd_per_day' => 'required|numeric|min:0|max:1000',
+            'index_per_day' => 'required|integer|min:0|max:1000000',
         ]);
         $preset = $data['preset'];
         $values = $preset !== 'custom' ? array_intersect_key(MonitoringSettings::PRESETS[$preset], MonitoringSettings::FIELDS) : $data;

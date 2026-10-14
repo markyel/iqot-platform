@@ -43,18 +43,32 @@ class SitemapMatcher
      */
     public function match(int $siteId, Collection $products): array
     {
-        $pages = DB::table('mp_site_pages')->where('site_id', $siteId)->pluck('url', 'id')->all();
-        if ($pages === []) {
+        $rows = DB::table('mp_site_pages')->where('site_id', $siteId)->get(['id', 'url', 'title', 'codes']);
+        if ($rows->isEmpty()) {
             return [];
         }
+        $pages = $rows->pluck('url', 'id')->all();
 
-        // Инвертированные индексы адресов: код → страницы, слово → страницы; числа страницы.
+        // Инвертированные индексы: код → страницы, слово → страницы; числа страницы.
+        // Источники — адрес и, если карточка уже проиндексирована (Ф2, обход по sitemap),
+        // её заголовок и артикулы со страницы.
         $byCode = [];
         $byWord = [];
         $pageWords = [];
         $pageNums = [];
-        foreach ($pages as $id => $url) {
-            $t = self::urlTokens($url);
+        foreach ($rows as $row) {
+            $id = $row->id;
+            $t = self::urlTokens($row->url);
+            if ($row->title) {
+                $tt = self::tokensOf($row->title);
+                $t['words'] += $tt['words'];
+                $t['nums'] += $tt['nums'];
+                $t['codes'] += $tt['codes'];
+            }
+            foreach (preg_split('~\s+~', (string) $row->codes, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $c) {
+                $t['codes'][$c] = true;
+                $t['words']['#' . $c] = true;
+            }
             foreach ($t['codes'] as $c => $_) {
                 $byCode[$c][] = $id;
             }
@@ -219,7 +233,7 @@ class SitemapMatcher
      * соседних чисел адреса («rolik-150-38» → 15038) и номера карточек не должны давать
      * ложных совпадений с числовыми артикулами (первый прогон 14.10: 903 «кода» на s-mechanics).
      */
-    private static function isCode(string $norm): bool
+    public static function isCode(string $norm): bool
     {
         $len = mb_strlen($norm);
         if (preg_match('~\p{Cyrillic}~u', $norm)) {

@@ -29,12 +29,18 @@ class SitemapCommand extends Command
         {--top=15 : сколько доменов эталона}
         {--skip=chipdip.ru : домены через запятую — не трогать}
         {--program=1}
+        {--all : index — все сайты, где у нас есть цены; match — все проиндексированные сайты × все активные программы}
         {--create : завести листинги и поставить в проверку}';
 
     protected $description = 'Мониторинг цен: индекс sitemap сайтов продавцов и сопоставление с товарами (Ф2)';
 
     public function handle(): int
     {
+        if ($this->option('all') && !config('monitoring.enabled')) {
+            $this->warn('monitoring:sitemap --all выключен (MONITORING_ENABLED=false).');
+
+            return self::SUCCESS;
+        }
         $domains = $this->domains();
         if ($domains === []) {
             $this->error('Нет доменов: --domain=… или --ce=<csv>');
@@ -65,7 +71,10 @@ class SitemapCommand extends Command
     private function matchAll(array $domains): int
     {
         $programId = (int) $this->option('program');
-        $ids = DB::table('program_items')->where('program_id', $programId)->where('active', true)
+        $programIds = $this->option('all')
+            ? DB::table('monitoring_programs')->where('status', 'active')->pluck('id')->all()
+            : [$programId];
+        $ids = DB::table('program_items')->whereIn('program_id', $programIds)->where('active', true)
             ->where('match_status', 'matched')->whereNotNull('product_id')->distinct()->pluck('product_id');
         $products = MpProduct::query()->with('identifiers')->whereIn('id', $ids)->get();
         $ce = $this->option('ce') ? $this->loadCe($programId, (string) $this->option('ce')) : [];
@@ -160,6 +169,17 @@ class SitemapCommand extends Command
     {
         $skip = array_filter(array_map('trim', explode(',', (string) $this->option('skip'))));
         $domains = array_values(array_filter(array_map('trim', (array) $this->option('domain'))));
+        if ($domains === [] && $this->option('all')) {
+            $domains = $this->argument('action') === 'index'
+                // Продавцы, у которых мы уже нашли хоть одну цену (не стенд).
+                ? DB::table('mp_sites as s')->whereExists(fn ($q) => $q->from('mp_listings as l')->whereColumn('l.site_id', 's.id')
+                    ->where('l.bench', false)->where('l.status', 'active')->whereNotNull('l.price'))
+                    ->where(fn ($q) => $q->whereNull('s.sitemap_indexed_at')->orWhere('s.sitemap_indexed_at', '<', now()->subDays(6)))
+                    ->pluck('s.domain')->all()
+                : DB::table('mp_sites')->where('sitemap_pages', '>', 0)->pluck('domain')->all();
+
+            return array_values(array_filter($domains, fn ($d) => !in_array($d, $skip, true) && !DomainPolicy::isBlocked($d)));
+        }
         if ($domains === [] && $this->option('ce')) {
             $count = [];
             foreach ($this->readCe((string) $this->option('ce')) as $r) {

@@ -24,6 +24,7 @@
         <x-stat-card value="{{ $fmt($backlog) }}" label="Позиций ждут поиска" icon="hourglass" icon-type="primary" />
         <x-stat-card value="{{ $fmt($used('yandex_query')) }} / {{ $fmt($values['yandex_per_day']) }}" label="Запросов Яндекса сегодня" icon="search" icon-type="primary" />
         <x-stat-card value="{{ $fmt($used('fetch_http')) }} / {{ $fmt($values['fetch_per_day']) }}" label="Загрузок страниц сегодня" icon="download" icon-type="primary" />
+        <x-stat-card value="{{ $fmt($used('fetch_index')) }} / {{ $fmt($values['index_per_day']) }}" label="Обход каталогов сегодня" icon="library" icon-type="primary" />
         <x-stat-card value="${{ number_format((float) ($today['llm_call']['cost_usd'] ?? 0), 2) }} / ${{ $values['llm_usd_per_day'] }}" label="LLM сегодня" icon="cpu" icon-type="primary" />
     </div>
     @unless ($enabled)
@@ -62,6 +63,7 @@
                         'fetch_per_day' => ['Загрузок страниц в сутки', 'Проверка найденных страниц и переобход.', 1000],
                         'headless_per_day' => ['Рендеров браузером в сутки', 'Сайты с ценой за JS; дорого по памяти сервера.', 100],
                         'llm_usd_per_day' => ['LLM, $ в сутки', 'Составление запросов и извлечение цены.', 0.5],
+                        'index_per_day' => ['Обход каталогов, страниц в сутки', 'Индекс карточек сайтов продавцов по sitemap (заголовки, артикулы) — поиск без Яндекса.', 1000],
                     ];
                 @endphp
                 @foreach ($fields as $name => [$label, $help, $step])

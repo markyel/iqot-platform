@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\DB;
  */
 class MonitoringGovernor
 {
-    public const RESOURCES = ['yandex_query', 'fetch_http', 'fetch_headless', 'llm_call', 'email'];
+    public const RESOURCES = ['yandex_query', 'fetch_http', 'fetch_headless', 'fetch_index', 'llm_call', 'email'];
 
     public function reserve(string $resource, int $units = 1, int $programId = 0): bool
     {

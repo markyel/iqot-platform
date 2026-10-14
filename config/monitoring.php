@@ -45,6 +45,8 @@ return [
         'yandex_query' => (int) env('MONITORING_YANDEX_PER_DAY', 2000),
         'fetch_http' => (int) env('MONITORING_FETCHES_PER_DAY', 20000),
         'fetch_headless' => (int) env('MONITORING_HEADLESS_PER_DAY', 1500),
+        // Обход карточек сайтов по sitemap (индекс заголовков/артикулов) — отдельно от проверок цен.
+        'fetch_index' => (int) env('MONITORING_INDEX_PER_DAY', 60000),
         'llm_usd' => (float) env('MONITORING_LLM_USD_PER_DAY', 5),
         'email' => (int) env('MONITORING_EMAILS_PER_DAY', 0),
     ],

@@ -201,6 +201,18 @@ Schedule::command('monitoring:dispatch-discovery')
 Schedule::command('monitoring:refresh-coverage')
     ->everyFifteenMinutes()
     ->withoutOverlapping();
+// Ф2: поиск по сайтам продавцов без Яндекса — индекс sitemap (раз в неделю, сайты с ценами),
+// обход карточек (заголовки/артикулы, квота fetch_index, очередь monitor-index), ежедневное
+// сопоставление проиндексированных страниц с товарами всех активных программ.
+Schedule::command('monitoring:sitemap index --all')
+    ->dailyAt('01:30')
+    ->withoutOverlapping();
+Schedule::command('monitoring:index-pages')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping();
+Schedule::command('monitoring:sitemap match --all --create')
+    ->dailyAt('05:00')
+    ->withoutOverlapping();
 
 // Публичный API: оркестратор Discovery поставщиков — каждые 10 минут (§7).
 Schedule::job(new \App\Jobs\Api\DiscoveryOrchestratorJob())->everyTenMinutes()->withoutOverlapping();
