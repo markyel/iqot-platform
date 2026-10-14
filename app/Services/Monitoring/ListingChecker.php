@@ -13,6 +13,7 @@ use App\Services\Monitoring\Web\EgressPool;
 use App\Services\Monitoring\Web\FetchResult;
 use App\Services\Monitoring\Web\PageFetcher;
 use App\Support\Monitoring\ArticleNormalizer;
+use App\Support\Monitoring\DomainPolicy;
 use App\Support\Monitoring\HtmlText;
 use App\Support\Monitoring\UrlCanonicalizer;
 use Illuminate\Support\Facades\Log;
@@ -66,6 +67,13 @@ class ListingChecker
         $site = $listing->site;
         if (!$product || !$site) {
             return $this->result('skipped', null, null, 'no product/site');
+        }
+        // Стоп-лист доменов действует и на уже найденные листинги (а не только на поиск):
+        // дополнение списка сразу выключает их без похода на сайт.
+        if (DomainPolicy::isBlocked($listing->url)) {
+            $listing->forceFill(['status' => MpListing::STATUS_BLOCKED, 'checked_at' => now(), 'next_check_at' => null])->save();
+
+            return $this->result('blocked', null, null, 'domain policy');
         }
         if ($site->isBlocked()) {
             $listing->forceFill(['status' => MpListing::STATUS_BLOCKED, 'next_check_at' => $site->blocked_until])->save();

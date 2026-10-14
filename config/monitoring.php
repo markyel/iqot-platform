@@ -117,6 +117,7 @@ return [
         'ozon.ru', 'wildberries.ru', 'market.yandex.ru', 'avito.ru', 'sbermegamarket.ru', 'megamarket.ru',
         'kazanexpress.ru', 'aliexpress.', 'alibaba.', 'made-in-china.', 'amazon.', 'ebay.', 'youla.ru',
         'tiu.ru', 'pulscen.ru', 'satom.ru', 'blizko.ru', 'all.biz', 'prom.ua',
+        'sportmaster.ru', 'lamoda.ru', 'ostin.com', 'farpost.ru', 'olx.',
         'yandex.ru', 'google.', 'youtube.', 'rutube.ru', 'dzen.ru', 'wikipedia.', 'vk.com', 'ok.ru',
         'facebook.', 'instagram.', 'twitter.', 'x.com', 'tiktok.', 'pinterest.', 'linkedin.',
         'hh.ru', 'vc.ru', 'pikabu.ru', 'otvet.mail.ru', 'forum.',
