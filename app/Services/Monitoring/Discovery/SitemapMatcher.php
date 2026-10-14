@@ -174,6 +174,16 @@ class SitemapMatcher
         return $t;
     }
 
+    /**
+     * Токены произвольного текста (текст ссылки, заголовок): коды, слова в общем транслите, числа.
+     *
+     * @return array{codes: array<string,true>, words: array<string,true>, nums: array<string,true>}
+     */
+    public static function textTokens(string $text): array
+    {
+        return self::tokensOf($text);
+    }
+
     /** @return array{codes: array<string,true>, words: array<string,true>, nums: array<string,true>} */
     private static function tokensOf(string $text): array
     {
