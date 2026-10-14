@@ -67,6 +67,17 @@ class EgressPoolTest extends TestCase
         $this->assertNull($pool->pick('lift-snab.ru'));
     }
 
+    public function test_site_banning_two_channels_is_exhausted(): void
+    {
+        $pool = $this->pool();
+        $pool->markBanned('relay2', 'exvator.ru', 'captcha');
+        $this->assertFalse($pool->exhaustedFor('exvator.ru'));
+        $pool->markBanned('direct', 'exvator.ru', 'captcha');
+        $this->assertSame(2, $pool->bannedCount('exvator.ru'));
+        $this->assertTrue($pool->exhaustedFor('exvator.ru'));
+        $this->assertFalse($pool->exhaustedFor('lift-snab.ru'));
+    }
+
     public function test_down_channel_moves_to_tail_but_stays_available(): void
     {
         $pool = $this->pool();
@@ -85,6 +96,8 @@ class EgressPoolTest extends TestCase
         $proxy = 'http://45.146.167.20:3128';
         $this->assertTrue(EgressPool::isProxyFailure('cURL error 7: Failed to connect to 45.146.167.20 port 3128 after 8001 ms', $proxy));
         $this->assertTrue(EgressPool::isProxyFailure('cURL error 56: CONNECT tunnel failed, response 403', $proxy));
+        // 5xx на CONNECT — прокси не достучался до сайта: сбой сайта, не канала.
+        $this->assertFalse(EgressPool::isProxyFailure('cURL error 56: CONNECT tunnel failed, response 500', $proxy));
         $this->assertFalse(EgressPool::isProxyFailure('cURL error 28: Operation timed out after 20001 milliseconds', $proxy));
         $this->assertFalse(EgressPool::isProxyFailure('cURL error 7: Failed to connect to lift-snab.ru port 443', $proxy));
         $this->assertFalse(EgressPool::isProxyFailure('CONNECT tunnel failed', null));

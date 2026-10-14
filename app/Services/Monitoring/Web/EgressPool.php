@@ -119,6 +119,24 @@ final class EgressPool
         return Cache::has($this->banKey($name, mb_strtolower($domain)));
     }
 
+    /** Сколько каналов домен уже забанил. */
+    public function bannedCount(string $domain): int
+    {
+        return count(array_filter($this->names(), fn ($n) => $this->isBanned($n, $domain)));
+    }
+
+    /**
+     * Домен забанил достаточно каналов, чтобы считать его антиботом против IP дата-центров
+     * («Проверка безопасности», Aliyun/SmartCaptcha) — дальше не перебираем: смена IP не
+     * поможет, а резервные каналы (почтовый релей) светить незачем.
+     */
+    public function exhaustedFor(string $domain): bool
+    {
+        $max = (int) config('monitoring.egress.max_bans_per_site', 2);
+
+        return $max > 0 && $this->bannedCount($domain) >= $max;
+    }
+
     public function markDown(string $name, string $reason): void
     {
         $ttl = (int) config('monitoring.egress.down_seconds', 300);
@@ -150,8 +168,13 @@ final class EgressPool
         if ($proxy === null) {
             return false;
         }
-        if (preg_match('~CONNECT tunnel failed|Could not resolve proxy|Received HTTP code \d+ from proxy|proxy CONNECT aborted~i', $error)) {
+        // CONNECT 403/407 — отказ ACL/авторизации прокси. 5xx на CONNECT — прокси не достучался
+        // до САЙТА (tinyproxy «500 Unable to connect»), это сбой сайта, не канала.
+        if (preg_match('~CONNECT tunnel failed, response 40[37]|Received HTTP code 40[37] from proxy|Could not resolve proxy~i', $error)) {
             return true;
+        }
+        if (preg_match('~CONNECT tunnel failed|from proxy after CONNECT~i', $error)) {
+            return false;
         }
         $host = (string) parse_url($proxy, PHP_URL_HOST);
         $port = (string) parse_url($proxy, PHP_URL_PORT);

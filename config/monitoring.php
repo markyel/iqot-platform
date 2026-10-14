@@ -33,6 +33,9 @@ return [
         'channels' => json_decode((string) env('MONITORING_EGRESS', '[]'), true) ?: [],
         // Бан канала сайтом (401/403/капча) — на столько часов этот домен уходит на другой канал.
         'ban_hours' => (int) env('MONITORING_EGRESS_BAN_HOURS', 72),
+        // Забанил столько каналов → сайт блокируется целиком (антибот против IP дата-центров:
+        // перебор IP бесполезен и светит резервные каналы). 0 — перебирать все.
+        'max_bans_per_site' => (int) env('MONITORING_EGRESS_MAX_BANS_PER_SITE', 2),
         // Отказ самого прокси — канал в хвост очереди на столько секунд (0 — выкл.).
         'down_seconds' => (int) env('MONITORING_EGRESS_DOWN_SECONDS', 300),
     ],

@@ -90,9 +90,9 @@ class ListingChecker
         }
 
         // Исходящий канал: закреплённый за сайтом, иначе по хешу домена; все забанены — блок сайта.
-        $channel = $this->pool->pick($site->domain, $site->egress);
+        $channel = $this->pool->exhaustedFor($site->domain) ? null : $this->pool->pick($site->domain, $site->egress);
         if ($channel === null) {
-            $site->block('all egress banned');
+            $site->block('egress banned (' . $this->pool->bannedCount($site->domain) . ' channels)');
             $listing->forceFill(['status' => MpListing::STATUS_BLOCKED, 'next_check_at' => $site->blocked_until])->save();
 
             return $this->result(MpPriceObservation::STATUS_BLOCKED, null, null, 'all egress channels banned');
@@ -148,7 +148,7 @@ class ListingChecker
             // Бан — это бан IP канала: сайт переезжает на следующий канал; блок сайта —
             // только когда забанены все.
             $this->pool->markBanned($channel['name'], $site->domain, $reason);
-            $next = $this->pool->pick($site->domain);
+            $next = $this->pool->exhaustedFor($site->domain) ? null : $this->pool->pick($site->domain);
             if ($next !== null) {
                 $site->forceFill(['egress' => $next['name']])->save();
                 $this->observe($listing, null, MpPriceObservation::STATUS_BLOCKED, 'none', "{$reason} via {$channel['name']} → {$next['name']}");
