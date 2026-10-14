@@ -3,6 +3,7 @@ Universal Email Service - Email Receiver
 IMAP operations without any database or configuration
 """
 
+import asyncio
 import imaplib
 import email
 from email.header import decode_header
@@ -45,13 +46,15 @@ class EmailReceiver:
         Returns:
             imaplib.IMAP4: IMAP подключение
         """
+        imap = None
         try:
             encryption = encryption.lower()
-            
+
+            # timeout обязателен: без него imaplib висит на мёртвом сервере бесконечно.
             if encryption == 'ssl':
-                imap = imaplib.IMAP4_SSL(server, port)
+                imap = imaplib.IMAP4_SSL(server, port, timeout=timeout)
             else:
-                imap = imaplib.IMAP4(server, port)
+                imap = imaplib.IMAP4(server, port, timeout=timeout)
                 if encryption == 'tls':
                     imap.starttls()
             
@@ -63,6 +66,12 @@ class EmailReceiver:
             
         except Exception as e:
             logger.error(f"Failed to connect to IMAP: {e}")
+            # Сокет не должен утечь при ошибке starttls/login.
+            if imap is not None:
+                try:
+                    imap.shutdown()
+                except Exception:
+                    pass
             raise
     
     def _decode_header(self, header_value: str) -> str:
@@ -271,6 +280,10 @@ class EmailReceiver:
         return ' '.join(criteria)
     
     async def receive_emails(self, request: ReceiveEmailsRequest) -> List[EmailMessage]:
+        """Получить emails (блокирующий imaplib — в пуле потоков, event loop свободен)."""
+        return await asyncio.to_thread(self._receive_emails_sync, request)
+
+    def _receive_emails_sync(self, request: ReceiveEmailsRequest) -> List[EmailMessage]:
         """
         Получить emails
         
@@ -358,13 +371,24 @@ class EmailReceiver:
             
         finally:
             if imap:
+                # close() падает, если папка не выбрана — logout/shutdown всё равно нужны.
                 try:
                     imap.close()
-                    imap.logout()
-                except:
+                except Exception:
                     pass
+                try:
+                    imap.logout()
+                except Exception:
+                    try:
+                        imap.shutdown()
+                    except Exception:
+                        pass
     
-    async def test_connection(
+    async def test_connection(self, **kwargs) -> Dict[str, Any]:
+        """Тест IMAP подключения (в пуле потоков)."""
+        return await asyncio.to_thread(lambda: self._test_connection_sync(**kwargs))
+
+    def _test_connection_sync(
         self,
         imap_server: str,
         imap_port: int,
@@ -379,6 +403,7 @@ class EmailReceiver:
         Returns:
             Dict: Результат теста
         """
+        imap = None
         try:
             imap = self._get_imap_connection(
                 server=imap_server,
@@ -388,16 +413,17 @@ class EmailReceiver:
                 encryption=imap_encryption,
                 timeout=timeout
             )
-            
+
             # Проверяем доступ к INBOX
             status, folders = imap.list()
             imap.select('INBOX')
             status, messages = imap.search(None, 'ALL')
             message_count = len(messages[0].split()) if messages[0] else 0
-            
+
             imap.close()
             imap.logout()
-            
+            imap = None
+
             return {
                 'success': True,
                 'message': 'IMAP connection successful',
@@ -417,3 +443,10 @@ class EmailReceiver:
                 'message': f'IMAP connection failed: {str(e)}',
                 'details': {'error': str(e)}
             }
+
+        finally:
+            if imap is not None:
+                try:
+                    imap.shutdown()
+                except Exception:
+                    pass

@@ -61,9 +61,12 @@ TZ=Europe/Moscow
 PYTHONUNBUFFERED=1
 ENV
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
-docker run -d --name "$CONTAINER" --restart unless-stopped \
+# --init обязателен: без него uvicorn — PID 1 и не пожинает зомби healthcheck-curl'ов →
+# через недели упираемся в pids.max («Cannot fork», unhealthy). Логи — с ротацией.
+docker run -d --init --name "$CONTAINER" --restart unless-stopped \
   -p "${PORT}:8000" --env-file /root/ues.env \
-  --memory 512m --cpus 1.0 "$IMAGE"
+  --memory 512m --cpus 1.0 \
+  --log-opt max-size=10m --log-opt max-file=3 "$IMAGE"
 
 log "4. firewall — :$PORT только с прода ($PROD_IP)"
 # DOCKER-USER срабатывает ДО DNAT в контейнер (docker её не флашит). Пускаем только прод.

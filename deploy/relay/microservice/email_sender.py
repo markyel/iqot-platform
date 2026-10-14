@@ -3,7 +3,10 @@ Universal Email Service - Email Sender
 SMTP operations without any database or configuration
 """
 
+import os
+import random
 import smtplib
+import socket
 import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -16,10 +19,50 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 import logging
 import time
+import asyncio
 
 from models import SendEmailRequest, EmailAttachment
 
 logger = logging.getLogger(__name__)
+
+# Таймаут TCP-коннекта к ОДНОМУ адресу SMTP-хоста. smtp.beget.com — round-robin DNS на
+# 6 IP, часть периодически мёртвая (SYN без ответа). Штатный smtplib перебирает адреса
+# в порядке DNS с полным timeout (30 с) на каждый → до 180 с на одно письмо; Laravel
+# рвёт запрос через 60 с (cURL 28) и помечает релей down. Здесь — случайный порядок и
+# короткий коннект-таймаут, после коннекта сокет живёт с обычным timeout.
+CONNECT_TIMEOUT = float(os.environ.get('SMTP_CONNECT_TIMEOUT', '8'))
+
+
+def _connect_any(host: str, port: int, timeout, source_address=None) -> socket.socket:
+    infos = socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM)
+    random.shuffle(infos)
+    per_addr = min(timeout, CONNECT_TIMEOUT) if timeout else CONNECT_TIMEOUT
+    last_error = None
+    for family, socktype, proto, _, addr in infos:
+        sock = socket.socket(family, socktype, proto)
+        try:
+            sock.settimeout(per_addr)
+            if source_address:
+                sock.bind(source_address)
+            sock.connect(addr)
+            sock.settimeout(timeout)
+            return sock
+        except OSError as e:
+            last_error = e
+            sock.close()
+            logger.warning(f"SMTP connect {host} via {addr[0]}:{port} failed: {e}")
+    raise last_error or OSError(f"getaddrinfo returned no addresses for {host}")
+
+
+class _SMTP(smtplib.SMTP):
+    def _get_socket(self, host, port, timeout):
+        return _connect_any(host, port, timeout, self.source_address)
+
+
+class _SMTP_SSL(smtplib.SMTP_SSL):
+    def _get_socket(self, host, port, timeout):
+        sock = _connect_any(host, port, timeout, self.source_address)
+        return self.context.wrap_socket(sock, server_hostname=self._host)
 
 class EmailSender:
     """Handles sending emails via SMTP - stateless"""
@@ -63,25 +106,44 @@ class EmailSender:
         Returns:
             smtplib.SMTP: SMTP подключение
         """
+        smtp = None
         try:
             encryption = encryption.lower()
 
             if encryption == 'ssl':
-                smtp = smtplib.SMTP_SSL(server, port, timeout=timeout, context=self._ssl_context(verify_cert))
+                smtp = _SMTP_SSL(server, port, timeout=timeout, context=self._ssl_context(verify_cert))
             else:
-                smtp = smtplib.SMTP(server, port, timeout=timeout)
+                smtp = _SMTP(server, port, timeout=timeout)
                 if encryption == 'tls':
                     smtp.starttls(context=self._ssl_context(verify_cert))
 
             # Авторизация
             smtp.login(user, password)
-            
+
             logger.info(f"SMTP connected: {server}:{port} (encryption={encryption})")
             return smtp
-            
+
         except Exception as e:
             logger.error(f"Failed to connect to SMTP: {e}")
+            # Сокет не должен утечь при ошибке starttls/login.
+            self._close(smtp)
             raise
+
+    @staticmethod
+    def _close(smtp, quit: bool = False) -> None:
+        """Закрыть SMTP-соединение, не бросая исключений (quit — вежливый QUIT перед close)."""
+        if smtp is None:
+            return
+        try:
+            if quit:
+                smtp.quit()
+            else:
+                smtp.close()
+        except Exception:
+            try:
+                smtp.close()
+            except Exception:
+                pass
     
     def _create_message(
         self,
@@ -202,13 +264,14 @@ class EmailSender:
     async def send_email(self, request: SendEmailRequest) -> Dict[str, Any]:
         """
         Отправить email
-        
-        Args:
-            request: Параметры отправки
-            
-        Returns:
-            Dict: Результат отправки
+
+        smtplib блокирующий: раньше он исполнялся прямо в event loop, и одно зависшее
+        SMTP-соединение останавливало весь релей (все /send и /health ждали). Теперь —
+        в пуле потоков, loop свободен.
         """
+        return await asyncio.to_thread(self._send_email_sync, request)
+
+    def _send_email_sync(self, request: SendEmailRequest) -> Dict[str, Any]:
         retry_count = 0
         last_error = None
         
@@ -238,6 +301,7 @@ class EmailSender:
         
         # Попытки отправки
         while retry_count < request.retry_attempts:
+            smtp = None
             try:
                 smtp = self._get_smtp_connection(
                     server=request.smtp_server,
@@ -250,8 +314,9 @@ class EmailSender:
                 )
 
                 smtp.send_message(msg)
-                smtp.quit()
-                
+                self._close(smtp, quit=True)
+                smtp = None
+
                 logger.info(f"Email sent: from={request.from_email}, to={request.to_email}")
                 
                 return {
@@ -268,7 +333,8 @@ class EmailSender:
                 last_error = str(e)
                 retry_count += 1
                 logger.warning(f"Send attempt {retry_count} failed: {e}")
-                
+                self._close(smtp)
+
                 if retry_count < request.retry_attempts:
                     time.sleep(request.retry_delay)
         
@@ -277,7 +343,11 @@ class EmailSender:
         logger.error(error_msg)
         raise Exception(error_msg)
     
-    async def test_connection(
+    async def test_connection(self, **kwargs) -> Dict[str, Any]:
+        """Тест SMTP подключения (блокирующий smtplib — в пуле потоков)."""
+        return await asyncio.to_thread(lambda: self._test_connection_sync(**kwargs))
+
+    def _test_connection_sync(
         self,
         smtp_server: str,
         smtp_port: int,
@@ -288,7 +358,7 @@ class EmailSender:
     ) -> Dict[str, Any]:
         """
         Тест SMTP подключения
-        
+
         Args:
             smtp_server: SMTP сервер
             smtp_port: SMTP порт
@@ -309,9 +379,9 @@ class EmailSender:
                 encryption=smtp_encryption,
                 timeout=timeout
             )
-            
-            smtp.quit()
-            
+
+            self._close(smtp, quit=True)
+
             return {
                 'success': True,
                 'message': 'SMTP connection successful',

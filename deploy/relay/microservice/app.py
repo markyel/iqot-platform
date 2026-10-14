@@ -10,7 +10,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from typing import Optional
 import uvicorn
+import asyncio
 import logging
+from concurrent.futures import ThreadPoolExecutor
 import base64
 import os
 import hmac
@@ -68,6 +70,13 @@ app.add_middleware(
 )
 
 # Инициализация сервисов
+@app.on_event("startup")
+async def _configure_thread_pool():
+    # SMTP/IMAP/PDF идут через asyncio.to_thread. Дефолтный пул = cpu+4 (5–6 потоков на
+    # 1–2 vCPU) — при 8 параллельных воркерах Laravel /send вставали бы в очередь.
+    asyncio.get_running_loop().set_default_executor(ThreadPoolExecutor(max_workers=32))
+
+
 email_sender = EmailSender()
 email_receiver = EmailReceiver()
 pdf_generator = PDFGenerator()
@@ -229,7 +238,9 @@ async def html_to_pdf(request: HtmlToPdfRequest):
     try:
         logger.info(f"Converting HTML to PDF: landscape={request.landscape}, page_size={request.page_size}")
         
-        pdf_bytes = pdf_generator.html_to_pdf(
+        # WeasyPrint блокирующий и тяжёлый — в пуле потоков, чтобы не стопорить /send.
+        pdf_bytes = await asyncio.to_thread(
+            pdf_generator.html_to_pdf,
             html_content=request.html_content,
             css_content=request.css_content,
             base_url=request.base_url,

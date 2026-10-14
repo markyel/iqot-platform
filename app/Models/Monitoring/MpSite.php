@@ -16,7 +16,7 @@ class MpSite extends Model
 
     protected $fillable = [
         'domain', 'supplier_id', 'kind', 'publishes_prices', 'publishes_stock',
-        'has_structured_markup', 'search_url_template', 'sitemap_url', 'fetch_mode',
+        'has_structured_markup', 'search_url_template', 'sitemap_url', 'fetch_mode', 'egress',
         'blocked_until', 'blocked_reason', 'rate_limit_ms', 'trust_level', 'trust_scope',
         'sample_every', 'verified_ok', 'verified_mismatch', 'consecutive_ok',
         'last_verified_at', 'next_verification_due_at', 'stats_30d',

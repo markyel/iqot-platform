@@ -25,6 +25,18 @@ return [
         'headless' => (bool) env('MONITORING_HEADLESS', true),
     ],
 
+    // Исходящие каналы (EgressPool): JSON-список {"name","proxy"?,"fallback"?}. Пусто → только
+    // «direct» (IP сервера IQOT). proxy — http://host:3128 (tinyproxy на наших хостах, доступ
+    // по IP прода, deploy/relay/provision-egress-proxy.sh). fallback — канал только на случай,
+    // когда основные забанены сайтом (хост, который сам обходит те же сайты или несёт почту).
+    'egress' => [
+        'channels' => json_decode((string) env('MONITORING_EGRESS', '[]'), true) ?: [],
+        // Бан канала сайтом (401/403/капча) — на столько часов этот домен уходит на другой канал.
+        'ban_hours' => (int) env('MONITORING_EGRESS_BAN_HOURS', 72),
+        // Отказ самого прокси — канал в хвост очереди на столько секунд (0 — выкл.).
+        'down_seconds' => (int) env('MONITORING_EGRESS_DOWN_SECONDS', 300),
+    ],
+
     // Суточные квоты (MonitoringGovernor). Общие на все программы.
     'quotas' => [
         'yandex_query' => (int) env('MONITORING_YANDEX_PER_DAY', 2000),

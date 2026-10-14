@@ -25,7 +25,8 @@ class PageFetcher
     }
 
     /**
-     * @param array{etag?: ?string, last_modified?: ?string, respect_robots?: bool, rate_ms?: int, skip_slot?: bool} $options
+     * @param array{etag?: ?string, last_modified?: ?string, respect_robots?: bool, rate_ms?: int, skip_slot?: bool,
+     *              egress?: ?array{name: string, proxy: ?string}} $options egress — канал EgressPool (null → напрямую)
      */
     public function fetch(string $url, array $options = []): FetchResult
     {
@@ -33,9 +34,12 @@ class PageFetcher
         if ($host === '') {
             return FetchResult::failed($url, 'invalid url');
         }
+        $egress = $options['egress'] ?? null;
+        $egressName = $egress['name'] ?? null;
+        $proxy = $egress['proxy'] ?? null;
 
-        if (($options['respect_robots'] ?? (bool) config('monitoring.fetch.respect_robots', true)) && !$this->robotsAllow($url)) {
-            return FetchResult::failed($url, 'disallowed by robots.txt', 0, true);
+        if (($options['respect_robots'] ?? (bool) config('monitoring.fetch.respect_robots', true)) && !$this->robotsAllow($url, $proxy)) {
+            return FetchResult::failed($url, 'disallowed by robots.txt', 0, true, $egressName);
         }
 
         if (empty($options['skip_slot'])) {
@@ -67,10 +71,18 @@ class PageFetcher
                 ->withHeaders($headers)
                 ->timeout($timeout)
                 ->connectTimeout((int) config('monitoring.fetch.connect_timeout', 10))
-                ->withOptions(['allow_redirects' => ['max' => 5, 'track_redirects' => true]])
+                ->withOptions(array_filter([
+                    'allow_redirects' => ['max' => 5, 'track_redirects' => true],
+                    'proxy' => $proxy,
+                ]))
                 ->get($url);
 
             $body = $response->body();
+            // Отказ по ACL прокси для http://-адреса приходит страницей самого tinyproxy, а не
+            // ошибкой cURL — это сбой канала, не бан сайтом.
+            if ($proxy !== null && in_array($response->status(), [403, 407], true) && stripos(substr($body, 0, 3000), 'tinyproxy') !== false) {
+                return FetchResult::failed($url, "proxy refused (HTTP {$response->status()})", 0, false, $egressName, true);
+            }
             if (strlen($body) > $maxBytes) {
                 $body = substr($body, 0, $maxBytes);
             }
@@ -92,35 +104,39 @@ class PageFetcher
                     'etag' => $response->header('ETag') ?: null,
                     'last_modified' => $response->header('Last-Modified') ?: null,
                 ],
+                egress: $egressName,
             );
         } catch (ConnectionException $e) {
-            return FetchResult::failed($url, 'connection: ' . mb_substr($e->getMessage(), 0, 200));
-        } catch (\Throwable $e) {
-            Log::warning('Monitoring PageFetcher failed', ['url' => $url, 'error' => $e->getMessage()]);
+            $msg = $e->getMessage();
 
-            return FetchResult::failed($url, mb_substr($e->getMessage(), 0, 200));
+            return FetchResult::failed($url, 'connection: ' . mb_substr($msg, 0, 200), 0, false, $egressName, EgressPool::isProxyFailure($msg, $proxy));
+        } catch (\Throwable $e) {
+            Log::warning('Monitoring PageFetcher failed', ['url' => $url, 'egress' => $egressName, 'error' => $e->getMessage()]);
+
+            return FetchResult::failed($url, mb_substr($e->getMessage(), 0, 200), 0, false, $egressName, EgressPool::isProxyFailure($e->getMessage(), $proxy));
         }
     }
 
-    public function robotsAllow(string $url): bool
+    public function robotsAllow(string $url, ?string $proxy = null): bool
     {
         $parts = parse_url($url);
         $host = mb_strtolower($parts['host'] ?? '');
         $path = ($parts['path'] ?? '/') . (isset($parts['query']) ? '?' . $parts['query'] : '');
-        $robots = $this->robotsFor(($parts['scheme'] ?? 'https') . '://' . $host);
+        $robots = $this->robotsFor(($parts['scheme'] ?? 'https') . '://' . $host, $proxy);
 
         return $robots === null || $robots->isAllowed($path, 'iqotbot');
     }
 
-    public function robotsFor(string $origin): ?RobotsTxt
+    public function robotsFor(string $origin, ?string $proxy = null): ?RobotsTxt
     {
         $host = mb_strtolower((string) parse_url($origin, PHP_URL_HOST));
         $hours = (int) config('monitoring.fetch.robots_cache_hours', 12);
 
-        $content = Cache::remember('mon:robots:' . $host, now()->addHours($hours), function () use ($origin) {
+        $content = Cache::remember('mon:robots:' . $host, now()->addHours($hours), function () use ($origin, $proxy) {
             try {
                 $response = Http::withUserAgent((string) config('monitoring.user_agent'))
                     ->timeout(10)->connectTimeout(5)
+                    ->withOptions(array_filter(['proxy' => $proxy]))
                     ->get(rtrim($origin, '/') . '/robots.txt');
                 if ($response->status() === 200 && strlen($response->body()) < 500_000
                     && !preg_match('/<html[\s>]/i', substr($response->body(), 0, 500))) {

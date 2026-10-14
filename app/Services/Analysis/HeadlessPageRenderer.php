@@ -75,11 +75,12 @@ class HeadlessPageRenderer
 
     /**
      * Отрендеренный HTML страницы (после JS) — для разбора разметки (JSON-LD/microdata)
-     * в мониторинге цен. Null при ошибке.
+     * в мониторинге цен. Null при ошибке. $proxy — исходящий канал мониторинга
+     * (http://host:port; доступ к прокси по IP, без логина — Chrome не умеет его во флаге).
      */
-    public function renderHtml(string $url): ?string
+    public function renderHtml(string $url, ?string $proxy = null): ?string
     {
-        $browsershot = $this->boot($url);
+        $browsershot = $this->boot($url, $proxy);
         if ($browsershot === null) {
             return null;
         }
@@ -126,7 +127,7 @@ class HeadlessPageRenderer
      * Готовит писчий HOME для Chrome, ставит env и возвращает сконфигурированный
      * Browsershot на url. Null — если url невалиден или HOME недоступен.
      */
-    private function boot(string $url): ?Browsershot
+    private function boot(string $url, ?string $proxy = null): ?Browsershot
     {
         $url = trim($url);
         if (!preg_match('#^https?://#i', $url)) {
@@ -160,6 +161,11 @@ class HeadlessPageRenderer
         // Выдаём обычный десктопный Chrome (если задан в конфиге).
         if ($this->userAgent !== '') {
             $browsershot->userAgent($this->userAgent);
+        }
+        if ($proxy !== null && $proxy !== '') {
+            // Отдельное свойство Browsershot (→ --proxy-server): setOption('args') выше
+            // createCommand перезаписывает, через него прокси не доехал бы.
+            $browsershot->setProxyServer($proxy);
         }
 
         return $browsershot;

@@ -9,6 +9,7 @@ use App\Services\Analysis\HeadlessPageRenderer;
 use App\Services\Monitoring\Extract\ListingIdentityVerifier;
 use App\Services\Monitoring\Extract\LlmPriceExtractor;
 use App\Services\Monitoring\Extract\StructuredPriceExtractor;
+use App\Services\Monitoring\Web\EgressPool;
 use App\Services\Monitoring\Web\FetchResult;
 use App\Services\Monitoring\Web\PageFetcher;
 use App\Support\Monitoring\ArticleNormalizer;
@@ -36,8 +37,12 @@ class ListingChecker
         private readonly MonitoringGovernor $governor,
         private readonly ?LlmPriceExtractor $llm = null,
         private readonly ?HeadlessPageRenderer $headless = null,
+        ?EgressPool $pool = null,
     ) {
+        $this->pool = $pool ?? EgressPool::make();
     }
+
+    private readonly EgressPool $pool;
 
     public static function make(): self
     {
@@ -73,15 +78,35 @@ class ListingChecker
             return $this->result('quota', null, null, 'fetch quota exhausted');
         }
 
+        // Исходящий канал: закреплённый за сайтом, иначе по хешу домена; все забанены — блок сайта.
+        $channel = $this->pool->pick($site->domain, $site->egress);
+        if ($channel === null) {
+            $site->block('all egress banned');
+            $listing->forceFill(['status' => MpListing::STATUS_BLOCKED, 'next_check_at' => $site->blocked_until])->save();
+
+            return $this->result(MpPriceObservation::STATUS_BLOCKED, null, null, 'all egress channels banned');
+        }
+
         $useConditional = $listing->price !== null && $listing->status === MpListing::STATUS_ACTIVE;
         $res = $this->fetcher->fetch($listing->url, [
             'etag' => $useConditional ? $listing->etag : null,
             'last_modified' => $useConditional ? $listing->last_modified : null,
             'rate_ms' => (int) $site->rate_limit_ms,
+            'egress' => $channel,
         ]);
 
         if ($res->deferred()) {
             return $this->result('deferred', null, null, 'domain slot busy') + ['retry_after_ms' => $res->retryAfterMs];
+        }
+        // Отказал сам прокси (не сайт) — канал «down», проверка повторится через минуту
+        // уже по другому каналу. Ни сайт, ни листинг не штрафуем.
+        if ($res->proxyFailed) {
+            $this->pool->markDown($channel['name'], (string) $res->error);
+
+            return $this->result('deferred', null, null, 'egress down: ' . $channel['name']) + ['retry_after_ms' => 60_000];
+        }
+        if ($site->egress !== $channel['name']) {
+            $site->forceFill(['egress' => $channel['name']])->save();
         }
         if ($res->blockedByRobots) {
             return $this->fail($listing, 'robots.txt disallow', MpPriceObservation::STATUS_FAILED);
@@ -107,8 +132,20 @@ class ListingChecker
             return $this->result('deferred_rate', null, null, 'HTTP 429');
         }
         if (in_array($res->status, [401, 403], true) || ($res->ok() && $this->looksLikeCaptcha($res->body))) {
-            $site->block($res->ok() ? 'captcha' : "HTTP {$res->status}");
-            $this->observe($listing, null, MpPriceObservation::STATUS_BLOCKED, 'none', $res->ok() ? 'captcha' : "HTTP {$res->status}");
+            $reason = $res->ok() ? 'captcha' : "HTTP {$res->status}";
+            // Бан — это бан IP канала: сайт переезжает на следующий канал; блок сайта —
+            // только когда забанены все.
+            $this->pool->markBanned($channel['name'], $site->domain, $reason);
+            $next = $this->pool->pick($site->domain);
+            if ($next !== null) {
+                $site->forceFill(['egress' => $next['name']])->save();
+                $this->observe($listing, null, MpPriceObservation::STATUS_BLOCKED, 'none', "{$reason} via {$channel['name']} → {$next['name']}");
+
+                return $this->result('deferred', null, null, "{$reason} via {$channel['name']}, switched to {$next['name']}")
+                    + ['retry_after_ms' => max(5_000, (int) $site->rate_limit_ms)];
+            }
+            $site->block($reason);
+            $this->observe($listing, null, MpPriceObservation::STATUS_BLOCKED, 'none', $reason . ' (all egress)');
             $listing->forceFill(['status' => MpListing::STATUS_BLOCKED, 'checked_at' => now(), 'next_check_at' => $site->blocked_until])->save();
 
             return $this->result(MpPriceObservation::STATUS_BLOCKED, null, null, 'blocked');
@@ -124,7 +161,7 @@ class ListingChecker
         // JS-заглушка / сайт помечен как headless → рендер браузером.
         if ($this->headless && ($site->fetch_mode === 'headless' || mb_strlen($text) < (int) config('monitoring.fetch.http_min_chars', 300))) {
             if ($this->governor->reserve('fetch_headless')) {
-                $rendered = $this->headless->renderHtml($listing->url);
+                $rendered = $this->headless->renderHtml($listing->url, $channel['proxy']);
                 $renderedText = $rendered ? HtmlText::toText($rendered) : '';
                 if (mb_strlen($renderedText) > mb_strlen($text)) {
                     $html = (string) $rendered;
