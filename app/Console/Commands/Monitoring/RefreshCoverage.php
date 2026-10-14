@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Подведение итогов поиска и покрытия (Ф1):
- *  - товар в «searching», чьи новые листинги проверены (или поиск старше 6 ч) →
+ *  - товар в «searching», чьи новые листинги проверены (или поиск старше 24 ч — на случай длинной очереди) →
  *    found (есть цена на активном листинге) / not_found; next_search_at — повтор;
  *  - счётчики листингов товара; last_priced_at / price_source позиций;
  *  - items_covered программ (позиции со свежей ценой в пределах target_freshness_days).
@@ -50,7 +50,7 @@ class RefreshCoverage extends Command
         ");
         $done = 0;
         foreach ($rows as $r) {
-            $stale = DB::table('mp_products')->where('id', $r->id)->where('last_search_at', '<', now()->subHours(6))->exists();
+            $stale = DB::table('mp_products')->where('id', $r->id)->where('last_search_at', '<', now()->subHours(24))->exists();
             if ((int) $r->pending > 0 && !$stale) {
                 continue;
             }
@@ -63,6 +63,10 @@ class RefreshCoverage extends Command
             ]);
             $done++;
         }
+
+        // 2b. Потерянные в очереди (джоб упал/убит) — вернуть в поиск.
+        DB::table('mp_products')->where('search_state', 'queued')->where('last_search_at', '<', now()->subHours(12))
+            ->update(['search_state' => 'new', 'updated_at' => now()]);
 
         // 3. Свежесть позиций программ.
         DB::statement("

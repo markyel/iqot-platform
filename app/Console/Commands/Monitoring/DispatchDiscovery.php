@@ -63,7 +63,7 @@ class DispatchDiscovery extends Command
 
             if ($ids->isNotEmpty()) {
                 // Отметка «в поиске», чтобы следующий тик не продублировал.
-                MpProduct::query()->whereIn('id', $ids)->update(['search_state' => 'searching', 'last_search_at' => now()]);
+                MpProduct::query()->whereIn('id', $ids)->update(['search_state' => 'queued', 'last_search_at' => now()]);
             }
             foreach ($ids as $id) {
                 DiscoverProductJob::dispatch((int) $id);
