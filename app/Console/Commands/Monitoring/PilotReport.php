@@ -18,7 +18,8 @@ use Illuminate\Support\Facades\DB;
  */
 class PilotReport extends Command
 {
-    protected $signature = 'monitoring:pilot-report {program} {ce_csv}';
+    protected $signature = 'monitoring:pilot-report {program} {ce_csv}
+        {--by-domain=0 : разбивка полноты по N крупнейшим доменам CE — где теряем пары}';
 
     protected $description = 'Мониторинг цен: отчёт пилота — покрытие, полнота против Content Engine, новые продавцы, стоимость';
 
@@ -37,6 +38,10 @@ class PilotReport extends Command
         $iqPriced = [];
         $iqAny = [];
         $byStatus = [];
+        // Лучший статус пары товар×домен (для разбивки по доменам).
+        $rank = ['active_priced' => 6, 'active_no_price' => 5, 'suspicious' => 4, 'mismatch' => 3, 'blocked' => 2, 'gone' => 1];
+        $pairStatus = [];
+        $iqDomainListings = [];
         foreach ($listings as $l) {
             $key = $l->product_id . '|' . $l->domain;
             $iqAny[$key] = true;
@@ -45,6 +50,10 @@ class PilotReport extends Command
             }
             $st = $l->status === 'active' ? ($l->price !== null ? 'active_priced' : 'active_no_price') : $l->status;
             $byStatus[$st] = ($byStatus[$st] ?? 0) + 1;
+            if (($rank[$st] ?? 0) > ($rank[$pairStatus[$key] ?? ''] ?? 0)) {
+                $pairStatus[$key] = $st;
+            }
+            $iqDomainListings[$l->domain] = ($iqDomainListings[$l->domain] ?? 0) + 1;
         }
 
         // CE: пары товар×домен с ценой.
@@ -92,6 +101,52 @@ class PilotReport extends Command
         ]);
         $this->table(['resource', 'units', '$', '₽'], $ledger->map(fn ($r) => [$r->resource, $r->u, round((float) $r->usd, 4), round((float) $r->rub, 2)])->all());
 
+        if (($top = (int) $this->option('by-domain')) > 0) {
+            $this->byDomain($ce, $pairStatus, $iqDomainListings, $top);
+        }
+
         return self::SUCCESS;
+    }
+
+    /**
+     * Где теряем пары CE: по каждому домену — найдено с ценой / страница найдена, но
+     * (без цены | не тот товар | блок | пропала) / не найдено вовсе; и знает ли IQOT домен
+     * в целом (листинги по другим товарам) — отличает «поиск не выводит на сайт» от
+     * «выводит, но не на этот товар».
+     *
+     * @param array<string,bool> $ce
+     * @param array<string,string> $pairStatus
+     * @param array<string,int> $iqDomainListings
+     */
+    private function byDomain(array $ce, array $pairStatus, array $iqDomainListings, int $top): void
+    {
+        $agg = [];
+        foreach (array_keys($ce) as $key) {
+            $domain = explode('|', $key, 2)[1];
+            $st = $pairStatus[$key] ?? 'not_found';
+            $agg[$domain][$st] = ($agg[$domain][$st] ?? 0) + 1;
+            $agg[$domain]['_total'] = ($agg[$domain]['_total'] ?? 0) + 1;
+        }
+        uasort($agg, fn ($a, $b) => $b['_total'] <=> $a['_total']);
+
+        $rows = [];
+        $tot = [];
+        foreach ($agg as $domain => $a) {
+            foreach ($a as $k => $v) {
+                $tot[$k] = ($tot[$k] ?? 0) + $v;
+            }
+            if (count($rows) < $top) {
+                $rows[] = [
+                    $domain, $a['_total'], $a['active_priced'] ?? 0, $a['active_no_price'] ?? 0,
+                    ($a['mismatch'] ?? 0) + ($a['suspicious'] ?? 0), $a['blocked'] ?? 0, $a['gone'] ?? 0,
+                    $a['not_found'] ?? 0, $iqDomainListings[$domain] ?? 0,
+                ];
+            }
+        }
+        $rows[] = [
+            'ВСЕГО (' . count($agg) . ' доменов)', $tot['_total'] ?? 0, $tot['active_priced'] ?? 0, $tot['active_no_price'] ?? 0,
+            ($tot['mismatch'] ?? 0) + ($tot['suspicious'] ?? 0), $tot['blocked'] ?? 0, $tot['gone'] ?? 0, $tot['not_found'] ?? 0, '',
+        ];
+        $this->table(['домен CE', 'пар CE', 'с ценой', 'без цены', 'не тот/подозр.', 'блок', 'пропала', 'не найдено', 'листингов IQOT на домене'], $rows);
     }
 }
