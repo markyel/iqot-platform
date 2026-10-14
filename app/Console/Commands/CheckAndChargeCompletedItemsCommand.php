@@ -2,8 +2,10 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Api\ApiSubmission;
 use App\Models\BalanceHold;
 use App\Models\Request;
+use Carbon\Carbon;
 use App\Models\ExternalRequest;
 use App\Models\ExternalRequestItem;
 use Illuminate\Console\Command;
@@ -124,6 +126,153 @@ class CheckAndChargeCompletedItemsCommand extends Command
 
         // === API-flow заморозки (попозиционные, api_submission_id задан). ===
         $this->processApiHolds($userFilter);
+
+        // === API-flow: срок жизни заморозки + списание поздних КП. ===
+        $this->processApiHoldExpiry($userFilter);
+        $this->processApiLateCharges($userFilter);
+    }
+
+    /**
+     * Включены ли истечение/поздние списания. Dry-run считает всегда (для сверки).
+     */
+    private function apiExpiryActive(): bool
+    {
+        return $this->dryRun
+            || (bool) $this->option('force')
+            || ((bool) config('services.billing.api_reconcile.enabled', false)
+                && (bool) config('services.billing.api_hold.expiry_enabled', false));
+    }
+
+    /**
+     * Срок сбора КП по API-позиции: deadline_at submission (его задаёт клиент), иначе
+     * promoted_at/created_at + default_lifetime_days.
+     */
+    private function apiHoldDeadline(BalanceHold $hold, ?ApiSubmission $submission): Carbon
+    {
+        if ($submission?->deadline_at) {
+            return Carbon::parse($submission->deadline_at);
+        }
+        $days = max(1, (int) config('services.billing.api_hold.default_lifetime_days', 30));
+        $from = $submission?->promoted_at ?? $hold->created_at;
+
+        return Carbon::parse($from)->addDays($days);
+    }
+
+    /**
+     * Заморозки разосланных API-позиций с истёкшим сроком: финальная проверка — ≥3 цен
+     * → списание (если почему-то не списали в основном проходе), иначе разморозка
+     * с причиной 'expired' (по ней ниже ловим поздние КП).
+     */
+    private function processApiHoldExpiry(?int $userFilter): void
+    {
+        if (!$this->apiExpiryActive()) {
+            return;
+        }
+
+        $holds = BalanceHold::where('status', 'held')
+            ->whereNotNull('api_submission_id')
+            ->whereNotNull('request_item_id')
+            ->when($userFilter, fn ($q) => $q->where('user_id', $userFilter))
+            ->get();
+        $submissions = ApiSubmission::whereIn('id', $holds->pluck('api_submission_id')->unique())
+            ->get(['id', 'deadline_at', 'promoted_at'])->keyBy('id');
+
+        $released = 0; $releasedSum = 0.0; $charged = 0;
+        foreach ($holds as $hold) {
+            if ($this->apiHoldDeadline($hold, $submissions[$hold->api_submission_id] ?? null)->isFuture()) {
+                continue;
+            }
+            $item = ExternalRequestItem::find($hold->request_item_id);
+            $offers = $item ? $this->validOffersCount($item) : 0;
+
+            if ($this->dryRun) {
+                if ($offers >= 3) {
+                    $charged++;
+                } else {
+                    $released++;
+                    $releasedSum += (float) $hold->amount;
+                }
+                continue;
+            }
+
+            try {
+                if ($offers >= 3) {
+                    $hold->chargeForItem(
+                        $item->id,
+                        (float) $hold->amount,
+                        "Списание за выполненную позицию #{$item->position_number} (API submission #{$hold->api_submission_id})"
+                    );
+                    $charged++;
+                } else {
+                    $hold->release(BalanceHold::RELEASE_EXPIRED);
+                    $released++;
+                    $releasedSum += (float) $hold->amount;
+                }
+            } catch (\Throwable $e) {
+                $this->error("  ✗ Истечение API hold_id={$hold->id}: " . $e->getMessage());
+                Log::error("check-completed-items API expiry: hold_id={$hold->id}: " . $e->getMessage());
+            }
+        }
+
+        $prefix = $this->dryRun ? 'API-flow истечение [dry-run]: было бы' : 'API-flow истечение:';
+        $this->info("{$prefix} разморожено {$released} позиций на {$releasedSum} ₽, списано при финальной проверке {$charged}");
+        if (!$this->dryRun && ($released || $charged)) {
+            Log::info('check-completed-items: API hold expiry', ['released' => $released, 'released_sum' => $releasedSum, 'charged' => $charged]);
+        }
+    }
+
+    /**
+     * Поздние КП: позиция набрала ≥3 цен уже после разморозки по сроку → списываем
+     * постфактум (решение 2026-10-14). Окно наблюдения — late_charge_days после
+     * разморозки, дальше не проверяем.
+     */
+    private function processApiLateCharges(?int $userFilter): void
+    {
+        if (!$this->apiExpiryActive()) {
+            return;
+        }
+
+        $days = max(1, (int) config('services.billing.api_hold.late_charge_days', 90));
+        $holds = BalanceHold::where('status', 'released')
+            ->where('release_reason', BalanceHold::RELEASE_EXPIRED)
+            ->whereNotNull('api_submission_id')
+            ->whereNotNull('request_item_id')
+            ->where('released_at', '>=', now()->subDays($days))
+            ->when($userFilter, fn ($q) => $q->where('user_id', $userFilter))
+            ->with('user')
+            ->get();
+
+        $charged = 0; $chargedSum = 0.0;
+        foreach ($holds as $hold) {
+            $item = ExternalRequestItem::find($hold->request_item_id);
+            if (!$item || $this->validOffersCount($item) < 3) {
+                continue;
+            }
+            $amount = (float) $hold->amount;
+
+            if ($this->dryRun) {
+                $charged++;
+                $chargedSum += $amount;
+                continue;
+            }
+
+            try {
+                if ($hold->chargeLate(
+                    $item->id,
+                    $amount,
+                    "Списание постфактум: позиция #{$item->position_number} набрала 3+ КП после срока (API submission #{$hold->api_submission_id})"
+                )) {
+                    $charged++;
+                    $chargedSum += $amount;
+                }
+            } catch (\Throwable $e) {
+                $this->error("  ✗ Позднее списание API hold_id={$hold->id}: " . $e->getMessage());
+                Log::error("check-completed-items API late charge: hold_id={$hold->id}: " . $e->getMessage());
+            }
+        }
+
+        $prefix = $this->dryRun ? 'API-flow поздние КП [dry-run]: списалось бы' : 'API-flow поздние КП: списано';
+        $this->info("{$prefix} {$charged} позиций на {$chargedSum} ₽");
     }
 
     /**

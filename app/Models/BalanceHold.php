@@ -18,8 +18,17 @@ class BalanceHold extends Model
         'status',
         'description',
         'released_at',
+        'release_reason',
         'charged_at',
     ];
+
+    /** Причины разморозки (balance_holds.release_reason). */
+    public const RELEASE_EXPIRED = 'expired';                 // срок сбора КП истёк, <3 цен
+    public const RELEASE_MODERATION_REJECTED = 'moderation_rejected';
+    public const RELEASE_MODERATION_TIMEOUT = 'moderation_timeout';
+    public const RELEASE_DEADLINE_EXPIRED = 'deadline_expired'; // до рассылки истёк deadline
+    public const RELEASE_NO_SUPPLIERS = 'no_suppliers';
+    public const RELEASE_CANCELLED = 'cancelled';
 
     protected $casts = [
         'amount' => 'decimal:2',
@@ -49,7 +58,7 @@ class BalanceHold extends Model
      * доступный баланс = balance − held). Поэтому при снятии баланс НЕ увеличиваем —
      * раньше здесь был increment, и клиент получал сумму заморозки сверху.
      */
-    public function release(): void
+    public function release(?string $reason = null): void
     {
         if ($this->status !== 'held') {
             return;
@@ -58,7 +67,42 @@ class BalanceHold extends Model
         $this->update([
             'status' => 'released',
             'released_at' => now(),
+            'release_reason' => $reason,
         ]);
+    }
+
+    /**
+     * Списание постфактум по уже снятой заморозке: позиция набрала ≥3 цен после
+     * истечения срока (release_reason='expired'). Баланс может уйти в минус — это
+     * овердрафт (§10.5), API предупреждает заголовком X-Balance-Warning.
+     */
+    public function chargeLate(int $externalRequestItemId, float $amount, string $description): bool
+    {
+        if ($this->status !== 'released' || $this->release_reason !== self::RELEASE_EXPIRED) {
+            return false;
+        }
+        if ($this->charges()->where('external_request_item_id', $externalRequestItemId)->exists()) {
+            return false;
+        }
+
+        $charge = BalanceCharge::create([
+            'user_id' => $this->user_id,
+            'balance_hold_id' => $this->id,
+            'request_id' => $this->request_id,
+            'external_request_item_id' => $externalRequestItemId,
+            'amount' => $amount,
+            'description' => $description,
+        ]);
+
+        $this->user->decrement('balance', $amount);
+        app(\App\Services\InvoiceTrackingService::class)->trackBalanceCharge($charge);
+
+        $this->update([
+            'status' => 'charged',
+            'charged_at' => now(),
+        ]);
+
+        return true;
     }
 
     /**

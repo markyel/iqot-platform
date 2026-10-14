@@ -66,8 +66,12 @@ class SupplierPoolService
             }
         }
 
-        // Триггер промоушена (§7): если все позиции pool_ready — двигаем в reports.
-        if ($awaiting === 0 && $poolReady > 0) {
+        // Триггер промоушена (§7). Частичный режим: готовые (pool_ready) позиции уходят
+        // в reports сразу, не дожидаясь awaiting_suppliers-соседей (раньше одна позиция
+        // без пула держала всю заявку до 14 дней). Иначе — все позиции pool_ready.
+        if ((bool) config('services.api_moderation.partial_promotion', true)) {
+            app(PromotionService::class)->promoteIfReady($submission);
+        } elseif ($awaiting === 0 && $poolReady > 0) {
             app(PromotionService::class)->promoteIfReady($submission);
         }
 

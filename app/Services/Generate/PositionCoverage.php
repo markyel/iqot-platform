@@ -163,4 +163,42 @@ class PositionCoverage
             ->map(static fn ($v) => (int) $v)
             ->all();
     }
+
+    /**
+     * Позиции, попавшие в работу не раньше $since. Окно свежести планировщика
+     * считается ПО ПОЗИЦИИ, а не по заявке: частичный промоушен API дописывает
+     * позиции в уже созданную заявку (позиция, прошедшая модерацию/пул позже,
+     * иначе выпала бы из окна, так и не разосланной). Для обычных заявок позиции
+     * создаются вместе с заявкой — поведение прежнее.
+     *
+     * @param array<int,int> $itemIds
+     * @return array<int,int>
+     */
+    public function freshItemIds(array $itemIds, \DateTimeInterface $since): array
+    {
+        if ($itemIds === []) {
+            return [];
+        }
+        return DB::connection(self::CONN)->table('request_items')
+            ->whereIn('id', $itemIds)
+            ->where('created_at', '>=', $since)
+            ->pluck('id')
+            ->map(static fn ($v) => (int) $v)
+            ->all();
+    }
+
+    /**
+     * Ограничение выборки заявок окном свежести по позициям (см. freshItemIds).
+     *
+     * @param \Illuminate\Database\Query\Builder $requestsQuery запрос по `requests`
+     */
+    public static function whereHasFreshItems($requestsQuery, \DateTimeInterface $since): void
+    {
+        $requestsQuery->whereExists(function ($q) use ($since) {
+            $q->select(DB::raw(1))
+                ->from('request_items as fri')
+                ->whereColumn('fri.request_id', 'requests.id')
+                ->where('fri.created_at', '>=', $since);
+        });
+    }
 }

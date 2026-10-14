@@ -69,11 +69,15 @@ class PlanDayCampaign extends Command
         // 1. Активные позиции по открытым свежим заявкам. --request — точечный тест
         // одной заявки (вне статуса/свежести).
         $reqQuery = DB::connection(self::CONN)->table('requests');
-        if ($only = (int) $this->option('request')) {
+        $freshSince = now()->subDays($freshDays);
+        $only = (int) $this->option('request');
+        if ($only) {
             $reqQuery->where('id', $only);
         } else {
-            $reqQuery->whereIn('status', ['draft', 'new', 'active', 'queued_for_sending', 'emails_sent', 'responses_received'])
-                ->where('created_at', '>=', now()->subDays($freshDays));
+            // Окно свежести — по позициям (частичный промоушен API дописывает позиции
+            // в уже созданную заявку), см. PositionCoverage::freshItemIds.
+            $reqQuery->whereIn('status', ['draft', 'new', 'active', 'queued_for_sending', 'emails_sent', 'responses_received']);
+            PositionCoverage::whereHasFreshItems($reqQuery, $freshSince);
         }
         $requests = $reqQuery->get(['id', 'offer_target', 'max_reach', 'is_customer_request', 'created_at']);
 
@@ -83,6 +87,9 @@ class PlanDayCampaign extends Command
             $target = $r->offer_target !== null ? (int) $r->offer_target : $defaultTarget;
             $maxReach = (bool) $r->max_reach;
             $active = $coverage->activeItemIds((int) $r->id, $target, $maxReach);
+            if (!$only) {
+                $active = $coverage->freshItemIds($active, $freshSince);
+            }
             if ($active === []) {
                 continue;
             }

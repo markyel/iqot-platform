@@ -7,6 +7,7 @@ use App\Models\Api\RequestItemStaging;
 use App\Models\Api\RequestStaging;
 use App\Models\Api\SupplierDiscoveryRun;
 use App\Models\BalanceHold;
+use App\Services\Api\ModerationService;
 use App\Services\Api\SupplierCoverageService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -71,10 +72,11 @@ class RecheckAwaitingSuppliersJob implements ShouldQueue
         // Без типа продукта позиция не имеет пути вперёд (coverage не считается,
         // discovery-run не создаётся) — отклоняем сразу и пробуем промоутить заявку.
         if ($item->product_type_id === null) {
-            $submission = $this->rejectItemAndRelease(
+            $submission = app(ModerationService::class)->dropAcceptedItem(
                 $item,
                 'unclassified',
-                'Позиция не классифицирована (не задан тип продукта) — требуется ручная переклассификация.'
+                'Позиция не классифицирована (не задан тип продукта) — требуется ручная переклассификация.',
+                BalanceHold::RELEASE_MODERATION_REJECTED
             );
             $this->promoteOrFinalize($submission);
             return;
@@ -114,7 +116,7 @@ class RecheckAwaitingSuppliersJob implements ShouldQueue
             return;
         }
 
-        $submission = $this->rejectItemAndRelease($item, 'no_suppliers_available', 'Не удалось собрать пул поставщиков за 14 дней.');
+        $submission = app(ModerationService::class)->dropAcceptedItem($item, 'no_suppliers_available', 'Не удалось собрать пул поставщиков за 14 дней.', BalanceHold::RELEASE_NO_SUPPLIERS);
         $this->promoteOrFinalize($submission);
     }
 
@@ -150,60 +152,5 @@ class RecheckAwaitingSuppliersJob implements ShouldQueue
                 'status_changed_at' => now(),
             ]);
         }
-    }
-
-    /**
-     * Отклонение позиции после ready (§6.3).
-     * - item status='rejected', reason передаётся, hold release.
-     * - Дописываем запись в api_submissions.rejected_summary.
-     *
-     * Возвращает затронутую ApiSubmission (или null) — чтобы вызывающий мог
-     * запустить promoteIfReady после снятия блокирующей позиции.
-     */
-    private function rejectItemAndRelease(RequestItemStaging $item, string $reason, string $message): ?ApiSubmission
-    {
-        return DB::transaction(function () use ($item, $reason, $message) {
-            if ($item->balance_hold_id) {
-                /** @var BalanceHold|null $hold */
-                $hold = BalanceHold::find($item->balance_hold_id);
-                if ($hold && $hold->status === 'held') {
-                    $hold->update([
-                        'status' => 'released',
-                        'released_at' => now(),
-                    ]);
-                }
-            }
-
-            $staging = RequestStaging::find($item->request_staging_id);
-            $submissionId = $staging?->api_submission_id;
-            $submission = $submissionId ? ApiSubmission::find($submissionId) : null;
-
-            $entry = [
-                'client_ref' => $item->client_item_ref,
-                'name' => $item->name,
-                'reason' => $reason,
-                'message' => $message,
-                'retryable' => true,
-            ];
-
-            if ($submission) {
-                $summary = $submission->rejected_summary ?? [];
-                if (!is_array($summary)) {
-                    $summary = [];
-                }
-                $summary[] = $entry;
-                $submission->update([
-                    'rejected_summary' => $summary,
-                    'items_rejected' => ($submission->items_rejected ?? 0) + 1,
-                    'items_accepted' => max(0, ($submission->items_accepted ?? 0) - 1),
-                ]);
-            }
-
-            // Удаляем сам staging item (аналогично финализации §5.3).
-            $item->update(['balance_hold_id' => null]);
-            $item->delete();
-
-            return $submission;
-        });
     }
 }

@@ -52,9 +52,10 @@ class BuildSendIntents extends Command
             $freshDays = max(1, (int) config('services.email_planner.fresh_days', 7));
             // Открытые заявки (не completed/cancelled): новые + отправленные/получившие
             // часть ответов, но с ещё незакрытыми позициями. Дедуп не даст двойной отправки.
-            $q->whereIn('status', ['draft', 'new', 'active', 'queued_for_sending', 'emails_sent', 'responses_received'])
-                ->where('created_at', '>=', now()->subDays($freshDays))
-                ->orderBy('is_customer_request', 'desc')->orderBy('created_at', 'desc')
+            // Окно свежести — по позициям (как в plan-day, см. PositionCoverage::freshItemIds).
+            $q->whereIn('status', ['draft', 'new', 'active', 'queued_for_sending', 'emails_sent', 'responses_received']);
+            PositionCoverage::whereHasFreshItems($q, now()->subDays($freshDays));
+            $q->orderBy('is_customer_request', 'desc')->orderBy('created_at', 'desc')
                 ->limit(max(1, (int) ($this->option('limit') ?: config('services.email_planner.build_request_limit', 50))));
         }
         $requests = $q->get(['id', 'offer_target', 'max_reach', 'is_customer_request']);

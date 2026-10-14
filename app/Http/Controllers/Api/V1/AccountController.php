@@ -41,6 +41,8 @@ class AccountController extends Controller
             'balance' => (float) $user->balance,
             'currency' => 'RUB',
             'active_holds' => $activeHolds,
+            // Сколько можно заморозить под новые заявки без овердрафта (баланс − заморожено).
+            'available_balance' => round((float) $user->balance - $user->held_balance, 2),
             'overdraft_limit_percent' => $overdraftPercent,
             'overdraft_limit_absolute' => $overdraftAbsolute,
             'warning' => $warning,

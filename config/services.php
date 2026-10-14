@@ -628,6 +628,24 @@ return [
         'api_reconcile' => [
             'enabled' => (bool) env('BILLING_API_RECONCILE_ENABLED', false),
         ],
+        // Срок жизни заморозки разосланной API-позиции (balance:check-completed-items).
+        // По истечении deadline_at submission (иначе promoted_at + default_lifetime_days):
+        // ≥3 цен → списание, иначе разморозка (release_reason='expired'). Позиция,
+        // набравшая ≥3 цен позже, списывается постфактум в течение late_charge_days.
+        'api_hold' => [
+            'expiry_enabled' => (bool) env('BILLING_API_HOLD_EXPIRY_ENABLED', false),
+            'default_lifetime_days' => (int) env('BILLING_API_HOLD_DEFAULT_DAYS', 30),
+            'late_charge_days' => (int) env('BILLING_API_LATE_CHARGE_DAYS', 90),
+        ],
+    ],
+
+    // Модерация API-заявок: частичный промоушен (принятые позиции уходят в рассылку,
+    // не дожидаясь остальных) и SLA — неразобранная за sla_hours позиция решается
+    // автоматически (тип товара определён → принять, нет → отклонить с разморозкой).
+    'api_moderation' => [
+        'partial_promotion' => (bool) env('API_PARTIAL_PROMOTION', true),
+        'sla_enabled' => (bool) env('API_MODERATION_SLA_ENABLED', false),
+        'sla_hours' => (int) env('API_MODERATION_SLA_HOURS', 24),
     ],
 
 ];

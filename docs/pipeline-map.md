@@ -95,7 +95,7 @@ EMAILS_WORK_WINDOW_END_HOUR=21    EMAILS_WORK_WINDOW_FRACTION=0.8 EMAILS_GLOBAL_
 EMAILS_GENERATE_ITEMS_PER_BATCH=8 EMAILS_GENERATE_BODY_TEMP=0.85
 QUEUE_CONNECTION=database  CACHE_STORE=database
 ```
-Остальное — дефолты `config/services.php` (не заданы в `.env`): `EMAILS_PLANNER_FRESH_DAYS=7`, `EMAILS_PLANNER_OFFER_TARGET=4`, `EMAILS_DAYPLAN_MAX_PER_EMAIL=4`, `EMAILS_RECIPIENT_DAILY_CAP=10` (5..15 адаптивно), `BILLING_API_RECONCILE_ENABLED=false`.
+Остальное — дефолты `config/services.php` (не заданы в `.env`): `EMAILS_PLANNER_FRESH_DAYS=7`, `EMAILS_PLANNER_OFFER_TARGET=4`, `EMAILS_DAYPLAN_MAX_PER_EMAIL=4`, `EMAILS_RECIPIENT_DAILY_CAP=10` (5..15 адаптивно). Биллинг: `BILLING_API_RECONCILE_ENABLED=true` на проде (списание API работает с 01.07.2026).
 
 ### 1.3 Воркеры (systemd, все `queue:work database`)
 | Очередь | Юниты | Что ест |
@@ -348,8 +348,8 @@ Claim `pending→sending` (реклейм ⚠ по `created_at`, не по вр�
 **Выдача клиенту:** веб `UserRequestController::showReport` (офферы `received|processed` с ценой); API `GET /submissions/{id}`, `/items`, `/report` — только polling (`X-Next-Check-After`), **вебхуков нет**; PDF — через n8n `report-management`. `request_item_multi_responses` нигде не показываются. `client_ref` позиции теряется после чистки staging.
 
 **Биллинг:**
-- `balance:check-completed-items` (1 ч): веб — заморозка на заявку, сумма по тарифу на момент списания; **API-ветка под `BILLING_API_RECONCILE_ENABLED=false`** → API-позиции не списываются.
-- `balance:release-expired` (сутки): API-холды пропускаются (не снимаются по сроку → деньги клиента висят); веб — ⚠ **`increment('balance')` при снятии, хотя заморозка баланс не уменьшала** (`User::holdBalance` только создаёт запись, доступный = `balance − held`) → при снятии клиент получает сумму сверху. Подтверждено по коду (`BalanceHold::release:58`, `ReleaseExpiredBalanceHoldsCommand:109,130`); масштаб надо проверить по данным `balance_holds` (released, `request_id IS NOT NULL`).
+- `balance:check-completed-items` (1 ч): веб — заморозка на заявку, сумма по тарифу на момент списания; API — попозиционно, сумма hold, при ≥3 ценах (флаг `BILLING_API_RECONCILE_ENABLED=true` на проде). С 2026-10-14: истечение по `deadline_at` → разморозка (`release_reason=expired`), поздние ≥3 → списание постфактум (флаг `BILLING_API_HOLD_EXPIRY_ENABLED`).
+- `balance:release-expired` (сутки): только веб-холды (API — см. выше). Баг с `increment('balance')` при снятии исправлен 2026-10-14 (ошибочно начислено 790 ₽ по 2 заявкам).
 - `ExternalRequestItemObserver` (списание по `offers_count`) мёртв — `offers_count` не обновляется.
 
 ---
@@ -408,12 +408,12 @@ Claim `pending→sending` (реклейм ⚠ по `created_at`, не по вр�
 ## 13. Реестр проблем (приоритет для модернизации)
 
 > **Исправлено 2026-10-14** (явные баги, без смены алгоритма): п.0 (двойной счёт `emails_sent_today` — инкремент только триггером; `daily_limit` всех ящиков разово уменьшен вдвое, чтобы реальный объём не скакнул, дальше растит прогрев), п.3 (снятие веб-заморозки больше не начисляет баланс; доступный баланс учитывает частичные списания), п.4 (сбой AI в анализе/идентификации → повтор, а не тихая потеря/ручной разбор; исчерпавшие попытки identify → manual_review; 2-й проход AI не затирает 1-й), п.5 (item_id от AI сверяется с позициями батча, порядковый номер переводится в id), п.6 (job'ы шлют только `status='sending'`; реклейм 40 мин; ответы — реклейм по новому `outgoing_replies.claimed_at`), `items_covered` по поставщику + `needs_clarification` не затирается, кэш Яндекса не пишет `[]` при исчерпании бюджета + атомарный бюджет, plan-render не метит `rendered` пропущенные persister'ом, классификатор API (`fullAiFallback`, сброс `hit_count`), зависшие discovery-run'ы → failed, разблок ящика сбрасывает счётчики и не реактивирует отписавшихся, отписка снимает очередь, containment снимает и ретраибельные `error`, `sending_disabled` соблюдается рассылкой, сбои HTTP-релея не штрафуют получателя, PDF-вебхук `failed` пишет по `n8n_report_id`, потолок 5 попыток у вопросов (→ skipped), правило «пустое тело + вложения» в промпте анализа.
-> **Не тронуто (в модернизацию):** жизненный цикл заявки/`fresh_days`, единая политика готовности, API-биллинг и холды, неаутентифицированные легаси-вебхуки, `is_personal`/именные API-заявки, карма, мониторинг, релей (последовательность/MIME).
+> **Не тронуто (в модернизацию):** жизненный цикл заявки/`fresh_days`, единая политика готовности, неаутентифицированные легаси-вебхуки, `is_personal`/именные API-заявки, карма, мониторинг, релей (последовательность/MIME).
 
 ### P0 — деньги, потеря данных, двойная отправка
 0. **Ёмкость ящиков считается вдвое.** На `sent` счётчик `senders.emails_sent_today` увеличивают И триггер `tr_sender_update_usage`, И `SendQueuedEmailJob::bumpSenderCounter` (`:236`). Факт 13.10: id 26 — счётчик 100 при 50 отправленных (`daily_limit` 200), id 247 — 98/49, и так у всех. Диспетчер (`DispatchPendingEmails:118-150`) и plan-day (`senderCaps`) режут по этому счётчику → **реальный дневной лимит ящика = половина заданного**, прогрев и «ёмкость не ограничивает» в анализах искажены. Фикс — убрать один из двух инкрементов (у ответов `SendOutgoingReplyJob` проверить так же).
 1. **Нет жизненного цикла заявки.** 389 `active`, из них 375 старше 7 дней — выпали из рассылки молча; 56% их позиций без цены; клиенту API не сообщается ни «готово», ни «не набрали». `ready_minimum/completed` недостижимы, `deadline` не применяется.
-2. **Биллинг API выключен** (`BILLING_API_RECONCILE_ENABLED=false`), API-холды не снимаются по сроку → деньги клиентов висят бессрочно.
+2. ~~Биллинг API выключен~~ — неверно: на проде включён. Реальные проблемы (без срока жизни холдов, застрявшая модерация, баланс без учёта холдов) исправлены 2026-10-14, см. «Биллинг API» ниже.
 3. **Веб-холды: снятие начисляет деньги сверху** (§9).
 4. **Тихая потеря ответов при сбое AI** (fallback → `ai_processed=1`), то же в identify (→ manual_review) и вопросах.
 5. **`item_id` от AI не проверяется** — оффер может лечь в чужую позицию; повторный оффер из другого батча перезаписывает цену.
@@ -470,3 +470,24 @@ Claim `pending→sending` (реклейм ⚠ по `created_at`, не по вр�
 - Отправка ответов идёт через релей (не только Symfony SMTP).
 - Не описаны: NDR-обработка на приёме, `ai_attempts`, auto-close-questions, `forcedAnswer`, v2-планировщик как основной путь (раздел «Генерация рассылок» описывает выключенный v1).
 - «Поставщик без включённых доменов в пул не попадает» — верно только при `scope_domains≠all`.
+
+---
+
+## Биллинг API (порядок наведён 2026-10-14)
+
+Цена: позиции сверх `items_limit` тарифа (месячный сброс `items_used`) — `price_per_item_over_limit` (сейчас 350 ₽), hold на позицию при `POST /submissions`; в пределах лимита — бесплатно, без hold.
+
+| Событие | Что с hold | Где |
+|---|---|---|
+| `POST /submissions` | создаётся, если `balance − held + overdraft ≥ required` | `SubmissionService` |
+| Отклонена модератором / SLA (`moderation_timeout`) | released сразу | `ModerationService::rejectItem` |
+| Принята → пул → `pool_ready` | **частичный промоушен**: позиция сразу в `reports` (первая партия создаёт заявку, следующие дописываются), hold → `request_item_id` | `PromotionService::promoteReadyItems` |
+| Не разобрана 24 ч | авто: тип есть → принять, нет → `moderation_timeout` | `api:moderation-sla` (1 ч) |
+| До рассылки истёк `deadline_at` | снята, released `deadline_expired` | `api:moderation-sla` |
+| 14 дней без пула | released `no_suppliers` | `RecheckAwaitingSuppliersJob` |
+| Отмена клиентом до рассылки | released `cancelled` | `SubmissionCancelService` |
+| ≥3 цены (разные поставщики, `received|processed`, цена>0) | charged | `balance:check-completed-items` (1 ч) |
+| `deadline_at` прошёл, <3 цен | released `expired` | там же |
+| ≥3 цены после `expired` (≤90 дней) | charged постфактум (баланс может уйти в овердрафт) | там же, `BalanceHold::chargeLate` |
+
+Флаги: `BILLING_API_RECONCILE_ENABLED` (списание), `BILLING_API_HOLD_EXPIRY_ENABLED` (истечение + поздние), `API_MODERATION_SLA_ENABLED`, `API_MODERATION_SLA_HOURS=24`, `API_PARTIAL_PROMOTION=true`, `BILLING_API_HOLD_DEFAULT_DAYS=30`, `BILLING_API_LATE_CHARGE_DAYS=90`. Окно свежести планировщика (`fresh_days`) считается по `request_items.created_at` (дописанные позиции не выпадают).

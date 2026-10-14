@@ -38,6 +38,17 @@ class CleanupPromotedStagingJob implements ShouldQueue
             return;
         }
 
+        // Частичный промоушен: пока часть позиций ещё в пути, staging — источник
+        // статусов для SubmissionReadService (смешанное состояние). Чистим только
+        // когда в пути никого не осталось (финальный промоушен перезапустит job).
+        $inFlight = RequestItemStaging::query()
+            ->where('request_staging_id', $staging->id)
+            ->whereIn('item_status', \App\Services\Api\ModerationService::IN_FLIGHT_STATUSES)
+            ->exists();
+        if ($inFlight) {
+            return;
+        }
+
         RequestItemStaging::query()
             ->where('request_staging_id', $staging->id)
             ->where('item_status', 'promoted')

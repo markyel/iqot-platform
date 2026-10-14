@@ -117,14 +117,15 @@ curl -H "Authorization: Bearer $KEY" \
 
 **Попозиционный hold** создаётся при POST /submissions. Считается как сумма `price_per_item_over_limit` за каждую позицию сверх items_limit тарифа.
 
-- Баланс = `user.balance - sum(active_holds)`.
-- Доступный лимит = `balance + (required_hold * overdraft_percent/100)`.
-- При недоборе: **`402 insufficient_balance`** с `details.required_hold`.
-- Отклонена позиция → hold released.
-- Собран минимум КП (3) → списание.
-- Таймаут 7 дней без минимума → автоматическая разморозка.
+- Доступно под новые заявки = `balance − sum(active_holds) + required_hold * overdraft_percent/100` (уже замороженное учитывается, с 2026-10-14).
+- При недоборе: **`402 insufficient_balance`** с `details.required_hold`, `details.balance`, `details.held`.
+- Отклонена позиция (модератором, SLA, `no_suppliers_available`, отмена до рассылки) → hold released сразу.
+- Собран минимум КП (≥3 цены от разных поставщиков) → списание суммы hold.
+- Истёк срок сбора (`deadline_at` submission; если не задан — 30 дней от промоушена) без минимума → разморозка.
+- Минимум собран **после** разморозки по сроку → списание постфактум (в течение 90 дней; баланс может уйти в овердрафт, см. `X-Balance-Warning`).
+- Модерация: принятые позиции уходят в рассылку сразу, не дожидаясь остальных; позиция, не разобранная за 24 ч, решается автоматически (тип товара определён → принята, нет → `moderation_timeout`); не разосланная к `deadline_at` → `deadline_expired`.
 
-Ручной просмотр: `GET /account/balance`.
+Ручной просмотр: `GET /account/balance` (`balance`, `active_holds`, `available_balance`).
 
 ---
 
@@ -166,6 +167,9 @@ curl -H "Authorization: Bearer $KEY" \
 | `duplicate` | **да** |
 | `no_suppliers_available` | **да** (возможно позже появятся) |
 | `moderator_rejected` | нет |
+| `unclassified` | **да** (нужна ручная переклассификация) |
+| `moderation_timeout` | **да** (не разобрана за 24 ч, тип товара не определён) |
+| `deadline_expired` | **да** (срок сбора истёк до рассылки позиции) |
 | `cancelled_by_client` | — |
 
 ---

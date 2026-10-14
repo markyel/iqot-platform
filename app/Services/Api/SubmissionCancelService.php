@@ -66,6 +66,7 @@ class SubmissionCancelService
                             $hold->update([
                                 'status' => 'released',
                                 'released_at' => now(),
+                                'release_reason' => BalanceHold::RELEASE_CANCELLED,
                             ]);
                         }
                     }
@@ -91,6 +92,7 @@ class SubmissionCancelService
                 ->update([
                     'status' => 'released',
                     'released_at' => now(),
+                    'release_reason' => BalanceHold::RELEASE_CANCELLED,
                 ]);
 
             $rejectedCount = count($rejectedSummary);

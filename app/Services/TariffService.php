@@ -51,6 +51,9 @@ class TariffService
                     if (!$user->canAfford($tariffPlan->monthly_price)) {
                         // Недостаточно средств - переводим на бесплатный тариф
                         $this->downgradeToStartTariff($user, 'Недостаточно средств для продления тарифа');
+                        // Фиксируем: раньше здесь был continue без commit — транзакция
+                        // оставалась открытой, и перевод на стартовый тариф мог откатиться.
+                        DB::commit();
                         \Log::info("User {$user->id} downgraded to start tariff due to insufficient balance");
                         continue;
                     }

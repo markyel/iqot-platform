@@ -71,18 +71,23 @@ class SubmissionService
         $positions = $this->calculatePerPositionPrices($user, $itemCount);
         $requiredHold = array_sum(array_column($positions, 'price'));
 
-        // 4. Проверка баланса с overdraft (§10.4).
-        $available = (float) $user->balance + ($requiredHold * ((float) $client->overdraft_percent / 100.0));
+        // 4. Проверка баланса с overdraft (§10.4) — за вычетом УЖЕ замороженного
+        // (решение 2026-10-14): иначе клиент мог заморозить больше своего баланса —
+        // каждая заявка по отдельности проходила проверку по полному балансу.
+        $held = $user->held_balance;
+        $available = (float) $user->balance - $held
+            + ($requiredHold * ((float) $client->overdraft_percent / 100.0));
         if ($requiredHold > $available) {
             return [
                 'status' => 'insufficient_balance',
                 'message' => sprintf(
-                    'Required hold %.2f exceeds available balance %.2f (overdraft %s%%).',
-                    $requiredHold, $available, $client->overdraft_percent
+                    'Required hold %.2f exceeds available balance %.2f (balance %.2f − held %.2f + overdraft %s%%).',
+                    $requiredHold, $available, (float) $user->balance, $held, $client->overdraft_percent
                 ),
                 'details' => [
                     'required_hold' => $requiredHold,
                     'balance' => (float) $user->balance,
+                    'held' => $held,
                     'overdraft_percent' => (float) $client->overdraft_percent,
                 ],
             ];

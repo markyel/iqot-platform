@@ -26,6 +26,11 @@ Schedule::command('catalog:sync')->hourly();
 // Публичный API: обработка inbox (классификация) — каждые 5 минут.
 Schedule::command('api:inbox:process')->everyFiveMinutes()->withoutOverlapping();
 
+// Публичный API: SLA модерации — неразобранная за 24ч позиция решается автоматически,
+// позиции с истёкшим deadline до рассылки снимаются с разморозкой. Флаг
+// API_MODERATION_SLA_ENABLED (команда сама проверяет).
+Schedule::command('api:moderation-sla')->hourly()->withoutOverlapping();
+
 // Рассылка: диспетчер очереди писем (замена n8n «Send Emails»).
 // Рабочее окно — Пн–Пт 08:00–21:00 по Europe/Riga (как в n8n Within Work Hours).
 Schedule::command('emails:dispatch-pending')
