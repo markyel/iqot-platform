@@ -39,7 +39,9 @@ class SitemapMatcherTest extends TestCase
         ]));
         $t = SitemapMatcher::productTokens($p);
         $this->assertArrayHasKey('KM804342G10', $t['codes']);
-        $this->assertArrayHasKey('P1EC400E40KE', $t['codes']);
+        // Код из названия — не прямое совпадение (часто серия), а редкое «слово» в сравнении названий.
+        $this->assertArrayNotHasKey('P1EC400E40KE', $t['codes']);
+        $this->assertArrayHasKey('#P1EC400E40KE', $t['words']);
         $this->assertArrayNotHasKey('LW0001547', $t['codes']);
     }
 }

@@ -138,8 +138,11 @@ class SitemapMatcher
     /** @return array{codes: array<string,true>, words: array<string,true>, nums: array<string,true>} */
     public static function productTokens(MpProduct $product): array
     {
+        // Прямое совпадение — только OEM/MPN из идентификаторов. Коды из названия часто
+        // обозначают серию (BFK16, MT42IX, DCSS4, GEN2): они есть у соседних товаров
+        // («вызов вниз» вместо «вверх») — поэтому идут в сравнение названий как редкие слова.
         $t = self::tokensOf(trim($product->name . ' ' . $product->brand));
-        $codes = $t['codes']; // коды из названия («Кнопка P1EC400E40-K/E») + идентификаторы
+        $codes = [];
         foreach ($product->identifiers as $i) {
             if (in_array($i->kind, ['oem', 'mpn'], true)) {
                 $norm = (string) ($i->value_norm ?: ArticleNormalizer::normalize($i->value));
@@ -176,6 +179,7 @@ class SitemapMatcher
         foreach (ArticleNormalizer::tokens($text) as $c => $_) {
             if (self::isCode($c)) {
                 $codes[$c] = true;
+                $words['#' . $c] = true; // код как «слово» для сравнения названий (вес — по редкости)
             }
         }
 
