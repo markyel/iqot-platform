@@ -135,10 +135,22 @@ class SitemapMatcher
     /** @return array{codes: array<string,true>, words: array<string,true>, nums: array<string,true>} */
     public static function urlTokens(string $url): array
     {
-        $path = rawurldecode((string) parse_url($url, PHP_URL_PATH) . ' ' . (string) parse_url($url, PHP_URL_QUERY));
-        $text = preg_replace('~[/\-_.=&?+%]+~', ' ', $path) ?? $path;
+        $rawPath = rawurldecode((string) parse_url($url, PHP_URL_PATH));
+        $query = rawurldecode((string) parse_url($url, PHP_URL_QUERY));
+        $split = fn (string $s) => preg_replace('~[/\-_.=&?+%]+~', ' ', $s) ?? $s;
 
-        return self::tokensOf($text);
+        // Артикулы — по всему адресу; слова названия — только из последнего сегмента
+        // (карточка товара). Слова категорий пути («lifty/dveri/avtomaticheskie/roliki»)
+        // одинаковы у сотен карточек: на revator (/…/platy_elektronnye_bloki/RR3096/) давали
+        // 381 ложного кандидата.
+        $all = self::tokensOf($split($rawPath . ' ' . $query));
+        $segments = array_values(array_filter(explode('/', $rawPath), fn ($s) => trim($s) !== ''));
+        $last = self::tokensOf($split((string) end($segments) . ' ' . $query));
+        foreach ($all['codes'] as $c => $_) {
+            $last['words']['#' . $c] = true;
+        }
+
+        return ['codes' => $all['codes'], 'words' => $last['words'], 'nums' => $last['nums']];
     }
 
     /** @return array{codes: array<string,true>, words: array<string,true>, nums: array<string,true>} */
