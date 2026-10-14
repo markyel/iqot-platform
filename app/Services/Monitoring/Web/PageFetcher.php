@@ -26,7 +26,8 @@ class PageFetcher
 
     /**
      * @param array{etag?: ?string, last_modified?: ?string, respect_robots?: bool, rate_ms?: int, skip_slot?: bool,
-     *              egress?: ?array{name: string, proxy: ?string}} $options egress — канал EgressPool (null → напрямую)
+     *              egress?: ?array{name: string, proxy: ?string}, timeout?: int, max_bytes?: int} $options
+     *              egress — канал EgressPool (null → напрямую); timeout/max_bytes — для больших sitemap
      */
     public function fetch(string $url, array $options = []): FetchResult
     {
@@ -63,8 +64,8 @@ class PageFetcher
             $headers['If-Modified-Since'] = $options['last_modified'];
         }
 
-        $timeout = (int) config('monitoring.fetch.timeout', 20);
-        $maxBytes = (int) config('monitoring.fetch.max_bytes', 5_000_000);
+        $timeout = (int) ($options['timeout'] ?? config('monitoring.fetch.timeout', 20));
+        $maxBytes = (int) ($options['max_bytes'] ?? config('monitoring.fetch.max_bytes', 5_000_000));
 
         try {
             $response = Http::withUserAgent((string) config('monitoring.user_agent'))
