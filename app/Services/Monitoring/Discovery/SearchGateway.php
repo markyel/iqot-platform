@@ -44,7 +44,7 @@ class SearchGateway
     }
 
     /**
-     * @return array{results: array<int, array{url:string, title:string, content:string, domain:string, query:string}>, quota: bool}
+     * @return array{results: array<int, array{url:string, title:string, content:string, domain:string, query:string}>, quota: bool, error?: ?string}
      */
     public function search(string $query): array
     {
@@ -60,14 +60,26 @@ class SearchGateway
                 $mode = 'sync'; // отложенный не принят (429 / нет квоты) — синхронно
             }
         }
+        $error = null;
         if ($results === null) {
             $results = $this->client->multiSearch([$query]);
+            $error = $this->client->lastLog()[0]['error'] ?? null;
+            // Синхронный лимит Яндекса — 1 запрос/с на каталог; при параллельных воркерах
+            // 429 — штатно: одна повторная попытка через секунду.
+            if ($error === 'HTTP 429') {
+                usleep(1_200_000);
+                $results = $this->client->multiSearch([$query]);
+                $error = $this->client->lastLog()[0]['error'] ?? null;
+            }
         }
 
-        $rub = (float) (config("monitoring.search.rub_per_1000.{$mode}") ?? 0) / 1000;
-        $this->governor->record('yandex_query', 0, 0.0, 0, $rub);
+        // Неудачный запрос не тарифицируется и не считается пустой выдачей.
+        if ($error === null) {
+            $rub = (float) (config("monitoring.search.rub_per_1000.{$mode}") ?? 0) / 1000;
+            $this->governor->record('yandex_query', 0, 0.0, 0, $rub);
+        }
 
-        return ['results' => $results, 'quota' => true];
+        return ['results' => $error === null ? $results : [], 'quota' => true, 'error' => $error];
     }
 
     /** @return array<int, array<string,string>>|null null — запрос не принят */

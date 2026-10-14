@@ -5,12 +5,14 @@ namespace App\Console\Commands\Monitoring;
 use App\Jobs\Monitoring\DiscoverProductJob;
 use App\Models\Monitoring\MonitoringProgram;
 use App\Models\Monitoring\MpProduct;
+use App\Support\Monitoring\MonitoringSettings;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
 /**
  * Диспетчер поиска листингов (Ф1): товары активных программ в состоянии new
- * (или повтор по next_search_at), не больше discovery_rate программы в сутки.
+ * (или повтор по next_search_at), не больше discovery_rate программы в сутки и общего
+ * бюджета агрессивности (суточные запросы Яндекса / глубина поиска), равномерно по дню.
  * Флаг MONITORING_ENABLED, ручной прогон — --force; --product — точечно.
  */
 class DispatchDiscovery extends Command
@@ -37,11 +39,15 @@ class DispatchDiscovery extends Command
             ->when($this->option('program'), fn ($q, $p) => $q->where('id', (int) $p))
             ->get();
         $total = 0;
+        $global = $this->globalBudget();
         foreach ($programs as $program) {
+            if ($global <= 0) {
+                break;
+            }
             // Сколько товаров программы уже искали сегодня — суточный лимит discovery_rate.
             $today = (int) DB::table('program_items as pi')->join('mp_products as p', 'p.id', '=', 'pi.product_id')
                 ->where('pi.program_id', $program->id)->where('p.last_search_at', '>=', now()->startOfDay())->count();
-            $budget = max(0, (int) $program->discovery_rate - $today);
+            $budget = min($global, max(0, (int) $program->discovery_rate - $today));
             if ($this->option('limit')) {
                 $budget = min($budget, (int) $this->option('limit'));
             }
@@ -69,10 +75,32 @@ class DispatchDiscovery extends Command
                 DiscoverProductJob::dispatch((int) $id);
             }
             $total += $ids->count();
+            $global -= $ids->count();
         }
 
-        $this->info("Dispatched discovery: {$total}");
+        $this->info("Dispatched discovery: {$total} (global budget left this tick: {$global})");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Сколько товаров можно поставить в поиск на этом тике по агрессивности (MonitoringSettings):
+     * остаток суточных запросов Яндекса / запросов на товар, минус уже стоящие в очереди;
+     * равномерно по дню — остаток делится на оставшиеся 10-минутные тики (недобор догоняется).
+     */
+    private function globalBudget(): int
+    {
+        $perProduct = max(1, MonitoringSettings::get('search_queries'));
+        $usedQueries = (int) DB::table('mp_budget_ledger')->where('day', now()->toDateString())
+            ->where('resource', 'yandex_query')->sum('units');
+        $left = max(0, MonitoringSettings::get('yandex_per_day') - $usedQueries);
+        $inFlight = MpProduct::query()->where('search_state', 'queued')->count();
+        $products = max(0, intdiv($left, $perProduct) - $inFlight);
+        if ($this->option('limit') || $this->option('program')) {
+            return $products; // ручной прогон — без растяжки по дню
+        }
+        $ticksLeft = max(1, (int) ceil(now()->diffInMinutes(now()->endOfDay()) / 10));
+
+        return (int) ceil($products / $ticksLeft);
     }
 }

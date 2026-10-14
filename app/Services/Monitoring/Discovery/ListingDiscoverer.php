@@ -6,31 +6,37 @@ use App\Models\Monitoring\MpListing;
 use App\Models\Monitoring\MpProduct;
 use App\Models\Monitoring\MpSite;
 use App\Support\Monitoring\DomainPolicy;
+use App\Support\Monitoring\MonitoringSettings;
 use App\Support\Monitoring\UrlCanonicalizer;
 
 /**
- * Поиск листингов товара (Ф1, «вслепую»): 1–2 запроса в Яндекс → кандидаты-страницы →
- * листинги status=active без цены → их проверяет ListingChecker (он и отсекает
+ * Поиск листингов товара: N LLM-запросов в Яндекс (SearchQueryBuilder) → кандидаты,
+ * ранжированные как в Content Engine (встречаемость в выдачах + позиция) → до M листингов
+ * status=active без цены, ≤2 на домен → их проверяет ListingChecker (он и отсекает
  * «не тот товар»: аналоги, другой бренд/типоразмер, категории).
  *
- * Отличия от исследования Content Engine: 1–2 запроса вместо 8, только витрины
- * (маркетплейсы/агрегаторы/соцсети — стоп-лист), ≤2 страниц на домен, известные
- * отрицательные URL товара (mismatch/gone) повторно не заводим.
+ * Глубина (N запросов, M кандидатов) — агрессивность из MonitoringSettings. Замер
+ * 14.10.2026 на 20 позициях: 2 простых запроса/8 кандидатов — полнота против CE 11,5%,
+ * 4 LLM-запроса/25 кандидатов — 36%, 8 — 40%.
+ * Только витрины (маркетплейсы/агрегаторы/соцсети — стоп-лист), известные отрицательные
+ * URL товара (mismatch/gone) повторно не заводим.
  */
 class ListingDiscoverer
 {
-    public function __construct(private readonly SearchGateway $search)
-    {
+    public function __construct(
+        private readonly SearchGateway $search,
+        private readonly SearchQueryBuilder $queries,
+    ) {
     }
 
     public static function make(): self
     {
-        return new self(SearchGateway::make());
+        return new self(SearchGateway::make(), SearchQueryBuilder::make());
     }
 
     /**
-     * @return array{status: string, queries: int, results: int, created: array<int,int>}
-     *   status: ok | quota | not_configured
+     * @return array{status: string, queries: int, results: int, created: array<int,int>, errors?: int}
+     *   status: ok | quota | not_configured | error (Яндекс не ответил ни на один запрос)
      */
     public function discover(MpProduct $product): array
     {
@@ -39,29 +45,46 @@ class ListingDiscoverer
         }
         $product->loadMissing('identifiers');
 
-        $candidates = [];
+        $urls = [];
         $queries = 0;
+        $errors = 0;
         $results = 0;
         foreach ($this->queries($product) as $query) {
             $r = $this->search->search($query);
             if (!$r['quota']) {
-                if ($queries === 0) {
+                if ($queries === 0 && $errors === 0) {
                     return ['status' => 'quota', 'queries' => 0, 'results' => 0, 'created' => []];
                 }
                 break;
             }
+            if (($r['error'] ?? null) !== null) {
+                $errors++;
+                continue;
+            }
             $queries++;
-            foreach ($r['results'] as $hit) {
-                $results++;
+            foreach (array_values($r['results']) as $pos => $hit) {
                 $url = (string) ($hit['url'] ?? '');
                 if ($url === '' || DomainPolicy::isBlocked($url)) {
                     continue;
                 }
-                $candidates[UrlCanonicalizer::hash($url)] ??= $url;
+                $results++;
+                $h = UrlCanonicalizer::hash($url);
+                if (isset($urls[$h])) {
+                    $urls[$h]['score'] += 1;
+                    continue;
+                }
+                $urls[$h] = ['url' => $url, 'score' => 1 + max(0, 10 - $pos) / 10];
             }
         }
+        if ($queries === 0) {
+            // Ни одного ответа (429/5xx) — не «ничего не найдено»: поиск повторится.
+            $product->forceFill(['search_state' => 'new', 'last_search_at' => now()])->save();
 
-        $created = $this->createListings($product, $candidates);
+            return ['status' => 'error', 'queries' => 0, 'results' => 0, 'created' => [], 'errors' => $errors];
+        }
+        uasort($urls, fn ($a, $b) => $b['score'] <=> $a['score']);
+
+        $created = $this->createListings($product, array_map(fn ($u) => $u['url'], $urls));
 
         $product->forceFill([
             'search_state' => 'searching',
@@ -69,45 +92,22 @@ class ListingDiscoverer
             'search_attempts' => (int) $product->search_attempts + 1,
         ])->save();
 
-        return ['status' => 'ok', 'queries' => $queries, 'results' => $results, 'created' => $created];
+        return ['status' => 'ok', 'queries' => $queries, 'results' => $results, 'created' => $created, 'errors' => $errors];
     }
 
     /** @return array<int,string> */
     public function queries(MpProduct $product): array
     {
-        $codes = $product->articleValues();
-        $brand = trim((string) $product->brand);
-        $max = max(1, (int) config('monitoring.search.queries_per_product', 2));
-        $q = [];
-
-        // Код каталога клиента (LW-…) в поиск не идёт — по нему ищем только свои партнёрские сайты.
-        $article = null;
-        foreach ($product->identifiers as $i) {
-            if (in_array($i->kind, ['oem', 'mpn'], true)) {
-                $article = $i->value;
-                break;
-            }
-        }
-
-        if ($article) {
-            $q[] = trim('"' . $article . '" ' . $brand . ' цена');
-            $q[] = trim('"' . $article . '" купить');
-        } else {
-            $name = mb_substr(trim((string) $product->name), 0, 120);
-            $q[] = trim($name . ' ' . $brand . ' цена');
-            $q[] = trim($name . ' купить');
-        }
-
-        return array_slice(array_values(array_unique($q)), 0, $max);
+        return $this->queries->build($product, MonitoringSettings::get('search_queries'));
     }
 
     /**
-     * @param array<string,string> $candidates url_hash => url
+     * @param array<string,string> $candidates url_hash => url, по убыванию балла
      * @return array<int,int> id созданных листингов
      */
     private function createListings(MpProduct $product, array $candidates): array
     {
-        $maxCandidates = (int) config('monitoring.search.max_candidates', 8);
+        $maxCandidates = MonitoringSettings::get('search_candidates');
         $maxPerDomain = (int) config('monitoring.search.max_per_domain', 2);
 
         $known = MpListing::query()->where('product_id', $product->id)->where('bench', false)->pluck('url_hash')->flip();

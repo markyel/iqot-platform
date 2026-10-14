@@ -2,6 +2,7 @@
 
 namespace App\Services\Monitoring;
 
+use App\Support\Monitoring\MonitoringSettings;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -10,7 +11,8 @@ use Illuminate\Support\Facades\DB;
  * reserve() — атомарно увеличивает счётчик ресурса в mp_budget_ledger и возвращает
  * false, если суточная квота исчерпана (вызывающий откладывает работу).
  * record() — учёт фактического расхода (стоимость LLM и т. п.).
- * Квоты общие на все программы (config monitoring.quotas); доля программы — Ф1.
+ * Квоты общие на все программы: MonitoringSettings (system_settings, /manage/monitoring/settings),
+ * иначе config monitoring.quotas; доля программы — Ф1.
  */
 class MonitoringGovernor
 {
@@ -18,7 +20,7 @@ class MonitoringGovernor
 
     public function reserve(string $resource, int $units = 1, int $programId = 0): bool
     {
-        $quota = (int) (config("monitoring.quotas.{$resource}") ?? 0);
+        $quota = $this->quota($resource);
         $day = now()->toDateString();
 
         if ($quota > 0) {
@@ -41,7 +43,7 @@ class MonitoringGovernor
      */
     public function available(string $resource, int $units = 1): bool
     {
-        $quota = (int) (config("monitoring.quotas.{$resource}") ?? 0);
+        $quota = $this->quota($resource);
         if ($quota <= 0) {
             return true;
         }
@@ -55,7 +57,7 @@ class MonitoringGovernor
     /** Есть ли ещё суточный бюджет на LLM ($). */
     public function hasLlmBudget(): bool
     {
-        $limit = (float) config('monitoring.quotas.llm_usd', 0);
+        $limit = (float) MonitoringSettings::quota('llm_usd');
         if ($limit <= 0) {
             return true;
         }
@@ -81,6 +83,12 @@ class MonitoringGovernor
         }
 
         return $out;
+    }
+
+    /** Суточная квота ресурса в единицах (0 — без ограничения). */
+    private function quota(string $resource): int
+    {
+        return (int) (MonitoringSettings::quota($resource) ?? config("monitoring.quotas.{$resource}") ?? 0);
     }
 
     private function bump(string $day, int $programId, string $resource, int $units, float $costUsd, float $costRub = 0.0): void

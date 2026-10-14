@@ -102,8 +102,10 @@ return [
     'search' => [
         'mode' => env('MONITORING_SEARCH_MODE', 'sync'),
         'results_per_query' => (int) env('MONITORING_SEARCH_RESULTS', 10),
-        'queries_per_product' => (int) env('MONITORING_SEARCH_QUERIES', 2),
-        'max_candidates' => (int) env('MONITORING_SEARCH_MAX_CANDIDATES', 8),
+        // Дефолты агрессивности (пресет «Стандарт»); рабочие значения — MonitoringSettings
+        // (/manage/monitoring/settings). Замер 14.10: 4 LLM-запроса/25 кандидатов ≈ 90% полноты от 8.
+        'queries_per_product' => (int) env('MONITORING_SEARCH_QUERIES', 4),
+        'max_candidates' => (int) env('MONITORING_SEARCH_MAX_CANDIDATES', 25),
         'max_per_domain' => 2,
         'deferred_poll_seconds' => 5,
         'deferred_max_wait_seconds' => 180,

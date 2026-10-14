@@ -486,6 +486,12 @@
                             <span class="sidebar-item-tooltip">Приём писем</span>
                         </a>
 
+                        <a href="{{ route('admin.monitoring.settings') }}" class="sidebar-item {{ request()->routeIs('admin.monitoring.settings*') ? 'active' : '' }}">
+                            <i data-lucide="gauge" class="sidebar-item-icon"></i>
+                            <span class="sidebar-item-text">Мониторинг цен</span>
+                            <span class="sidebar-item-tooltip">Мониторинг цен: агрессивность</span>
+                        </a>
+
                         <a href="{{ route('admin.exclusions.index') }}" class="sidebar-item {{ request()->routeIs('admin.exclusions*') ? 'active' : '' }}">
                             <i data-lucide="ban" class="sidebar-item-icon"></i>
                             <span class="sidebar-item-text">Стоп-лист рассылки</span>

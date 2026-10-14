@@ -92,9 +92,12 @@ class IdentityAndCostTest extends TestCase
             new MpIdentifier(['kind' => 'alias', 'value' => 'LW-0002478', 'value_norm' => 'LW0002478']),
             new MpIdentifier(['kind' => 'oem', 'value' => 'KM763640G01', 'value_norm' => 'KM763640G01']),
         ]));
-        $q = (new \App\Services\Monitoring\Discovery\ListingDiscoverer(
-            $this->createMock(\App\Services\Monitoring\Discovery\SearchGateway::class)
-        ))->queries($p);
+        // Без LLM — простые шаблоны (с LLM промпт тоже получает только OEM/MPN).
+        $q = (new \App\Services\Monitoring\Discovery\SearchQueryBuilder(
+            null,
+            $this->createMock(\App\Services\Monitoring\MonitoringGovernor::class),
+            new \App\Services\Monitoring\LlmCostCalculator()
+        ))->build($p, 2);
         $this->assertSame(['"KM763640G01" KONE цена', '"KM763640G01" купить'], $q);
     }
 

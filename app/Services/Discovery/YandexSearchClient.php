@@ -17,6 +17,9 @@ use Illuminate\Support\Facades\Log;
  */
 class YandexSearchClient
 {
+    /** @var array<int, array{query: string, results: int, error?: string}> исход запросов последнего multiSearch */
+    private array $lastLog = [];
+
     public function __construct(
         private readonly string $endpoint,
         private readonly string $apiKey,
@@ -24,6 +27,17 @@ class YandexSearchClient
         private readonly int $resultsPerQuery,
         private readonly int $timeout,
     ) {
+    }
+
+    /**
+     * Исход запросов последнего multiSearch: error (HTTP 429/400, исключение…) — запрос не
+     * выполнен, пустая выдача при нём — не «ничего не найдено».
+     *
+     * @return array<int, array{query: string, results: int, error?: string}>
+     */
+    public function lastLog(): array
+    {
+        return $this->lastLog;
     }
 
     public static function fromConfig(): self
@@ -197,6 +211,8 @@ class YandexSearchClient
             $seenUrls[$r['url']] = true;
             $unique[] = $r;
         }
+
+        $this->lastLog = $log;
 
         Log::info('YandexSearch: multiSearch done', [
             'queries' => count($queries),

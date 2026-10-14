@@ -6,10 +6,8 @@ use App\Jobs\Monitoring\CheckListingJob;
 use App\Models\Monitoring\MpListing;
 use App\Models\Monitoring\MpProduct;
 use App\Models\Monitoring\MpSite;
-use App\Services\Api\OpenAIClassifierClient;
 use App\Services\Monitoring\Discovery\SearchGateway;
-use App\Services\Monitoring\LlmCostCalculator;
-use App\Services\Monitoring\MonitoringGovernor;
+use App\Services\Monitoring\Discovery\SearchQueryBuilder;
 use App\Support\Monitoring\DomainPolicy;
 use App\Support\Monitoring\UrlCanonicalizer;
 use Illuminate\Console\Command;
@@ -71,15 +69,13 @@ class SearchDepthTest extends Command
         $productIds = array_slice(array_keys($missing), 0, $nProducts);
 
         $search = SearchGateway::make();
-        $llm = OpenAIClassifierClient::fromConfig();
-        $cost = new LlmCostCalculator();
-        $governor = app(MonitoringGovernor::class);
+        $builder = SearchQueryBuilder::make();
 
         $state = ['started_at' => now()->toIso8601String(), 'queries' => $nQueries, 'candidates' => $nCandidates, 'products' => []];
         $totalQueries = 0;
         foreach ($productIds as $pid) {
             $product = MpProduct::query()->with('identifiers')->find($pid);
-            $queries = $this->buildQueries($product, $nQueries, $llm, $cost, $governor);
+            $queries = $builder->build($product, $nQueries);
 
             // Кандидаты как в CE: балл = встречаемость + позиция; домен → первый запрос.
             $urls = [];
@@ -152,45 +148,6 @@ class SearchDepthTest extends Command
         $this->info("Запросов в Яндекс: {$totalQueries}. Листинги в очереди проверки. Отчёт после проверок: --report");
 
         return self::SUCCESS;
-    }
-
-    /** @return array<int,string> */
-    private function buildQueries(MpProduct $product, int $count, OpenAIClassifierClient $llm, LlmCostCalculator $cost, MonitoringGovernor $governor): array
-    {
-        $codes = [];
-        foreach ($product->identifiers as $i) {
-            if (in_array($i->kind, ['oem', 'mpn'], true)) {
-                $codes[] = $i->value;
-            }
-        }
-        $brand = trim((string) $product->brand);
-        $system = 'Ты составляешь поисковые запросы для Яндекса, чтобы найти СТРАНИЦЫ ПРОДАВЦОВ этой запчасти с ценой '
-            . '(интернет-магазины и поставщики лифтового/эскалаторного оборудования). Правила: артикулы/OEM — в кавычках; '
-            . 'используй ВСЕ варианты артикула (с точками/без, короткие/длинные формы); сочетай бренд + артикул, бренд + название, '
-            . 'название + ключевой параметр; добавляй «купить», «цена», «в наличии»; 1 запрос на английском, если бренд иностранный. '
-            . 'Не ищи документацию и форумы. Отвечай строго JSON.';
-        $user = "Товар: {$product->name}\nБренд: {$brand}\nOEM/артикулы: " . ($codes ? implode(', ', $codes) : '(нет)')
-            . "\n\nJSON: {\"queries\": [\"…\"]} — ровно {$count} запросов, самые точные первыми.";
-        $queries = [];
-        try {
-            $json = $llm->jsonCompletion((string) config('monitoring.llm.model', 'gpt-4o-mini'), $system, $user, 600, 0.0);
-            $queries = array_values(array_filter(array_map(fn ($q) => is_string($q) ? trim($q) : '', (array) ($json['queries'] ?? []))));
-            $u = $llm->lastUsage();
-            $governor->record('llm_call', 1, $u ? $cost->usd($u['model'], $u['prompt_tokens'], $u['completion_tokens']) : 0.0);
-        } catch (\Throwable) {
-            // фолбэк ниже
-        }
-        if ($queries === []) {
-            $a = $codes[0] ?? null;
-            $queries = array_filter([
-                $a ? "\"{$a}\" {$brand} цена" : null,
-                $a ? "\"{$a}\" купить" : null,
-                trim("{$brand} {$product->name}"),
-                trim("{$product->name} купить"),
-            ]);
-        }
-
-        return array_slice(array_values(array_unique($queries)), 0, $count);
     }
 
     private function report(array $state, array $ce): int

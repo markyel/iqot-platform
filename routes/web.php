@@ -233,6 +233,10 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
     // Статистика рассылки (очередь писем reports.email_queue)
     Route::get('/emails/stats', [\App\Http\Controllers\Admin\EmailQueueStatsController::class, 'index'])->name('emails.stats');
 
+    // Мониторинг цен: агрессивность (глубина поиска, суточные бюджеты)
+    Route::get('/monitoring/settings', [\App\Http\Controllers\Admin\MonitoringSettingsController::class, 'index'])->name('monitoring.settings');
+    Route::post('/monitoring/settings', [\App\Http\Controllers\Admin\MonitoringSettingsController::class, 'update'])->name('monitoring.settings.update');
+
     // Статистика приёма входящих писем (Laravel-пайплайн IncomingEmailRouter)
     Route::get('/emails/receive-stats', [\App\Http\Controllers\Admin\ReceiveEmailStatsController::class, 'index'])->name('emails.receive-stats');
 
