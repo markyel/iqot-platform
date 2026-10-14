@@ -218,21 +218,22 @@ class User extends Authenticatable implements FilamentUser
      */
     public function getAvailableBalanceAttribute(): float
     {
-        $heldAmount = $this->balanceHolds()
-            ->where('status', 'held')
-            ->sum('amount');
-
-        return (float) ($this->balance - $heldAmount);
+        return (float) ($this->balance - $this->getHeldBalanceAttribute());
     }
 
     /**
-     * Замороженный баланс
+     * Замороженный баланс = ОСТАТОК активных заморозок (сумма − уже списанное по ним).
+     * Частичные списания (chargeForItem) уже уменьшили users.balance — вычитать полную
+     * сумму заморозки значило бы учесть их дважды.
      */
     public function getHeldBalanceAttribute(): float
     {
-        return (float) $this->balanceHolds()
-            ->where('status', 'held')
-            ->sum('amount');
+        $holds = $this->balanceHolds()->where('status', 'held');
+
+        $amount = (float) (clone $holds)->sum('amount');
+        $charged = (float) BalanceCharge::whereIn('balance_hold_id', (clone $holds)->select('id'))->sum('amount');
+
+        return max(0.0, $amount - $charged);
     }
 
     /**

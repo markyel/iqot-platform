@@ -111,13 +111,21 @@ class DispatchExclusionController extends Controller
         $email = mb_strtolower(trim($data['email']));
         $now = now();
 
+        // Сбрасываем и счётчики: иначе первая же ошибка снова блокирует адрес, а
+        // recordSuccess при bounce_count>0 блок не снимает.
         DB::connection(self::CONN)->table('recipient_mailboxes')->where('email', $email)
-            ->update(['is_blocked' => 0, 'blocked_at' => null, 'updated_at' => $now]);
+            ->update(['is_blocked' => 0, 'blocked_at' => null, 'consecutive_errors' => 0, 'bounce_count' => 0, 'updated_at' => $now]);
 
-        DB::connection(self::CONN)->table('suppliers')->whereRaw('LOWER(email) = ?', [$email])
+        // Поставщика, отключённого за повторную отписку, разблок ящика не реактивирует
+        // (он сам просил не писать) — только снятые блоком ящика.
+        $disableThreshold = max(1, (int) config('services.email_unsubscribe.disable_threshold', 2));
+        $reactivated = DB::connection(self::CONN)->table('suppliers')->whereRaw('LOWER(email) = ?', [$email])
+            ->where(function ($q) use ($disableThreshold) {
+                $q->whereNull('unsubscribe_count')->orWhere('unsubscribe_count', '<', $disableThreshold);
+            })
             ->update(['is_active' => 1, 'notify_email' => 1, 'updated_at' => $now]);
 
-        return back()->with('status', "Ящик {$email} разблокирован, поставщик реактивирован.");
+        return back()->with('status', "Ящик {$email} разблокирован, поставщиков реактивировано: {$reactivated}.");
     }
 
     /** Отменить pending-письма по условию (status pending → cancelled). */

@@ -43,19 +43,16 @@ class BalanceHold extends Model
     }
 
     /**
-     * Снять заморозку (вернуть ВСЮ оставшуюся сумму на баланс)
+     * Снять заморозку: остаток снова доступен.
+     *
+     * Заморозка НЕ уменьшает users.balance (User::holdBalance только создаёт запись,
+     * доступный баланс = balance − held). Поэтому при снятии баланс НЕ увеличиваем —
+     * раньше здесь был increment, и клиент получал сумму заморозки сверху.
      */
     public function release(): void
     {
         if ($this->status !== 'held') {
             return;
-        }
-
-        // Возвращаем только оставшуюся незамороженную сумму
-        $remainingAmount = $this->getRemainingAmount();
-        
-        if ($remainingAmount > 0) {
-            $this->user->increment('balance', $remainingAmount);
         }
 
         $this->update([

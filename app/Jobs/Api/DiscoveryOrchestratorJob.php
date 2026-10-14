@@ -32,6 +32,21 @@ class DiscoveryOrchestratorJob implements ShouldQueue
 
     public function handle(): void
     {
+        // Прогон, чей воркер убит по таймауту (DiscoverSuppliersForPairJob, 30 мин),
+        // навсегда оставался 'running' и блокировал оркестратор (параллелизм 1) и
+        // RecheckAwaitingSuppliersJob. Старше таймаута с запасом → failed.
+        $stale = SupplierDiscoveryRun::query()
+            ->where('status', 'running')
+            ->where('started_at', '<', now()->subMinutes(40)) // таймаут pair-джоба 30 мин + запас
+            ->update([
+                'status' => 'failed',
+                'finished_at' => now(),
+                'error' => 'stale running: worker killed or timed out',
+            ]);
+        if ($stale) {
+            Log::warning('DiscoveryOrchestrator: stale running runs → failed', ['count' => $stale]);
+        }
+
         $running = SupplierDiscoveryRun::query()->where('status', 'running')->exists();
         if ($running) {
             return;

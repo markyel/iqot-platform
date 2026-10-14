@@ -89,4 +89,20 @@ class DiscoverSuppliersForPairJob implements ShouldQueue
         // Запускаем следующую queued (FIFO) если есть.
         DiscoveryOrchestratorJob::dispatch();
     }
+
+    /**
+     * Джоб убит по таймауту/упал вне try (воркер не дошёл до catch) — не оставляем
+     * прогон в 'running', иначе оркестратор (параллелизм 1) встаёт навсегда.
+     */
+    public function failed(\Throwable $exception): void
+    {
+        SupplierDiscoveryRun::query()
+            ->where('id', $this->runId)
+            ->where('status', 'running')
+            ->update([
+                'status' => 'failed',
+                'finished_at' => now(),
+                'error' => substr('job failed: ' . $exception->getMessage(), 0, 2000),
+            ]);
+    }
 }

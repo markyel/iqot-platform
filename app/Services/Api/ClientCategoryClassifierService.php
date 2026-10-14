@@ -153,7 +153,9 @@ class ClientCategoryClassifierService
         $conf = (float) ($result['confidence'] ?? 0);
 
         if (!is_int($idx) || $idx < 0 || $idx >= count($candidates)) {
-            return $this->fullAiFallback('mini_no_match');
+            // Mini не выбрал кандидата → полный AI (§4.1 п.4). Раньше здесь был вызов
+            // несуществующего fullAiFallback() → Error, ловился выше и падал туда же.
+            return $this->fullAiClassify($item, $clientCategoryId);
         }
 
         /** @var ClientCategoryCandidate $chosen */
@@ -430,21 +432,36 @@ class ClientCategoryClassifierService
     private function createAiSuggestedCandidate(int $clientCategoryId, int $productTypeId, ?int $domainId, float $confidence): void
     {
         try {
-            ClientCategoryCandidate::query()->updateOrCreate(
-                [
-                    'client_category_id' => $clientCategoryId,
-                    'product_type_id' => $productTypeId,
-                    'domain_id' => $domainId,
-                ],
-                [
-                    'priority' => 2,
-                    'confidence' => round($confidence, 2),
-                    'source' => 'ai_suggested',
-                    'is_active' => true,
-                    'hit_count' => 1,
-                    'last_hit_at' => now(),
-                ]
-            );
+            $existing = ClientCategoryCandidate::query()
+                ->where('client_category_id', $clientCategoryId)
+                ->where('product_type_id', $productTypeId)
+                ->where('domain_id', $domainId)
+                ->first();
+
+            if ($existing !== null) {
+                // Повторное предложение той же пары — накапливаем hit_count (раньше
+                // updateOrCreate сбрасывал его в 1, и кандидат никогда не «выучивался»).
+                // Источник/приоритет ручных кандидатов не трогаем.
+                $existing->increment('hit_count');
+                $existing->last_hit_at = now();
+                if ($existing->source === 'ai_suggested') {
+                    $existing->confidence = round($confidence, 2);
+                }
+                $existing->save();
+                return;
+            }
+
+            ClientCategoryCandidate::query()->create([
+                'client_category_id' => $clientCategoryId,
+                'product_type_id' => $productTypeId,
+                'domain_id' => $domainId,
+                'priority' => 2,
+                'confidence' => round($confidence, 2),
+                'source' => 'ai_suggested',
+                'is_active' => true,
+                'hit_count' => 1,
+                'last_hit_at' => now(),
+            ]);
         } catch (\Throwable $e) {
             Log::warning('ClientCategoryClassifier: failed to create ai_suggested candidate', [
                 'error' => $e->getMessage(),

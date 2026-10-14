@@ -31,7 +31,7 @@ class CampaignPersister
     /**
      * @param array<int,array<string,mixed>> $emails результаты CampaignEmailBuilder::build()
      *        на каждого поставщика батча
-     * @return array{batch_id:int,queue_ids:array<int,int>}
+     * @return array{batch_id:int,queue_ids:array<int,int>,supplier_ids:array<int,int>}
      */
     public function persist(Batch $batch, array $emails): array
     {
@@ -79,6 +79,7 @@ class CampaignPersister
 
             // 3. Insert Email Queue + Insert Item Responses на каждого поставщика.
             $queueIds = [];
+            $writtenSupplierIds = []; // фактически записанные (без молча пропущенных дедупом/ротацией)
             // Ротация ящиков: один ЯЩИК не пишет одному поставщику чаще, чем раз в N дней.
             $senderWindow = max(0, (int) config('services.email_generate.sender_recipient_days', 7));
             foreach ($emails as $email) {
@@ -141,6 +142,7 @@ class CampaignPersister
                     'wave' => $wave,
                 ]);
                 $queueIds[] = $emailQueueId;
+                $writtenSupplierIds[] = $supplierId;
 
                 foreach ($itemIds as $itemId) {
                     $this->upsertItemResponse($itemId, $supplierId, $emailQueueId, $batchId);
@@ -152,7 +154,7 @@ class CampaignPersister
                 ->where('id', $batchId)
                 ->update(['status' => 'queued']);
 
-            return ['batch_id' => $batchId, 'queue_ids' => $queueIds];
+            return ['batch_id' => $batchId, 'queue_ids' => $queueIds, 'supplier_ids' => $writtenSupplierIds];
         });
     }
 

@@ -298,7 +298,7 @@ class UserRequestController extends Controller
     public function checkBalance()
     {
         $user = Auth::user();
-        $heldAmount = $user->balanceHolds()->where('status', 'held')->sum('amount');
+        $heldAmount = $user->held_balance;
 
         return response()->json([
             'success' => true,

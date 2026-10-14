@@ -45,7 +45,9 @@ class IdentificationAnalyzer
         try {
             $parsed = $this->client->jsonCompletion($this->model, $system, $user, $this->maxTokens);
         } catch (\Throwable $e) {
-            return $this->fallback('Ошибка AI: ' . mb_substr($e->getMessage(), 0, 200));
+            // Маркер провала AI: вызывающий оставляет письмо pending для повтора,
+            // а не отправляет в ручной разбор как «не опознано».
+            return $this->fallback('Ошибка AI: ' . mb_substr($e->getMessage(), 0, 200)) + ['ai_failed' => true];
         }
 
         return $this->parse($parsed, $candidates, $tokenMatch);

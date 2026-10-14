@@ -216,15 +216,25 @@ class PlanRenderIntents extends Command
                     $e['wave'] = 1; // планировщик: всё уходит сейчас, held-пула нет
                     $emails[] = $e;
                 }
-                $persister->persist($batch, $emails);
+                $written = array_map('intval', $persister->persist($batch, $emails)['supplier_ids'] ?? []);
+                $skipped = array_values(array_diff($fitIds, $written));
 
-                // Интенты → rendered.
-                DB::connection(self::CONN)->table('send_intents')
-                    ->where('request_id', $rid)->whereIn('supplier_id', $fitIds)->where('status', 'backlog')
-                    ->update(['status' => 'rendered', 'batch_id' => $batch->batchId, 'updated_at' => now()]);
+                // Интенты → rendered только для реально записанных писем; молча пропущенные
+                // persister'ом (уже писали по позициям / ротация ящика) → dropped с причиной,
+                // а не «rendered» без письма.
+                if ($written !== []) {
+                    DB::connection(self::CONN)->table('send_intents')
+                        ->where('request_id', $rid)->whereIn('supplier_id', $written)->where('status', 'backlog')
+                        ->update(['status' => 'rendered', 'batch_id' => $batch->batchId, 'updated_at' => now()]);
+                }
+                if ($skipped !== []) {
+                    DB::connection(self::CONN)->table('send_intents')
+                        ->where('request_id', $rid)->whereIn('supplier_id', $skipped)->where('status', 'backlog')
+                        ->update(['status' => 'dropped', 'last_reason' => 'persist_skipped', 'updated_at' => now()]);
+                }
 
-                $rendered += count($emails);
-                $budget -= count($emails);
+                $rendered += count($written);
+                $budget -= count($fitIds);
             }
         }
 

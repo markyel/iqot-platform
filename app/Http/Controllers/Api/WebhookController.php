@@ -259,9 +259,11 @@ class WebhookController extends Controller
                 ]);
 
             } elseif ($validated['status'] === 'failed') {
-                // Сохраняем информацию об ошибке
+                // Сохраняем информацию об ошибке. Ключ — n8n_report_id (как в ветке
+                // completed): report_id из n8n ≠ локальный id, раньше ошибка писалась
+                // в чужой отчёт или создавала строку с чужим id.
                 $report = Report::updateOrCreate(
-                    ['id' => $validated['report_id']],
+                    ['n8n_report_id' => $validated['report_id']],
                     [
                         'user_id' => $validated['user_id'],
                         'status' => 'error',

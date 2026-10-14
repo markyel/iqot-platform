@@ -43,6 +43,19 @@ class IdentifyUnidentifiedEmails extends Command
         $limit = (int) ($this->option('limit') ?: config('services.email_identify.batch_limit', 50));
         $maxAttempts = (int) config('services.email_identify.max_attempts', 5);
 
+        // Исчерпавшие попытки (джоб падал/убит по таймауту) не должны висеть pending
+        // вечно — в ручной разбор (бэунсы не трогаем: они вне этого конвейера).
+        $exhausted = DB::connection('reports')->table('unidentified_emails')
+            ->where('status', 'pending')
+            ->where('processing_attempts', '>=', $maxAttempts)
+            ->where(function ($q) {
+                $q->whereNull('reason')->orWhere('reason', '<>', 'bounce');
+            })
+            ->update(['status' => 'manual_review', 'updated_at' => now()]);
+        if ($exhausted) {
+            $this->info("Exhausted attempts → manual_review: {$exhausted}");
+        }
+
         $ids = DB::connection('reports')->table('unidentified_emails')
             ->where('status', 'pending')
             ->where('processing_attempts', '<', $maxAttempts)

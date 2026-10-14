@@ -505,12 +505,10 @@ class SupplierTargetingService
             return true;
         }
         $key = 'pretarget:yandex:budget:' . now()->format('Ymd');
-        $used = (int) Cache::get($key, 0);
-        if ($used >= $cap) {
-            return false;
-        }
-        Cache::put($key, $used + 1, now()->addDay());
+        // add() создаёт ключ только если его нет; increment() атомарен в драйвере кэша
+        // (раньше get+put — параллельные plan-day/discovery перерасходовали бюджет).
+        Cache::add($key, 0, now()->addDay());
 
-        return true;
+        return (int) Cache::increment($key) <= $cap;
     }
 }

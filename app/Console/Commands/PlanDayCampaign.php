@@ -167,10 +167,14 @@ class PlanDayCampaign extends Command
                 $found = $ttlDays > 0 ? Cache::get($key) : null;
                 if (!is_array($found)) {
                     try {
-                        $found = $svc->searchItems([$it]);
+                        $searched = 0;
+                        $found = $svc->searchItems([$it], $searched);
                         $yandexQueried++;
                         $failStreak = 0;
-                        if ($ttlDays > 0) {
+                        // Кэшируем только реальный поиск: при исчерпанном дневном бюджете
+                        // searchItems молча возвращает [] — такой «пустой» результат на
+                        // 3 дня лишал бы позицию релевантности.
+                        if ($ttlDays > 0 && $searched > 0) {
                             Cache::put($key, $found, now()->addDays($ttlDays));
                         }
                     } catch (\Throwable $e) {

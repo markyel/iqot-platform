@@ -14,6 +14,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -37,6 +38,9 @@ class ProcessSupplierQuestionJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $timeout = 120;
+
+    // Потолок неудачных прогонов вопроса (исключения), дальше — status=skipped.
+    private const MAX_ATTEMPTS = 5;
 
     public int $tries = 1;
 
@@ -110,8 +114,22 @@ class ProcessSupplierQuestionJob implements ShouldQueue
 
             $this->forwardToAuthor($loader, $batchId, $question, $decision, $consolidation);
         } catch (\Throwable $e) {
+            // Потолок попыток: упавший вопрос остаётся pending, а команда берёт 10 самых
+            // старых каждую минуту — «ядовитые» вопросы бесконечно жгли AI и при 10+
+            // штуках блокировали всю очередь. После MAX_ATTEMPTS → skipped (виден в админке).
+            $key = "questions:attempts:{$this->questionId}";
+            Cache::add($key, 0, now()->addDays(2));
+            $attempts = (int) Cache::increment($key);
+            if ($attempts >= self::MAX_ATTEMPTS) {
+                DB::connection('reports')->table('supplier_questions')
+                    ->where('id', $this->questionId)
+                    ->where('status', 'pending')
+                    ->update(['status' => 'skipped']);
+            }
             Log::error('ProcessSupplierQuestionJob: failed', [
                 'question_id' => $this->questionId,
+                'attempt' => $attempts,
+                'skipped' => $attempts >= self::MAX_ATTEMPTS,
                 'error' => mb_substr($e->getMessage(), 0, 500),
             ]);
         } finally {

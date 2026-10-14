@@ -73,6 +73,26 @@ class SupplierUnsubscribeEscalator
 
         DB::connection(self::CONN)->table('suppliers')->where('id', $supplierId)->update($data);
 
+        if ($action === 'disabled') {
+            // Диспетчер не смотрит suppliers.is_active — уже стоящие в очереди письма
+            // этому поставщику ушли бы после его повторной просьбы не писать.
+            $cancelled = DB::connection(self::CONN)->table('email_queue')
+                ->where('supplier_id', $supplierId)
+                ->where(function ($q) {
+                    $q->where('status', 'pending')
+                        ->orWhere(function ($q) {
+                            $q->where('status', 'error')->whereColumn('retry_count', '<', 'max_retries');
+                        });
+                })
+                ->update(['status' => 'cancelled', 'error_message' => 'supplier unsubscribed', 'updated_at' => $now]);
+            if ($cancelled) {
+                Log::info('SupplierUnsubscribeEscalator: queued emails cancelled', [
+                    'supplier_id' => $supplierId,
+                    'cancelled' => $cancelled,
+                ]);
+            }
+        }
+
         Log::warning('SupplierUnsubscribeEscalator: applied', [
             'supplier_id' => $supplierId,
             'action' => $action,

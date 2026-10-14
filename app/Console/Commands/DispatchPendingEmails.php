@@ -48,9 +48,10 @@ class DispatchPendingEmails extends Command
             return self::SUCCESS;
         }
 
-        // 1) Реклейм застрявших в 'sending' (упавший воркер) — старше 30 минут.
+        // 1) Реклейм застрявших в 'sending' (упавший воркер). Порог 40 мин > retryUntil
+        // job'а (30 мин): живой job к этому моменту уже либо отработал, либо истёк.
         $reclaimed = EmailQueue::where('status', 'sending')
-            ->where('updated_at', '<', now()->subMinutes(30))
+            ->where('updated_at', '<', now()->subMinutes(40))
             ->update(['status' => 'pending']);
         if ($reclaimed) {
             $this->info("Reclaimed stale 'sending': {$reclaimed}");
@@ -66,6 +67,11 @@ class DispatchPendingEmails extends Command
         $senders = DB::connection('reports')->table('senders as s')
             ->join('email_queue as eq', 'eq.sender_id', '=', 's.id')
             ->where('s.is_active', 1)
+            // Отключённый от массовой рассылки ящик (спам-гвард / повторный бан прогрева)
+            // не шлёт, даже когда blocked_until истёк (ответы в беседах — отдельный путь).
+            ->where(function ($q) {
+                $q->whereNull('s.sending_disabled')->orWhere('s.sending_disabled', 0);
+            })
             ->where(function ($q) {
                 $q->whereNull('s.blocked_until')->orWhereRaw('s.blocked_until <= NOW()');
             })
@@ -134,7 +140,7 @@ class DispatchPendingEmails extends Command
 
             // Дневной лимит: остаток = daily_limit − отправлено_сегодня − в_полёте.
             // emails_sent_today валиден только если last_send_date = сегодня (первая
-            // отправка нового дня его обнуляет в bumpSenderCounter). Ящик, выбравший
+            // отправка нового дня его обнуляет триггер БД before_sender_update). Ящик, выбравший
             // лимит, ПРОПУСКАЕМ (continue) — очередь НЕ встаёт; его остаток ждёт pending
             // и уйдёт на след. день (счётчик обнулится).
             $dailyLimit = (int) $sender->daily_limit;

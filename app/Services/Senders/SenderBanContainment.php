@@ -45,9 +45,11 @@ class SenderBanContainment
 
     private function run(int $senderId, string $trigger): void
     {
+        // pending + ретраибельные error: последние тоже ждут этот (забаненный) ящик и
+        // без переброса так и висели бы «зомби» — диспетчер неактивный ящик не берёт.
         $candidateIds = DB::connection(self::CONN)->table('email_queue')
             ->where('sender_id', $senderId)
-            ->where('status', 'pending')
+            ->where(self::requeueable(...))
             ->pluck('id')->all();
 
         if ($candidateIds === []) {
@@ -57,7 +59,7 @@ class SenderBanContainment
         $marker = mb_substr("ban containment ({$trigger})", 0, 255);
         $cancelled = DB::connection(self::CONN)->table('email_queue')
             ->whereIn('id', $candidateIds)
-            ->where('status', 'pending')
+            ->where(self::requeueable(...))
             ->update([
                 'status' => 'cancelled',
                 'error_message' => $marker,
@@ -104,6 +106,15 @@ class SenderBanContainment
             'cancelled' => $cancelled,
             'batches_deferred' => $deferred,
         ]);
+    }
+
+    /** Письма, которые ещё не ушли и могут уйти: pending или error с остатком ретраев. */
+    private static function requeueable($q): void
+    {
+        $q->where('status', 'pending')
+            ->orWhere(function ($q) {
+                $q->where('status', 'error')->whereColumn('retry_count', '<', 'max_retries');
+            });
     }
 
     /**

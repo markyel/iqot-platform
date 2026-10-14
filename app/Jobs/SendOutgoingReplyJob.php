@@ -64,8 +64,9 @@ class SendOutgoingReplyJob implements ShouldQueue
             return;
         }
 
-        // Уже в финальном статусе (sent/failed) — пропускаем.
-        if (!in_array($reply->status, ['sending', 'pending'], true)) {
+        // Шлём ТОЛЬКО заклеймленный диспетчером ответ: pending значит, что claim снят
+        // реклеймом и ответ мог быть перезаклеймлен другим job'ом (двойная отправка).
+        if ($reply->status !== 'sending') {
             return;
         }
 

@@ -105,8 +105,9 @@ class ReleaseExpiredBalanceHoldsCommand extends Command
                             'released_at' => now(),
                         ]);
 
-                        // Возвращаем средства пользователю
-                        $hold->user->increment('balance', $remainingAmount);
+                        // users.balance НЕ трогаем: заморозка его не уменьшала (доступный =
+                        // balance − held), снятия статуса достаточно. Раньше здесь был
+                        // increment → клиенту начислялась сумма сверху.
 
                         $this->info("✓ Полная разморозка {$remainingAmount} ₽ для заявки {$request->request_number} (0/{$totalItems} позиций выполнено)");
                         $fullyReleasedCount++;
@@ -126,8 +127,8 @@ class ReleaseExpiredBalanceHoldsCommand extends Command
                         }
 
                         if ($amountToRelease > 0) {
-                            // Возвращаем средства за невыполненные позиции
-                            $hold->user->increment('balance', $amountToRelease);
+                            // Средства за невыполненные позиции освобождаются уменьшением
+                            // суммы заморозки (ниже); users.balance не трогаем — см. выше.
 
                             // Обновляем сумму заморозки
                             $newHoldAmount = $hold->amount - $amountToRelease;

@@ -68,8 +68,10 @@ class SendQueuedEmailJob implements ShouldQueue
             return;
         }
 
-        // Письмо уже в финальном статусе (sent/cancelled/replied и т.п.) — пропускаем.
-        if (!in_array($email->status, ['sending', 'pending', 'error'], true)) {
+        // Шлём ТОЛЬКО заклеймленное диспетчером письмо. pending/error значит, что claim
+        // снят (реклейм «застрявших», un-claim) и письмо уже могло быть перезаклеймлено
+        // другим job'ом — продолжать нельзя, иначе двойная отправка.
+        if ($email->status !== 'sending') {
             return;
         }
 
@@ -86,7 +88,7 @@ class SendQueuedEmailJob implements ShouldQueue
         $senderModel = $email->sender;
 
         // Отправитель недоступен — возвращаем письмо в очередь, заберёт следующий тик.
-        if (!$senderModel || !$senderModel->is_active) {
+        if (!$senderModel || !$senderModel->is_active || $senderModel->sending_disabled) {
             $this->unclaim($email);
             return;
         }
@@ -188,7 +190,10 @@ class SendQueuedEmailJob implements ShouldQueue
             // Успешная доставка — снять метку ошибок с ящика получателя.
             RecipientMailbox::recordSuccess((string) $email->to_email);
 
-            $this->bumpSenderCounter($senderModel);
+            // senders.emails_sent_today/last_send_date увеличивает триггер БД
+            // tr_sender_update_usage на email_queue.status→'sent' (сброс на новый день —
+            // триггер before_sender_update, срабатывает уже на reserveSlot). Свой
+            // инкремент здесь удвоял счётчик → ящик слал вдвое меньше daily_limit.
             $this->refreshBatch($email->batch_id);
         } catch (\Throwable $e) {
             $this->handleFailure($email, $senderModel, $e->getMessage());
@@ -233,20 +238,6 @@ class SendQueuedEmailJob implements ShouldQueue
         return $affected > 0;
     }
 
-    private function bumpSenderCounter(Sender $sender): void
-    {
-        $today = now()->toDateString();
-
-        if ($sender->last_send_date instanceof \DateTimeInterface
-            && $sender->last_send_date->format('Y-m-d') === $today) {
-            $sender->increment('emails_sent_today');
-        } else {
-            $sender->forceFill([
-                'emails_sent_today' => 1,
-                'last_send_date' => $today,
-            ])->save();
-        }
-    }
 
     private function refreshBatch($batchId): void
     {
@@ -337,7 +328,17 @@ class SendQueuedEmailJob implements ShouldQueue
             . 'getaddrinfo|name or service not known|could not be resolved|stream_socket_client|'
             . 'operation timed out|connection timed out/i',
             $message
-        );
+        )
+            // Сбой самого HTTP-релея, а не SMTP-ответ про адрес: неверный/отсутствующий
+            // API-ключ (401/403/503 «not configured»), прокси/шлюз (502/504), 500 БЕЗ
+            // «Failed to send email» (исключение вне SMTP), все узлы недоступны.
+            // Раньше падало в «прочее» и копило страйки живым получателям.
+            || (bool) preg_match(
+                '/microservice \/send HTTP (401|403|404|405|408|502|503|504)\b|'
+                . 'microservice \/send HTTP 500: (?!Failed to send email)|'
+                . 'microservice \/send: все релеи недоступны|microservice \/send неуспех: non-json/u',
+                $message
+            );
 
         if ($isRateLimit) {
             // Ratelimit — проблема отправителя, не получателя: блокируем ящик-отправитель,

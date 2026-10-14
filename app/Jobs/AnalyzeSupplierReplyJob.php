@@ -90,11 +90,23 @@ class AnalyzeSupplierReplyJob implements ShouldQueue
                 'has_documents' => $attachments !== [],
             ]);
 
+            if (!empty($classification['ai_failed'])) {
+                // AI недоступен/вернул мусор — НЕ помечаем письмо обработанным: оно
+                // переанализируется на следующем тике (ai_attempts уже увеличен).
+                Log::warning('AnalyzeSupplierReplyJob: AI failed, will retry', [
+                    'message_id' => $this->messageId,
+                    'attempt' => (int) ($message->ai_attempts ?? 0) + 1,
+                    'max_attempts' => $maxAttempts,
+                ]);
+                return;
+            }
+
             (new SupplierReplyPersister())->persist([
                 'message_id' => (int) $message->message_id,
                 'conversation_id' => (int) $message->conversation_id,
                 'supplier_id' => (int) $message->supplier_id,
                 'batch_id' => $batchId,
+                'item_ids' => array_map(static fn ($i) => (int) $i->item_id, $items),
             ], $classification);
 
             Log::info('AnalyzeSupplierReplyJob: processed', [
@@ -134,6 +146,7 @@ class AnalyzeSupplierReplyJob implements ShouldQueue
                 'em.body_text',
                 'em.body_html',
                 'em.from_email',
+                'em.ai_attempts',
                 'ec.batch_id',
                 'ec.supplier_id',
                 's.name as supplier_name',

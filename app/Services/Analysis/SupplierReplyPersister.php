@@ -3,6 +3,7 @@
 namespace App\Services\Analysis;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Сохранение результата AI-анализа ответа поставщика в боевые таблицы (порт
@@ -32,12 +33,19 @@ class SupplierReplyPersister
         $conversationId = (int) ($context['conversation_id'] ?? 0);
         $supplierId = (int) ($context['supplier_id'] ?? 0);
         $batchId = (int) ($context['batch_id'] ?? 0);
+        // Позиции батча (в порядке промпта). item_id от AI сверяем с этим списком:
+        // выдуманный/порядковый id не должен лечь оффером в чужую позицию.
+        $itemIds = array_values(array_filter(
+            array_map('intval', (array) ($context['item_ids'] ?? [])),
+            static fn (int $v) => $v > 0
+        ));
 
         DB::connection(self::CONN)->transaction(function () use (
             $messageId,
             $conversationId,
             $supplierId,
             $batchId,
+            $itemIds,
             $classification
         ): void {
             $this->saveClassification($messageId, $classification);
@@ -59,6 +67,16 @@ class SupplierReplyPersister
                 if ((float) ($offer['price_per_unit'] ?? 0) <= 0) {
                     continue; // в offers только реальные цены
                 }
+                $itemId = $this->resolveItemId($offer['item_id'] ?? null, $itemIds);
+                if ($itemId === null) {
+                    Log::warning('SupplierReplyPersister: offer item_id not in batch, skipped', [
+                        'message_id' => $messageId,
+                        'batch_id' => $batchId,
+                        'ai_item_id' => $offer['item_id'] ?? null,
+                    ]);
+                    continue;
+                }
+                $offer['item_id'] = $itemId;
                 $this->saveOffer($offer, $supplierId, $batchId, $emailQueueId);
             }
 
@@ -67,13 +85,38 @@ class SupplierReplyPersister
             if (($classification['email_type'] ?? '') !== 'rejection') {
                 foreach (($classification['questions'] ?? []) as $question) {
                     if (is_array($question)) {
+                        $question['related_item_id'] = $this->resolveItemId($question['related_item_id'] ?? null, $itemIds);
                         $this->saveQuestion($question, $conversationId, $supplierId, $batchId, $messageId);
                     }
                 }
             }
 
-            $this->updateConversationStatus($conversationId, $batchId);
+            $this->updateConversationStatus($conversationId, $supplierId, $itemIds);
         });
+    }
+
+    /**
+     * item_id из ответа AI → id позиции ЭТОГО батча или null. Если AI вопреки
+     * инструкции вернул порядковый номер (1..N) — переводим в id по порядку промпта
+     * (реальные id — тысячи, с порядковыми номерами не пересекаются). Без списка
+     * позиций (старый вызов) — доверяем как раньше.
+     *
+     * @param array<int,int> $itemIds
+     */
+    private function resolveItemId(mixed $raw, array $itemIds): ?int
+    {
+        $id = (int) ($raw ?? 0);
+        if ($id <= 0) {
+            return null;
+        }
+        if ($itemIds === [] || in_array($id, $itemIds, true)) {
+            return $id;
+        }
+        if ($id <= count($itemIds)) {
+            return $itemIds[$id - 1];
+        }
+
+        return null;
     }
 
     private function saveClassification(int $messageId, array $classification): void
@@ -252,19 +295,32 @@ class SupplierReplyPersister
         ]);
     }
 
-    private function updateConversationStatus(int $conversationId, int $batchId): void
+    /**
+     * Покрытие беседы = позиции её батча, по которым ИМЕННО этот поставщик прислал
+     * цену (раньше считалось по всему батчу — беседа молчащего поставщика
+     * становилась partial из-за чужих офферов). Беседа с открытым вопросом к
+     * автору (needs_clarification + has_pending_question) статус не теряет.
+     *
+     * @param array<int,int> $itemIds
+     */
+    private function updateConversationStatus(int $conversationId, int $supplierId, array $itemIds): void
     {
-        $covered = (int) DB::connection(self::CONN)->table('request_item_responses')
-            ->where('batch_id', $batchId)
+        $covered = $itemIds === [] ? 0 : (int) DB::connection(self::CONN)->table('request_item_responses')
+            ->whereIn('request_item_id', $itemIds)
+            ->where('supplier_id', $supplierId)
             ->where('status', 'received')
             ->distinct()
             ->count('request_item_id');
 
-        DB::connection(self::CONN)->table('email_conversations')
+        $conn = DB::connection(self::CONN);
+        $conn->table('email_conversations')
             ->where('id', $conversationId)
             ->update([
                 'items_covered' => $covered,
-                'status' => $covered > 0 ? 'partial' : 'waiting',
+                'status' => $conn->raw(
+                    "CASE WHEN status = 'needs_clarification' AND has_pending_question = 1"
+                    . " THEN 'needs_clarification' ELSE '" . ($covered > 0 ? 'partial' : 'waiting') . "' END"
+                ),
                 'updated_at' => now(),
             ]);
     }

@@ -107,7 +107,18 @@ class IdentifyUnidentifiedEmailJob implements ShouldQueue
             );
 
             // 5. Запись результата.
-            if ($decision['validation_passed'] && $decision['identified_batch_id'] !== null) {
+            if (!empty($decision['ai_failed'])) {
+                // AI недоступен — это не «не опознано». Оставляем pending (попытка уже
+                // засчитана) до исчерпания лимита, только потом — ручной разбор.
+                if ((int) $email->processing_attempts + 1 >= $maxAttempts) {
+                    $persister->persistManualReview($this->emailId, $decision);
+                }
+                Log::warning('IdentifyUnidentifiedEmailJob: AI failed', [
+                    'email_id' => $this->emailId,
+                    'attempt' => (int) $email->processing_attempts + 1,
+                    'max_attempts' => $maxAttempts,
+                ]);
+            } elseif ($decision['validation_passed'] && $decision['identified_batch_id'] !== null) {
                 // Опознано (в т.ч. запрос реквизитов): мигрируем в беседу — дальше
                 // emails:analyze-replies извлечёт вопрос/оффер, emails:process-questions
                 // при запросе реквизитов автоответит нашими данными организации.

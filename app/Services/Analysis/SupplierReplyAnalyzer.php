@@ -48,7 +48,11 @@ class SupplierReplyAnalyzer
                 $userPrompt2 = $userPrompt
                     . "\n\nСОДЕРЖИМОЕ СТРАНИЦ ПО ССЫЛКАМ (для определения цены):\n\n"
                     . $pages;
-                $result = $this->runPass($system, $userPrompt2);
+                $result2 = $this->runPass($system, $userPrompt2);
+                // Провал 2-го прохода не должен затирать валидный результат 1-го.
+                if (empty($result2['ai_failed'])) {
+                    $result = $result2;
+                }
             }
         }
 
@@ -214,6 +218,9 @@ class SupplierReplyAnalyzer
             'questions' => [],
             'summary' => 'Не удалось разобрать ответ AI',
             'fetch_urls' => [],
+            // Маркер провала AI: вызывающий НЕ сохраняет результат (письмо остаётся
+            // ai_processed=0 и переанализируется до max_attempts), иначе ответ теряется.
+            'ai_failed' => true,
         ];
     }
 
@@ -246,6 +253,15 @@ class SupplierReplyAnalyzer
         $hasDocuments = (bool) ($context['has_documents'] ?? ($documentText !== ''));
         $docsClause = $hasDocuments ? ' И все приложенные документы' : '';
 
+        // Пустое тело при наличии вложений — типичное «КП во вложении»: нельзя велеть AI
+        // сразу отвечать empty_reply (раньше так терялись цены из приложенных файлов).
+        $emptyBodyRule = $documentText !== ''
+            ? "Если текст письма содержит \"[ПИСЬМО БЕЗ НОВОГО СОДЕРЖАНИЯ]\" или \"[ПИСЬМО БЕЗ СОДЕРЖАНИЯ]\":\n"
+                . "→ тело пустое, но есть ПРИЛОЖЕННЫЕ ДОКУМЕНТЫ — анализируй их как основной источник (КП, цены, отказ, вопросы).\n"
+                . "→ empty_reply только если и в документах нет ничего по нашему запросу."
+            : "Если текст письма содержит \"[ПИСЬМО БЕЗ НОВОГО СОДЕРЖАНИЯ]\" или \"[ПИСЬМО БЕЗ СОДЕРЖАНИЯ]\":\n"
+                . "→ Сразу верни email_type: \"empty_reply\", has_offers: false, has_questions: false, offers: [], questions: []";
+
         $senderName = (string) ($context['sender_name'] ?? 'неизвестно');
         $senderEmail = (string) ($context['sender_email'] ?? 'неизвестно');
         $subject = (string) ($context['subject'] ?? 'без темы');
@@ -264,8 +280,7 @@ item_id - это ID из базы данных, указанный в строк
 НЕ используй порядковый номер позиции (1, 2, 3...) как item_id!
 
 🚨 ПЕРВЫМ ДЕЛОМ ПРОВЕРЬ:
-Если текст письма содержит "[ПИСЬМО БЕЗ НОВОГО СОДЕРЖАНИЯ]" или "[ПИСЬМО БЕЗ СОДЕРЖАНИЯ]":
-→ Сразу верни email_type: "empty_reply", has_offers: false, has_questions: false, offers: [], questions: []
+{$emptyBodyRule}
 
 🚨 КРИТИЧЕСКИ ВАЖНО ПРО РАСЧЕТ ЦЕН:
 1. ВНИМАТЕЛЬНО читай количество из ПРЕДЛОЖЕНИЯ поставщика.

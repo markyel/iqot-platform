@@ -42,7 +42,7 @@ class DispatchPendingReplies extends Command
         if ($replyId = $this->option('reply')) {
             $claimed = OutgoingReply::where('id', (int) $replyId)
                 ->where('status', 'pending')
-                ->update(['status' => 'sending']);
+                ->update(['status' => 'sending', 'claimed_at' => now()]);
 
             if (!$claimed) {
                 $this->warn("Reply {$replyId} не в статусе pending (или не найден).");
@@ -54,9 +54,16 @@ class DispatchPendingReplies extends Command
             return self::SUCCESS;
         }
 
-        // Реклейм застрявших в 'sending' (упавший воркер) старше 30 минут.
+        // Реклейм застрявших в 'sending' (упавший воркер): по времени CLAIM, а не
+        // created_at — иначе старый ответ, заклеймленный повторно (ретрай), сразу
+        // возвращался в pending и уходил вторым job'ом. Порог 40 мин > retryUntil job'а.
         $reclaimed = OutgoingReply::where('status', 'sending')
-            ->where('created_at', '<', now()->subMinutes(30))
+            ->where(function ($q) {
+                $q->where('claimed_at', '<', now()->subMinutes(40))
+                    ->orWhere(function ($q) {
+                        $q->whereNull('claimed_at')->where('created_at', '<', now()->subMinutes(40));
+                    });
+            })
             ->update(['status' => 'pending']);
         if ($reclaimed) {
             $this->info("Reclaimed stale 'sending': {$reclaimed}");
@@ -83,7 +90,7 @@ class DispatchPendingReplies extends Command
         foreach ($rows as $row) {
             $claimed = OutgoingReply::where('id', $row->id)
                 ->where('status', 'pending')
-                ->update(['status' => 'sending']);
+                ->update(['status' => 'sending', 'claimed_at' => now()]);
 
             if (!$claimed) {
                 continue; // забрал другой процесс
