@@ -612,6 +612,9 @@ return [
         'folder_id' => env('YANDEX_SEARCH_FOLDER_ID'),
         'results_per_query' => (int) env('YANDEX_SEARCH_RESULTS_PER_QUERY', 5),
         'timeout' => (int) env('YANDEX_SEARCH_TIMEOUT', 30),
+        // Отложенный режим (мониторинг цен, ~16× дешевле): пусто = endpoint . 'Async'.
+        'async_endpoint' => env('YANDEX_SEARCH_ASYNC_ENDPOINT'),
+        'operation_endpoint' => env('YANDEX_SEARCH_OPERATION_ENDPOINT', 'https://operation.api.cloud.yandex.net/operations'),
     ],
 
     /*

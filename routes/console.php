@@ -188,6 +188,12 @@ Schedule::command('emails:auto-close-questions')
     ->weekdays()
     ->withoutOverlapping();
 
+// Мониторинг цен (docs/monitoring-f0-spec.md): переобход листингов, у которых подошёл
+// срок. Флаг MONITORING_ENABLED (команда сама проверяет). Очередь `monitor`.
+Schedule::command('monitoring:dispatch-checks')
+    ->everyFiveMinutes()
+    ->withoutOverlapping();
+
 // Публичный API: оркестратор Discovery поставщиков — каждые 10 минут (§7).
 Schedule::job(new \App\Jobs\Api\DiscoveryOrchestratorJob())->everyTenMinutes()->withoutOverlapping();
 

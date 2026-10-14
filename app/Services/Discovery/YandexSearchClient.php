@@ -44,6 +44,78 @@ class YandexSearchClient
     }
 
     /**
+     * Отложенный (асинхронный) поиск — в ~16 раз дешевле синхронного (≈30,5 ₽ против
+     * ≈488 ₽ за 1000 запросов днём по тарифу Yandex Cloud). Для массового мониторинга
+     * цен (docs/monitoring-f0-spec.md §9). Возвращает id операции или null.
+     * Эндпоинты: <endpoint>Async → операция; результат — fetchDeferred().
+     * ⚠ Сверить эндпоинты/квоты с документацией Yandex Cloud перед боевым включением.
+     */
+    public function searchDeferred(string $query): ?string
+    {
+        if (!$this->isConfigured() || trim($query) === '') {
+            return null;
+        }
+        $asyncEndpoint = (string) (config('services.yandex_search.async_endpoint') ?: $this->endpoint . 'Async');
+
+        try {
+            $response = Http::withHeaders([
+                'Authorization' => 'Api-Key ' . $this->apiKey,
+                'Content-Type' => 'application/json',
+            ])->timeout($this->timeout)->post($asyncEndpoint, [
+                'query' => ['searchType' => 1, 'queryText' => trim($query)],
+                'groupSpec' => [
+                    'groupMode' => 1,
+                    'groupsOnPage' => (string) $this->resultsPerQuery,
+                    'docsInGroup' => '1',
+                ],
+                'folderId' => $this->folderId,
+            ]);
+            if (!$response->successful()) {
+                Log::warning('YandexSearch: deferred non-200', ['query' => $query, 'status' => $response->status(), 'body' => mb_substr($response->body(), 0, 300)]);
+
+                return null;
+            }
+            $id = $response->json('id');
+
+            return is_string($id) && $id !== '' ? $id : null;
+        } catch (\Throwable $e) {
+            Log::warning('YandexSearch: deferred exception', ['query' => $query, 'error' => $e->getMessage()]);
+
+            return null;
+        }
+    }
+
+    /**
+     * Результат отложенного поиска.
+     *
+     * @return array{done: bool, results: array<int, array{url:string, title:string, content:string, domain:string}>, error: ?string}
+     */
+    public function fetchDeferred(string $operationId): array
+    {
+        $opEndpoint = rtrim((string) (config('services.yandex_search.operation_endpoint') ?: 'https://operation.api.cloud.yandex.net/operations'), '/');
+        try {
+            $response = Http::withHeaders(['Authorization' => 'Api-Key ' . $this->apiKey])
+                ->timeout($this->timeout)->get($opEndpoint . '/' . rawurlencode($operationId));
+            if (!$response->successful()) {
+                return ['done' => false, 'results' => [], 'error' => 'HTTP ' . $response->status()];
+            }
+            $body = $response->json();
+            if (empty($body['done'])) {
+                return ['done' => false, 'results' => [], 'error' => null];
+            }
+            if (isset($body['error'])) {
+                return ['done' => true, 'results' => [], 'error' => mb_substr(json_encode($body['error'], JSON_UNESCAPED_UNICODE), 0, 300)];
+            }
+            $raw = $body['response']['rawData'] ?? null;
+            $xml = is_string($raw) ? base64_decode($raw, true) : false;
+
+            return ['done' => true, 'results' => $xml === false ? [] : $this->parseXml($xml), 'error' => $xml === false ? 'no_rawData' : null];
+        } catch (\Throwable $e) {
+            return ['done' => false, 'results' => [], 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Поиск по массиву запросов.
      *
      * @param array<string> $queries

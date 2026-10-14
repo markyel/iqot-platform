@@ -14,6 +14,9 @@ use Illuminate\Support\Facades\Log;
  */
 class OpenAIClassifierClient
 {
+    /** @var array{model:string, prompt_tokens:int, completion_tokens:int}|null usage последнего вызова */
+    private ?array $lastUsage = null;
+
     public function __construct(
         private readonly string $baseUrl,
         private readonly string $apiKey,
@@ -108,6 +111,7 @@ class OpenAIClassifierClient
         }
 
         $data = $response->json();
+        $this->rememberUsage($data, $model);
         $content = $data['choices'][0]['message']['content'] ?? null;
         if (!is_string($content) || $content === '') {
             throw new \RuntimeException('OpenAIClassifier: empty completion content.');
@@ -168,10 +172,32 @@ class OpenAIClassifierClient
         }
 
         $data = $response->json();
+        $this->rememberUsage($data, $model);
         $content = $data['choices'][0]['message']['content'] ?? null;
         if (!is_string($content) || $content === '') {
             throw new \RuntimeException('OpenAIClassifier: empty text completion content.');
         }
         return $content;
+    }
+
+    /**
+     * Расход токенов последнего вызова (для учёта стоимости, напр. мониторинг цен).
+     * model — фактическое имя модели из ответа прокси (может быть с датой версии).
+     *
+     * @return array{model:string, prompt_tokens:int, completion_tokens:int}|null
+     */
+    public function lastUsage(): ?array
+    {
+        return $this->lastUsage;
+    }
+
+    private function rememberUsage(mixed $data, string $requestedModel): void
+    {
+        $usage = is_array($data) ? ($data['usage'] ?? null) : null;
+        $this->lastUsage = [
+            'model' => is_array($data) && is_string($data['model'] ?? null) && $data['model'] !== '' ? $data['model'] : $requestedModel,
+            'prompt_tokens' => (int) ($usage['prompt_tokens'] ?? 0),
+            'completion_tokens' => (int) ($usage['completion_tokens'] ?? 0),
+        ];
     }
 }

@@ -121,4 +121,19 @@ Route::prefix('v1')
         // Taxonomy.
         Route::get('taxonomy/domains', [\App\Http\Controllers\Api\V1\TaxonomyController::class, 'domains'])->name('taxonomy.domains');
         Route::get('taxonomy/product-types', [\App\Http\Controllers\Api\V1\TaxonomyController::class, 'productTypes'])->name('taxonomy.product-types');
+
+        // Мониторинг цен (docs/monitoring-design.md, Ф0: программы и приём номенклатуры).
+        Route::post('monitoring/programs', [\App\Http\Controllers\Api\V1\MonitoringProgramController::class, 'store'])
+            ->name('monitoring.programs.store');
+        Route::get('monitoring/programs/{id}', [\App\Http\Controllers\Api\V1\MonitoringProgramController::class, 'show'])
+            ->name('monitoring.programs.show');
+        Route::patch('monitoring/programs/{id}', [\App\Http\Controllers\Api\V1\MonitoringProgramController::class, 'update'])
+            ->name('monitoring.programs.update');
+        Route::post('monitoring/programs/{id}/items', [\App\Http\Controllers\Api\V1\MonitoringProgramController::class, 'storeItems'])
+            ->middleware('api.throttle:post_monitoring_items,10/min')
+            ->name('monitoring.items.store');
+        Route::get('monitoring/programs/{id}/items', [\App\Http\Controllers\Api\V1\MonitoringProgramController::class, 'items'])
+            ->name('monitoring.items.index');
+        Route::get('monitoring/programs/{id}/imports/{importId}', [\App\Http\Controllers\Api\V1\MonitoringProgramController::class, 'showImport'])
+            ->name('monitoring.imports.show');
     });

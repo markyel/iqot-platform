@@ -74,6 +74,28 @@ class HeadlessPageRenderer
     }
 
     /**
+     * Отрендеренный HTML страницы (после JS) — для разбора разметки (JSON-LD/microdata)
+     * в мониторинге цен. Null при ошибке.
+     */
+    public function renderHtml(string $url): ?string
+    {
+        $browsershot = $this->boot($url);
+        if ($browsershot === null) {
+            return null;
+        }
+
+        try {
+            $html = $browsershot->bodyHtml();
+        } catch (\Throwable $e) {
+            $this->logFailure('renderHtml', $url, $e);
+
+            return null;
+        }
+
+        return is_string($html) && $html !== '' ? $html : null;
+    }
+
+    /**
      * PNG-скриншот страницы (сырые байты) или null при ошибке.
      *
      * @param bool $fullPage true — вся высота прокрутки; false — только вьюпорт.
