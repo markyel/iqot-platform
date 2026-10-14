@@ -143,7 +143,7 @@ class SitemapMatcher
         foreach ($product->identifiers as $i) {
             if (in_array($i->kind, ['oem', 'mpn'], true)) {
                 $norm = (string) ($i->value_norm ?: ArticleNormalizer::normalize($i->value));
-                if (mb_strlen($norm) >= 5 || ArticleNormalizer::looksLikeModelCode($norm)) {
+                if (self::isCode($norm)) {
                     $codes[$norm] = true;
                 }
             }
@@ -174,12 +174,27 @@ class SitemapMatcher
         }
         $codes = [];
         foreach (ArticleNormalizer::tokens($text) as $c => $_) {
-            if (mb_strlen($c) >= 5 && preg_match('~[0-9]~', $c)) {
+            if (self::isCode($c)) {
                 $codes[$c] = true;
             }
         }
 
         return ['codes' => $codes, 'words' => $words, 'nums' => $nums];
+    }
+
+    /**
+     * Код для сопоставления по адресу: буквы+цифры (≥5) или длинное число (≥7). Склейка
+     * соседних чисел адреса («rolik-150-38» → 15038) и номера карточек не должны давать
+     * ложных совпадений с числовыми артикулами (первый прогон 14.10: 903 «кода» на s-mechanics).
+     */
+    private static function isCode(string $norm): bool
+    {
+        $len = mb_strlen($norm);
+        if (preg_match('~^\d+$~', $norm)) {
+            return $len >= 7;
+        }
+
+        return $len >= 5 && preg_match('~\d~', $norm) && preg_match('~[A-Z]~', $norm);
     }
 
     /** Слово → общий вид транслита + основа 5 букв (ролика/ролики/rolik → rolik). */
