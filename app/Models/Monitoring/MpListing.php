@@ -22,7 +22,7 @@ class MpListing extends Model
     protected $table = 'mp_listings';
 
     protected $fillable = [
-        'product_id', 'site_id', 'url', 'url_hash', 'bench', 'match_confidence', 'match_method',
+        'product_id', 'site_id', 'url', 'url_hash', 'bench', 'found_via', 'match_confidence', 'match_method',
         'match_evidence', 'price', 'currency', 'price_kind', 'vat_included', 'price_unit',
         'price_unit_qty', 'min_order_qty', 'availability', 'stock_qty', 'lead_days',
         'price_evidence', 'status', 'fail_count', 'observed_at', 'checked_at', 'next_check_at',

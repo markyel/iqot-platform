@@ -18,13 +18,14 @@ class ProgramItem extends Model
     protected $fillable = [
         'program_id', 'client_ref', 'raw_name', 'raw_brand', 'raw_article', 'raw_unit',
         'raw_attributes', 'product_id', 'match_status', 'match_note', 'active', 'priority',
-        'last_priced_at', 'price_source', 'next_due_at',
+        'last_priced_at', 'price_source', 'prices_changed_at', 'next_due_at',
     ];
 
     protected $casts = [
         'raw_attributes' => 'array',
         'active' => 'boolean',
         'last_priced_at' => 'datetime',
+        'prices_changed_at' => 'datetime',
         'next_due_at' => 'datetime',
     ];
 

@@ -173,8 +173,12 @@ class ListingChecker
         $identity = $this->verifier->verify($product, $window, $structured, $llm);
         if (!$identity['accepted']) {
             $this->observe($listing, null, MpPriceObservation::STATUS_MISMATCH, $structured ? 'structured' : 'llm', $identity['reason'], $blockHash, $cost);
+            if ($listing->price !== null) {
+                $this->markChanged($listing);
+            }
             $listing->forceFill([
                 'status' => MpListing::STATUS_MISMATCH,
+                'price' => null,
                 'match_evidence' => $identity['evidence'] ?: $identity['reason'],
                 'checked_at' => now(),
                 'next_check_at' => null,
@@ -222,6 +226,9 @@ class ListingChecker
 
         // Цены нет («по запросу») — старую НЕ держим (урок CE), листинг жив.
         if ($price === null) {
+            if ($listing->price !== null) {
+                $this->markChanged($listing);
+            }
             $this->observe($listing, null, MpPriceObservation::STATUS_NO_PRICE, $method, 'no price', $blockHash, $cost, $fields);
             $this->schedule($listing, $fields + ['price' => null, 'price_method' => $method, 'status' => MpListing::STATUS_ACTIVE, 'fail_count' => 0], $res, $finalHash, $blockHash);
 
@@ -250,6 +257,9 @@ class ListingChecker
         }
 
         $status = $this->isOutlier($listing, $price) ? MpListing::STATUS_SUSPICIOUS : MpListing::STATUS_ACTIVE;
+        if ($reference === null || abs($reference - $price) >= 0.01 || $listing->status !== $status) {
+            $this->markChanged($listing);
+        }
         $this->observe($listing, $price, $status === MpListing::STATUS_ACTIVE ? MpPriceObservation::STATUS_OK : MpPriceObservation::STATUS_SUSPICIOUS,
             $method, $status === MpListing::STATUS_ACTIVE ? ($via === 'headless' ? 'headless' : null) : 'outlier vs median', $blockHash, $cost, $fields);
         $this->schedule($listing, $fields + [
@@ -261,6 +271,16 @@ class ListingChecker
         ], $res, $finalHash, $blockHash);
 
         return $this->result($status === MpListing::STATUS_ACTIVE ? MpPriceObservation::STATUS_OK : MpPriceObservation::STATUS_SUSPICIOUS, $method, $price, $via) + ['cost_usd' => $cost];
+    }
+
+    /** Цены позиции изменились — курсор выдачи (GET …/prices?updated_since) их подхватит. */
+    private function markChanged(MpListing $listing): void
+    {
+        if ($listing->bench) {
+            return;
+        }
+        \Illuminate\Support\Facades\DB::table('program_items')->where('product_id', $listing->product_id)
+            ->update(['prices_changed_at' => now()]);
     }
 
     /** Выброс ×4 от медианы при ≥4 ценах товара (флаг храним в БД, не считаем на лету). */
@@ -285,6 +305,9 @@ class ListingChecker
 
     private function gone(MpListing $listing, string $obsStatus, string $note): array
     {
+        if ($listing->price !== null) {
+            $this->markChanged($listing);
+        }
         $this->observe($listing, null, $obsStatus, 'none', $note);
         $listing->forceFill([
             'status' => MpListing::STATUS_GONE,

@@ -193,6 +193,14 @@ Schedule::command('emails:auto-close-questions')
 Schedule::command('monitoring:dispatch-checks')
     ->everyFiveMinutes()
     ->withoutOverlapping();
+// Поиск листингов (Ф1): товары программ в состоянии new / повтор по next_search_at.
+Schedule::command('monitoring:dispatch-discovery')
+    ->everyTenMinutes()
+    ->withoutOverlapping();
+// Итоги поиска (found/not_found), свежесть позиций, покрытие программ.
+Schedule::command('monitoring:refresh-coverage')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping();
 
 // Публичный API: оркестратор Discovery поставщиков — каждые 10 минут (§7).
 Schedule::job(new \App\Jobs\Api\DiscoveryOrchestratorJob())->everyTenMinutes()->withoutOverlapping();

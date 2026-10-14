@@ -172,6 +172,87 @@ class MonitoringProgramController extends Controller
         ])->header('X-Request-Id', $rid);
     }
 
+    /**
+     * Цены позиций программы, изменившиеся с updated_since (курсор по id внутри окна).
+     * Синхронизация клиента: запомнить server_time ответа → следующий запрос с
+     * updated_since=server_time. У каждой цены — признаки источника (web / подтверждение
+     * почтой / КП), ссылка на страницу поставщика (решение владельца 14.10.2026).
+     */
+    public function prices(Request $request, string $id): JsonResponse
+    {
+        $rid = $this->rid($request);
+        $program = $this->find($request, $id);
+        if (!$program) {
+            return $this->error(404, 'not_found', 'Program not found.', $rid);
+        }
+        $serverTime = now();
+        $since = $request->query('updated_since');
+        try {
+            $since = $since ? \Carbon\Carbon::parse((string) $since) : null;
+        } catch (\Throwable) {
+            return $this->error(422, 'validation_error', 'updated_since must be ISO 8601.', $rid);
+        }
+        $limit = min(500, max(1, (int) $request->query('limit', 200)));
+
+        $q = ProgramItem::query()->where('program_id', $program->id)->where('active', true)
+            ->whereNotNull('product_id')->orderBy('id');
+        if ($since) {
+            $q->where('prices_changed_at', '>=', $since);
+        }
+        if ($cursor = (int) $request->query('cursor', 0)) {
+            $q->where('id', '>', $cursor);
+        }
+        $items = $q->limit($limit + 1)->get();
+        $next = $items->count() > $limit ? $items->slice(0, $limit)->last()->id : null;
+        $items = $items->take($limit);
+
+        $listings = \App\Models\Monitoring\MpListing::query()->with('site')
+            ->whereIn('product_id', $items->pluck('product_id')->unique())
+            ->where('bench', false)
+            ->whereIn('status', [\App\Models\Monitoring\MpListing::STATUS_ACTIVE, \App\Models\Monitoring\MpListing::STATUS_SUSPICIOUS])
+            ->get()->groupBy('product_id');
+
+        $out = $items->map(function (ProgramItem $i) use ($listings) {
+            $sources = ($listings[$i->product_id] ?? collect())->map(fn ($l) => [
+                'supplier_domain' => $l->site?->domain,
+                'url' => $l->url,
+                'price' => $l->price,
+                'currency' => $l->currency,
+                'price_kind' => $l->price_kind,
+                'vat_included' => $l->vat_included,
+                'price_unit' => $l->price_unit,
+                'price_unit_qty' => $l->price_unit_qty,
+                'availability' => $l->availability,
+                'observed_at' => $l->observed_at?->toIso8601String(),
+                'status' => $l->status,
+                'flags' => [
+                    'web_price' => true,
+                    'email_confirmed' => $l->confirmed_at !== null,
+                    'kp' => false,
+                ],
+                'site_trust_level' => (int) ($l->site?->trust_level ?? 0),
+            ])->values();
+            $priced = $sources->filter(fn ($s) => $s['price'] !== null && $s['status'] === 'active'
+                && ($s['currency'] ?? 'RUB') === 'RUB' && $s['price_kind'] !== 'wholesale_tier');
+            $best = $priced->sortBy('price')->first();
+
+            return [
+                'client_ref' => $i->client_ref,
+                'name' => $i->raw_name,
+                'prices_changed_at' => $i->prices_changed_at?->toIso8601String(),
+                'last_priced_at' => $i->last_priced_at?->toIso8601String(),
+                'best_price' => $best ? ['price' => $best['price'], 'currency' => $best['currency'], 'supplier_domain' => $best['supplier_domain'], 'url' => $best['url']] : null,
+                'sources' => $sources,
+            ];
+        })->values();
+
+        return response()->json([
+            'items' => $out,
+            'next_cursor' => $next,
+            'server_time' => $serverTime->toIso8601String(),
+        ])->header('X-Request-Id', $rid);
+    }
+
     private function programArray(MonitoringProgram $p, array $limits): array
     {
         return [

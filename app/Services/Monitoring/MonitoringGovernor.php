@@ -49,9 +49,9 @@ class MonitoringGovernor
         return $spent < $limit;
     }
 
-    public function record(string $resource, int $units, float $costUsd, int $programId = 0): void
+    public function record(string $resource, int $units, float $costUsd, int $programId = 0, float $costRub = 0.0): void
     {
-        $this->bump(now()->toDateString(), $programId, $resource, $units, $costUsd);
+        $this->bump(now()->toDateString(), $programId, $resource, $units, $costUsd, $costRub);
     }
 
     /** @return array<string,array{units:int,cost_usd:float}> расход за день по ресурсам */
@@ -66,13 +66,14 @@ class MonitoringGovernor
         return $out;
     }
 
-    private function bump(string $day, int $programId, string $resource, int $units, float $costUsd): void
+    private function bump(string $day, int $programId, string $resource, int $units, float $costUsd, float $costRub = 0.0): void
     {
         DB::statement(
-            'INSERT INTO mp_budget_ledger (day, program_id, resource, units, cost_usd, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, NOW(), NOW())
-             ON DUPLICATE KEY UPDATE units = units + VALUES(units), cost_usd = cost_usd + VALUES(cost_usd), updated_at = NOW()',
-            [$day, $programId, $resource, $units, $costUsd]
+            'INSERT INTO mp_budget_ledger (day, program_id, resource, units, cost_usd, cost_rub, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
+             ON DUPLICATE KEY UPDATE units = units + VALUES(units), cost_usd = cost_usd + VALUES(cost_usd),
+                 cost_rub = cost_rub + VALUES(cost_rub), updated_at = NOW()',
+            [$day, $programId, $resource, $units, $costUsd, $costRub]
         );
     }
 }

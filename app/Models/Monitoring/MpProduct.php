@@ -15,7 +15,7 @@ class MpProduct extends Model
 
     protected $fillable = [
         'name', 'brand', 'brand_norm', 'unit_kind', 'product_type_id', 'domain_id',
-        'classification_source', 'search_state', 'last_search_at', 'next_search_at',
+        'classification_source', 'search_state', 'last_search_at', 'next_search_at', 'search_attempts',
         'listings_active', 'listings_priced', 'merged_into_id',
     ];
 

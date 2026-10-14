@@ -136,4 +136,6 @@ Route::prefix('v1')
             ->name('monitoring.items.index');
         Route::get('monitoring/programs/{id}/imports/{importId}', [\App\Http\Controllers\Api\V1\MonitoringProgramController::class, 'showImport'])
             ->name('monitoring.imports.show');
+        Route::get('monitoring/programs/{id}/prices', [\App\Http\Controllers\Api\V1\MonitoringProgramController::class, 'prices'])
+            ->name('monitoring.prices.index');
     });

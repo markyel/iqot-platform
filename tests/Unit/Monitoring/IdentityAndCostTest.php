@@ -85,6 +85,19 @@ class IdentityAndCostTest extends TestCase
         $this->assertFalse($r->namesDiffer('Ролик KM763640G01', 'ролик  KM763640G01.'));
     }
 
+    public function test_discovery_queries_use_oem_not_client_catalog_code(): void
+    {
+        $p = new MpProduct(['name' => 'Ролик натяжной', 'brand' => 'KONE']);
+        $p->setRelation('identifiers', collect([
+            new MpIdentifier(['kind' => 'alias', 'value' => 'LW-0002478', 'value_norm' => 'LW0002478']),
+            new MpIdentifier(['kind' => 'oem', 'value' => 'KM763640G01', 'value_norm' => 'KM763640G01']),
+        ]));
+        $q = (new \App\Services\Monitoring\Discovery\ListingDiscoverer(
+            $this->createMock(\App\Services\Monitoring\Discovery\SearchGateway::class)
+        ))->queries($p);
+        $this->assertSame(['"KM763640G01" KONE цена', '"KM763640G01" купить'], $q);
+    }
+
     public function test_html_window_around_article(): void
     {
         $text = str_repeat('шапка сайта ', 2000) . ' Ролик KM763640G01 цена 4 520 ₽ в наличии ' . str_repeat('футер ', 500);

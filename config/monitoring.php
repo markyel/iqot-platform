@@ -81,6 +81,23 @@ return [
 
     // Решение владельца (2026-10-14): маркетплейсы и агрегаторы игнорируем.
     // Совпадение по подстроке хоста (как SupplierTargetingService::BLOCKED).
+    // Поиск листингов (Ф1). mode: sync — синхронный Search API (≈488 ₽/1000 днём), deferred —
+    // отложенный (≈30,5 ₽/1000), требует квоты отложенного режима в Yandex Cloud (без неё 429).
+    'search' => [
+        'mode' => env('MONITORING_SEARCH_MODE', 'sync'),
+        'results_per_query' => (int) env('MONITORING_SEARCH_RESULTS', 10),
+        'queries_per_product' => (int) env('MONITORING_SEARCH_QUERIES', 2),
+        'max_candidates' => (int) env('MONITORING_SEARCH_MAX_CANDIDATES', 8),
+        'max_per_domain' => 2,
+        'deferred_poll_seconds' => 5,
+        'deferred_max_wait_seconds' => 180,
+        // Повтор поиска: найдено — раз в N дней (новые продавцы); не найдено — 30/60/90 дней.
+        'research_found_days' => 30,
+        'research_not_found_days' => [30, 60, 90],
+        // Цена Яндекса за 1000 запросов, ₽ (для учёта расходов).
+        'rub_per_1000' => ['sync' => 488.0, 'deferred' => 30.5],
+    ],
+
     'blocked_domains' => [
         'ozon.ru', 'wildberries.ru', 'market.yandex.ru', 'avito.ru', 'sbermegamarket.ru', 'megamarket.ru',
         'kazanexpress.ru', 'aliexpress.', 'alibaba.', 'made-in-china.', 'amazon.', 'ebay.', 'youla.ru',
