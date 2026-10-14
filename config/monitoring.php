@@ -121,6 +121,8 @@ return [
         'kazanexpress.ru', 'aliexpress.', 'alibaba.', 'made-in-china.', 'amazon.', 'ebay.', 'youla.ru',
         'tiu.ru', 'pulscen.ru', 'satom.ru', 'blizko.ru', 'all.biz', 'prom.ua',
         'sportmaster.ru', 'lamoda.ru', 'ostin.com', 'farpost.ru', 'olx.',
+        // Собственные ресурсы (LazyLift) — не рынок: их цены не мониторим и в покрытие не считаем.
+        'liftway.ru',
         'yandex.ru', 'google.', 'youtube.', 'rutube.ru', 'dzen.ru', 'wikipedia.', 'vk.com', 'ok.ru',
         'facebook.', 'instagram.', 'twitter.', 'x.com', 'tiktok.', 'pinterest.', 'linkedin.',
         'hh.ru', 'vc.ru', 'pikabu.ru', 'otvet.mail.ru', 'forum.',
