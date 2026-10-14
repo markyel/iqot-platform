@@ -9,6 +9,8 @@
   ssh iqot-prod 'cd /var/www/iqot && git pull origin main && php artisan view:clear && php artisan config:clear'
   ```
 - После изменений в Job'ах/моделях, которые исполняются воркерами, **обязательно** `php artisan queue:restart` — воркеры долгоживущие (supervised) и кешируют загруженный код.
+- **`retry_after` очереди database = 960 с** (`DB_QUEUE_RETRY_AFTER` в `.env` прода, с 14.10.2026; `config/queue.php` в проекте нет → без переменной умолчание фреймворка 90 с, и любая задача дольше 90 с отдавалась второму воркеру параллельно → `MaxAttemptsExceeded`/двойная обработка). Должен быть больше самого длинного `--timeout` воркера (сейчас 900 у `iqot-monitor-index-worker@`). Минус: задача упавшего воркера подхватывается через 16 мин.
+- **Перед выкладкой новой artisan-команды** — `php artisan list` локально: фатал в классе команды (напр. метод `run()`, конфликтующий с `Command::run()`) роняет загрузку artisan целиком, а с ним планировщик (14.10.2026, ~2 мин).
 - Прод-PHP 8.3, локальный dev — Herd PHP 8.4: `/c/Users/Boag/.config/herd/bin/php84/php.exe`.
 - Git: `git@github.com:markyel/iqot-platform.git`, ветка `main`.
 
