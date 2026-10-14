@@ -36,7 +36,7 @@ class SiteSearchCommand extends Command
             return self::FAILURE;
         }
 
-        return $this->argument('action') === 'profile' ? $this->profile($domains) : $this->run($domains);
+        return $this->argument('action') === 'profile' ? $this->profile($domains) : $this->dispatchSearches($domains);
     }
 
     private function profile(array $domains): int
@@ -57,7 +57,7 @@ class SiteSearchCommand extends Command
         return self::SUCCESS;
     }
 
-    private function run(array $domains): int
+    private function dispatchSearches(array $domains): int
     {
         $programId = (int) $this->option('program');
         $productIds = DB::table('program_items')->where('program_id', $programId)->where('active', true)
