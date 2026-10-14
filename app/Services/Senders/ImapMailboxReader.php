@@ -132,9 +132,9 @@ class ImapMailboxReader
             messageId: $this->str($message->getMessageId()),
             fromEmail: $from && $from->first() ? ($from->first()->mail ?: '') : '',
             toEmail: $to && $to->first() ? ($to->first()->mail ?: '') : '',
-            subject: $this->str($message->getSubject()),
-            bodyText: (string) $message->getTextBody(),
-            bodyHtml: (string) $message->getHTMLBody(),
+            subject: $this->utf8($this->str($message->getSubject())),
+            bodyText: $this->utf8((string) $message->getTextBody()),
+            bodyHtml: $this->utf8((string) $message->getHTMLBody()),
             inReplyTo: $this->str($message->getInReplyTo()),
             references: $this->str($message->getReferences()),
             date: $date,
@@ -151,6 +151,25 @@ class ImapMailboxReader
             return '';
         }
         return trim((string) $value);
+    }
+
+    /**
+     * Гарантирует валидный UTF-8. Письма с неверно указанной (или без) charset часто
+     * приходят в cp1251 — вставка таких байтов в utf8mb4-колонку падает 1366, письмо
+     * не помечается \Seen и «отравляет» ящик (перечитывается каждый тик). Невалидный
+     * UTF-8 сначала пробуем как Windows-1251 (основной кейс), иначе вычищаем.
+     */
+    private function utf8(string $s): string
+    {
+        if ($s === '' || mb_check_encoding($s, 'UTF-8')) {
+            return $s;
+        }
+        $converted = @mb_convert_encoding($s, 'UTF-8', 'Windows-1251');
+        if (is_string($converted) && mb_check_encoding($converted, 'UTF-8')) {
+            return $converted;
+        }
+
+        return mb_scrub($s, 'UTF-8');
     }
 
     /**
