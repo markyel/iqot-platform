@@ -80,7 +80,10 @@ class HeadlessPageRenderer
      */
     public function renderHtml(string $url, ?string $proxy = null): ?string
     {
-        $browsershot = $this->boot($url, $proxy);
+        // networkidle2 (≤2 фоновых соединения): у части сайтов (snab-lift, liftformat)
+        // аналитика/виджеты держат сеть вечно — networkidle0 упирался в таймаут 30 с на
+        // каждой странице (783 отказа на пилоте 14.10), с networkidle2 — ~4 с и цены на месте.
+        $browsershot = $this->boot($url, $proxy, strictIdle: false);
         if ($browsershot === null) {
             return null;
         }
@@ -127,7 +130,7 @@ class HeadlessPageRenderer
      * Готовит писчий HOME для Chrome, ставит env и возвращает сконфигурированный
      * Browsershot на url. Null — если url невалиден или HOME недоступен.
      */
-    private function boot(string $url, ?string $proxy = null): ?Browsershot
+    private function boot(string $url, ?string $proxy = null, bool $strictIdle = true): ?Browsershot
     {
         $url = trim($url);
         if (!preg_match('#^https?://#i', $url)) {
@@ -155,7 +158,7 @@ class HeadlessPageRenderer
                 '--crash-dumps-dir=' . $home . '/crash',
             ])
             ->timeout($this->timeout)
-            ->waitUntilNetworkIdle();
+            ->waitUntilNetworkIdle($strictIdle);
 
         // Дефолтный headless-UA содержит «HeadlessChrome» → часть сайтов режет.
         // Выдаём обычный десктопный Chrome (если задан в конфиге).
