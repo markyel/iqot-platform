@@ -22,6 +22,9 @@ class SitemapIndexer
     private const PRIORITY_RE = '~product|catalog|goods|shop|tovar|item|offer|iblock~i';
     private const SKIP_RE = '~news|blog|article|stati|image|video|post|tag|author|brand-?page~i';
 
+    /** Служебные разделы сайта — не карточки (теги, бренды, статьи, «о компании»…). */
+    public const NON_PRODUCT_URL_RE = '~/(tags?|brands?|proizvoditeli|blog|news|novosti|articles?|stati|about|o-kompanii|o_kompanii|kontakty|contacts?|dostavka|oplata|delivery|payment|faq|reviews?|otzyvy|vacanc\w*|sertifikaty|uslugi|services|sitemap|politika\w*|privacy|agreement|cart|basket|compare|wishlist|login|register|personal|account)(/|$|\.)~i';
+
     public function __construct(
         private readonly PageFetcher $fetcher,
         private readonly EgressPool $pool,
@@ -44,11 +47,9 @@ class SitemapIndexer
         }
         $started = now();
         $origin = 'https://' . $site->domain;
-        $queue = $site->sitemap_url ? [$site->sitemap_url] : [];
-        if ($queue === []) {
-            $robots = $this->fetcher->robotsFor($origin, $channel['proxy']);
-            $queue = $robots?->sitemaps() ?: [$origin . '/sitemap.xml'];
-        }
+        // robots.txt — один раз на прогон: и корни sitemap, и фильтр запрещённых адресов.
+        $robots = $this->fetcher->robotsFor($origin, $channel['proxy']);
+        $queue = $site->sitemap_url ? [$site->sitemap_url] : ($robots?->sitemaps() ?: [$origin . '/sitemap.xml']);
         $root = $queue[0];
 
         $seenFiles = [];
@@ -74,7 +75,9 @@ class SitemapIndexer
                 continue;
             }
             foreach ($this->urlEntries($body) as [$loc, $lastmod]) {
-                if (UrlCanonicalizer::registrableDomain($loc) !== $site->domain || UrlCanonicalizer::looksLikeNonProduct($loc)) {
+                if (UrlCanonicalizer::registrableDomain($loc) !== $site->domain || UrlCanonicalizer::looksLikeNonProduct($loc)
+                    || preg_match(self::NON_PRODUCT_URL_RE, (string) parse_url($loc, PHP_URL_PATH))
+                    || ($robots !== null && !$robots->isAllowed($this->pathOf($loc), 'iqotbot'))) {
                     continue;
                 }
                 $buffer[] = [
@@ -158,6 +161,13 @@ class SitemapIndexer
             }
             yield [$loc, $lastmod];
         }
+    }
+
+    private function pathOf(string $url): string
+    {
+        $p = parse_url($url);
+
+        return ($p['path'] ?? '/') . (isset($p['query']) ? '?' . $p['query'] : '');
     }
 
     private function flush(array &$buffer): void

@@ -77,6 +77,12 @@ final class ProductPageDigest
             }
         }
 
+        // Много разных кодов — это не карточка, а категория/листинг (revator: «Тяги канатные»
+        // с десятками RR-кодов): коды не берём, иначе любой товар раздела «совпадёт» с ней.
+        if (count($codes) > 10) {
+            $codes = [];
+        }
+
         // Числовые коды стали int-ключами массива — возвращаем строки.
         return ['title' => $title, 'codes' => array_map('strval', array_slice(array_keys($codes), 0, 40))];
     }

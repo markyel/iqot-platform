@@ -39,7 +39,10 @@ final class HtmlText
         }
         $charset = $charset ? strtolower($charset) : null;
         if ($charset && in_array($charset, ['utf-8', 'utf8'], true)) {
-            $charset = null;
+            // Объявлен UTF-8 — верим; битые байты (обрезка по max_bytes посреди символа,
+            // мусор в шаблоне) вычищаем. Раньше невалидный UTF-8 считался windows-1251 →
+            // «Р­Р»РµРє…» во всей странице (nlp-group, 14.10.2026).
+            return mb_scrub($body, 'UTF-8');
         }
         if (!$charset && !mb_check_encoding($body, 'UTF-8')) {
             $charset = 'windows-1251';
