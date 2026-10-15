@@ -1,6 +1,6 @@
 # IQOT Public API v1 — справочник
 
-Версия документа: 15.10.2026 · OpenAPI 3.1: [`openapi.yaml`](./openapi.yaml)
+Версия документа: 16.10.2026 · OpenAPI 3.1: [`openapi.yaml`](./openapi.yaml) · Изменения: [CHANGELOG.md](./CHANGELOG.md)
 
 IQOT принимает две задачи:
 
