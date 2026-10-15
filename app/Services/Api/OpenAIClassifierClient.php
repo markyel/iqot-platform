@@ -87,19 +87,16 @@ class OpenAIClassifierClient
         // connectTimeout отдельно от общего timeout: наблюдали вечный SYN-SENT к прокси
         // (коннект не устанавливается и не рвётся) — общий timeout его не оборвал,
         // рендер вставал навсегда. Коннект дольше 15с = мёртвая точка, рвём сразу.
-        $response = Http::withHeaders($headers)
-            ->connectTimeout(15)
-            ->timeout($this->timeout)
-            ->post($this->baseUrl . '/chat/completions', [
-                'model' => $model,
-                'messages' => [
-                    ['role' => 'system', 'content' => $systemPrompt],
-                    ['role' => 'user', 'content' => $userPrompt],
-                ],
-                'temperature' => $temperature,
-                'max_tokens' => $maxTokens,
-                'response_format' => ['type' => 'json_object'],
-            ]);
+        $response = $this->post($headers, [
+            'model' => $model,
+            'messages' => [
+                ['role' => 'system', 'content' => $systemPrompt],
+                ['role' => 'user', 'content' => $userPrompt],
+            ],
+            'temperature' => $temperature,
+            'max_tokens' => $maxTokens,
+            'response_format' => ['type' => 'json_object'],
+        ]);
 
         if (!$response->successful()) {
             $body = $response->body();
@@ -122,6 +119,32 @@ class OpenAIClassifierClient
             throw new \RuntimeException('OpenAIClassifier: completion is not valid JSON.');
         }
         return $decoded;
+    }
+
+    /**
+     * POST к прокси с повтором на временных отказах. Прокси (nginx limit_req) под пиковой нагрузкой
+     * отвечает 503 HTML-заглушкой: 15.10.2026 до 23% вызовов за час (мониторинг 14 индекс-воркеров +
+     * дискавери + анализ ответов) — без повтора это сбой проверки/разбора. 2 повтора с паузой 2–3 и
+     * 5–7 с (джиттер, чтобы воркеры не били синхронно); 4xx, кроме 429, не повторяем.
+     */
+    private function post(array $headers, array $payload): \Illuminate\Http\Client\Response
+    {
+        $response = null;
+        foreach ([0, 2000, 5000] as $pauseMs) {
+            if ($pauseMs > 0) {
+                usleep(($pauseMs + random_int(0, 2000)) * 1000);
+            }
+            // Сетевые сбои (таймаут чтения) не повторяем: три таймаута подряд пережили бы таймаут воркера.
+            $response = Http::withHeaders($headers)
+                ->connectTimeout(15)
+                ->timeout($this->timeout)
+                ->post($this->baseUrl . '/chat/completions', $payload);
+            if ($response->successful() || !in_array($response->status(), [429, 500, 502, 503, 504, 520, 522, 524], true)) {
+                return $response;
+            }
+        }
+
+        return $response;
     }
 
     /**
@@ -149,18 +172,15 @@ class OpenAIClassifierClient
         // connectTimeout отдельно от общего timeout: наблюдали вечный SYN-SENT к прокси
         // (коннект не устанавливается и не рвётся) — общий timeout его не оборвал,
         // рендер вставал навсегда. Коннект дольше 15с = мёртвая точка, рвём сразу.
-        $response = Http::withHeaders($headers)
-            ->connectTimeout(15)
-            ->timeout($this->timeout)
-            ->post($this->baseUrl . '/chat/completions', [
-                'model' => $model,
-                'messages' => [
-                    ['role' => 'system', 'content' => $systemPrompt],
-                    ['role' => 'user', 'content' => $userPrompt],
-                ],
-                'temperature' => $temperature,
-                'max_tokens' => $maxTokens,
-            ]);
+        $response = $this->post($headers, [
+            'model' => $model,
+            'messages' => [
+                ['role' => 'system', 'content' => $systemPrompt],
+                ['role' => 'user', 'content' => $userPrompt],
+            ],
+            'temperature' => $temperature,
+            'max_tokens' => $maxTokens,
+        ]);
 
         if (!$response->successful()) {
             $body = $response->body();

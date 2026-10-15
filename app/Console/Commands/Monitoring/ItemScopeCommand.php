@@ -74,11 +74,14 @@ class ItemScopeCommand extends Command
             }
         }
         $this->info("Страниц этих товаров (active/suspicious): {$listings->count()}; пар «узкая позиция × скрытая страница»: {$hidden}");
-        if (!$dry && $listings->isNotEmpty()) {
-            DB::table('mp_listings')->whereIn('id', $listings->pluck('id'))
-                ->update(['next_check_at' => now(), 'content_hash' => null, 'updated_at' => now()]);
-            $this->info("На перепроверку: {$listings->count()} страниц");
+        // Только ещё не вычисленные: ETag/Last-Modified тоже сбрасываем — иначе ответ 304
+        // «не изменилось» отдаёт старое без тела, и коды на странице не вычисляются.
+        $pending = $listings->whereNull('matched_codes');
+        if (!$dry && $pending->isNotEmpty()) {
+            DB::table('mp_listings')->whereIn('id', $pending->pluck('id'))
+                ->update(['next_check_at' => now(), 'content_hash' => null, 'etag' => null, 'last_modified' => null, 'updated_at' => now()]);
         }
+        $this->info("На перепроверку: {$pending->count()} страниц (без вычисленных кодов)");
 
         // 3. Запланированные письма о невидимых позиции страницах.
         $asks = MpAsk::query()->where('status', MpAsk::STATUS_PLANNED)->whereNotNull('listing_id')->with('listing')->get();
