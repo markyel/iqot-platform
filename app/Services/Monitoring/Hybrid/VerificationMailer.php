@@ -42,90 +42,111 @@ class VerificationMailer
 
     private const HELD = '2037-01-01';
 
-    /** @return array{letters: int, items: int, skipped_suppliers: int, skipped?: array<string,int>} */
+    /**
+     * Три вида писем мониторинга, по очереди (письма разных видов не смешиваются):
+     *  verify     — «подтвердите цену с вашего сайта» (бюджет «проверочных писем в сутки», ящику — раз в 7 дней);
+     *  on_request — «видели товар у вас на сайте, цены нет — пришлите КП» (адресно, со ссылкой);
+     *  pool       — обычный запрос КП профильному пулу.
+     * Для КП отдельного лимита нет (решение владельца 2026-10-15) — общие лимиты ящиков и капы
+     * получателей; одному поставщику — не больше одного письма мониторинга за прогон.
+     *
+     * @return array{letters: int, items: int, skipped_suppliers: int, skipped?: array<string,int>, by_kind?: array<string,int>}
+     */
     public function send(bool $dryRun = false): array
     {
-        $budget = MonitoringSettings::get('verify_letters_per_day') - $this->lettersToday();
-        if ($budget <= 0) {
+        $all = MpAsk::query()->where('status', MpAsk::STATUS_PLANNED)->where('expires_at', '>', now())->orderBy('created_at')->get();
+        if ($all->isEmpty()) {
             return ['letters' => 0, 'items' => 0, 'skipped_suppliers' => 0];
         }
-
-        $asks = MpAsk::query()->where('status', MpAsk::STATUS_PLANNED)->where('expires_at', '>', now())
-            ->orderBy('created_at')->get()->groupBy('supplier_id');
-        if ($asks->isEmpty()) {
-            return ['letters' => 0, 'items' => 0, 'skipped_suppliers' => 0];
-        }
-
-        $suppliers = $this->eligibleSuppliers($asks->keys()->all());
-        $recipientLeft = $this->recipientCaps(array_map(fn ($s) => mb_strtolower(trim($s->email)), $suppliers));
-        $senders = $this->senders();
-        $pairs = $this->recentPairs();
-        $cooldown = MpAsk::query()->whereIn('supplier_id', array_keys($suppliers))
+        $suppliers = $this->eligibleSuppliers($all->pluck('supplier_id')->unique()->all());
+        $state = [
+            'recipientLeft' => $this->recipientCaps(array_map(fn ($s) => mb_strtolower(trim($s->email)), $suppliers)),
+            'senders' => $this->senders(),
+            'pairs' => $this->recentPairs(),
+            'touched' => [],
+        ];
+        $verifyCooldown = MpAsk::query()->where('kind', 'verify')->whereIn('supplier_id', array_keys($suppliers))
             ->where('queued_at', '>', now()->subDays(self::SUPPLIER_COOLDOWN_DAYS))->distinct()->pluck('supplier_id')->flip();
 
         $tools = $this->tools();
-        $letters = 0;
-        $items = 0;
-        $skipped = ['не годен к рассылке' => 0, 'писали за 7 дней' => 0, 'кап получателя на сегодня' => 0, 'нет свободного ящика' => 0, 'пропущено при записи' => 0, 'ошибка' => 0];
-        foreach ($asks as $supplierId => $supplierAsks) {
-            if ($letters >= $budget) {
-                break;
-            }
-            $sup = $suppliers[$supplierId] ?? null;
-            $email = $sup ? mb_strtolower(trim($sup->email)) : null;
-            $reason = !$sup ? 'не годен к рассылке' : (isset($cooldown[$supplierId]) ? 'писали за 7 дней' : (($recipientLeft[$email] ?? 0) <= 0 ? 'кап получателя на сегодня' : null));
-            if ($reason !== null) {
-                $skipped[$reason]++;
-                continue;
-            }
-            $senderId = $this->pickSender($senders, $pairs, $email);
-            if ($senderId === null) {
-                $skipped['нет свободного ящика']++;
-                continue;
-            }
-            // Цена листинга с момента выборки снята (заглушка, аналог, «по запросу») или изменилась —
-            // спрашивать про неё нельзя: такие запросы отменяем.
-            $supplierAsks = $supplierAsks->filter(function (MpAsk $a) {
-                $l = $a->listing;
-                $ok = $l && $l->status === \App\Models\Monitoring\MpListing::STATUS_ACTIVE && $l->price !== null
-                    && abs((float) $l->price - (float) $a->site_price) < 0.01;
-                if (!$ok) {
-                    $a->forceFill(['status' => MpAsk::STATUS_CANCELLED])->save();
+        $out = ['letters' => 0, 'items' => 0, 'skipped' => [], 'by_kind' => []];
+        $kinds = [
+            'verify' => fn (MpAsk $a) => $a->kind === 'verify',
+            'on_request' => fn (MpAsk $a) => $a->kind === 'rfq' && $a->reason === 'on_request',
+            'pool' => fn (MpAsk $a) => $a->kind === 'rfq' && $a->reason === 'pool',
+        ];
+        foreach ($kinds as $kind => $filter) {
+            $budget = $kind === 'verify'
+                ? MonitoringSettings::get('verify_letters_per_day') - $this->lettersToday()
+                : PHP_INT_MAX;
+            $asks = $all->filter($filter)->groupBy('supplier_id');
+            $sent = 0;
+            foreach ($asks as $supplierId => $supplierAsks) {
+                if ($sent >= $budget) {
+                    break;
                 }
+                $sup = $suppliers[$supplierId] ?? null;
+                $email = $sup ? mb_strtolower(trim($sup->email)) : null;
+                $reason = !$sup ? 'не годен к рассылке'
+                    : (isset($state['touched'][$supplierId]) ? 'уже есть письмо в этом прогоне'
+                    : ($kind === 'verify' && isset($verifyCooldown[$supplierId]) ? 'проверка за 7 дней'
+                    : (($state['recipientLeft'][$email] ?? 0) <= 0 ? 'кап получателя на сегодня' : null)));
+                if ($reason !== null) {
+                    $out['skipped'][$reason] = ($out['skipped'][$reason] ?? 0) + 1;
+                    continue;
+                }
+                if ($kind === 'verify') {
+                    // Цена листинга с момента выборки снята (заглушка, аналог, «по запросу») или изменилась —
+                    // спрашивать про неё нельзя: такие запросы отменяем.
+                    $supplierAsks = $supplierAsks->filter(function (MpAsk $a) {
+                        $l = $a->listing;
+                        $ok = $l && $l->status === \App\Models\Monitoring\MpListing::STATUS_ACTIVE && $l->price !== null
+                            && abs((float) $l->price - (float) $a->site_price) < 0.01;
+                        if (!$ok) {
+                            $a->forceFill(['status' => MpAsk::STATUS_CANCELLED])->save();
+                        }
 
-                return $ok;
-            });
-            if ($supplierAsks->isEmpty()) {
-                continue;
-            }
-            $letterAsks = $supplierAsks->take(self::MAX_ITEMS_PER_LETTER)->values();
-            if ($dryRun) {
-                $letters++;
-                $items += $letterAsks->count();
-                continue;
-            }
-            try {
-                if ($this->sendLetter($letterAsks, $sup, $senderId, $tools)) {
-                    $letters++;
-                    $items += $letterAsks->count();
-                    $senders[$senderId]--;
-                    $pairs[$senderId . '|' . $email] = true;
-                    $recipientLeft[$email]--;
-                    app(MonitoringGovernor::class)->record('email', 1, 0.0);
-                } else {
-                    $skipped['пропущено при записи']++;
+                        return $ok;
+                    });
+                    if ($supplierAsks->isEmpty()) {
+                        continue;
+                    }
                 }
-            } catch (\Throwable $e) {
-                Log::error('VerificationMailer: письмо не собрано', ['supplier_id' => $supplierId, 'error' => $e->getMessage()]);
-                $skipped['ошибка']++;
+                $senderId = $this->pickSender($state['senders'], $state['pairs'], $email);
+                if ($senderId === null) {
+                    $out['skipped']['нет свободного ящика'] = ($out['skipped']['нет свободного ящика'] ?? 0) + 1;
+                    continue;
+                }
+                $letterAsks = $supplierAsks->take(self::MAX_ITEMS_PER_LETTER)->values();
+                try {
+                    if ($dryRun || $this->sendLetter($letterAsks, $sup, $senderId, $tools, $kind)) {
+                        $sent++;
+                        $out['letters']++;
+                        $out['items'] += $letterAsks->count();
+                        $state['senders'][$senderId]--;
+                        $state['pairs'][$senderId . '|' . $email] = true;
+                        $state['recipientLeft'][$email]--;
+                        $state['touched'][$supplierId] = true;
+                        if (!$dryRun) {
+                            app(MonitoringGovernor::class)->record('email', 1, 0.0);
+                        }
+                    } else {
+                        $out['skipped']['пропущено при записи'] = ($out['skipped']['пропущено при записи'] ?? 0) + 1;
+                    }
+                } catch (\Throwable $e) {
+                    Log::error('VerificationMailer: письмо не собрано', ['supplier_id' => $supplierId, 'kind' => $kind, 'error' => $e->getMessage()]);
+                    $out['skipped']['ошибка'] = ($out['skipped']['ошибка'] ?? 0) + 1;
+                }
             }
+            $out['by_kind'][$kind] = $sent;
         }
 
-        return ['letters' => $letters, 'items' => $items, 'skipped_suppliers' => array_sum($skipped), 'skipped' => array_filter($skipped)];
+        return ['letters' => $out['letters'], 'items' => $out['items'], 'skipped_suppliers' => array_sum($out['skipped']),
+            'skipped' => $out['skipped'], 'by_kind' => $out['by_kind']];
     }
 
     /** @param \Illuminate\Support\Collection<int, MpAsk> $asks */
-    private function sendLetter($asks, object $sup, int $senderId, array $tools): bool
+    private function sendLetter($asks, object $sup, int $senderId, array $tools, string $kind = 'verify'): bool
     {
         $programId = (int) ($asks->first()->program_id ?? 0);
         $request = $this->techRequest($programId);
@@ -147,18 +168,28 @@ class VerificationMailer
                     break;
                 }
             }
-            $priceText = number_format((float) $ask->site_price, fmod((float) $ask->site_price, 1.0) > 0 ? 2 : 0, ',', ' ') . ' ₽';
-            $vat = $ask->site_vat_included === null ? '' : ($ask->site_vat_included ? ' с НДС' : ' без НДС');
-            $avail = ['in_stock' => 'в наличии', 'on_order' => 'под заказ', 'out_of_stock' => 'нет в наличии'][$ask->site_availability] ?? null;
+            if ($kind === 'verify') {
+                $priceText = number_format((float) $ask->site_price, fmod((float) $ask->site_price, 1.0) > 0 ? 2 : 0, ',', ' ') . ' ₽';
+                $vat = $ask->site_vat_included === null ? '' : ($ask->site_vat_included ? ' с НДС' : ' без НДС');
+                $avail = ['in_stock' => 'в наличии', 'on_order' => 'под заказ', 'out_of_stock' => 'нет в наличии'][$ask->site_availability] ?? null;
+                $name = trim($p->name) . " — на вашем сайте {$priceText}{$vat}";
+                $description = 'Цена на сайте: ' . $priceText . $vat . ($avail ? ", {$avail}" : '') . '. Страница: ' . ($ask->listing?->url ?? '');
+            } elseif ($kind === 'on_request') {
+                $name = trim($p->name);
+                $description = 'Товар на вашем сайте (цена не указана): ' . ($ask->listing?->url ?? '');
+            } else {
+                $name = trim($p->name);
+                $description = null;
+            }
             $row = [
                 'request_id' => $request->id,
                 'position_number' => ++$pos,
-                'name' => mb_substr(trim($p->name) . " — на вашем сайте {$priceText}{$vat}", 0, 1000),
+                'name' => mb_substr($name, 0, 1000),
                 'brand' => $p->brand ? mb_substr($p->brand, 0, 255) : null,
                 'article' => $article ? mb_substr($article, 0, 255) : null,
                 'quantity' => 1,
                 'unit' => 'шт',
-                'description' => 'Цена на сайте: ' . $priceText . $vat . ($avail ? ", {$avail}" : '') . '. Страница: ' . ($ask->listing?->url ?? ''),
+                'description' => $description !== null ? mb_substr($description, 0, 2000) : null,
                 'status' => 'pending',
                 'product_type_id' => $p->product_type_id ?: null,
                 'domain_id' => $p->domain_id ?: null,
@@ -173,7 +204,9 @@ class VerificationMailer
         }
 
         $batch = new Batch();
-        $batch->purpose = 'verify';
+        // verify — «подтвердите цену с сайта»; rfq_site — «видели у вас на сайте, пришлите КП»;
+        // пул — обычный запрос КП (purpose null, стандартный промпт).
+        $batch->purpose = ['verify' => 'verify', 'on_request' => 'rfq_site'][$kind] ?? null;
         $batch->items = array_values($itemRows);
         $batch->itemsCount = count($itemRows);
         $batch->useNewRouting = true;
@@ -233,7 +266,7 @@ class VerificationMailer
         DB::connection(self::CONN)->table('requests')->insert([
             'user_id' => (int) config('services.n8n.system_user_id', 1),
             'request_number' => $number,
-            'title' => mb_substr('Мониторинг цен: ' . ($program->name ?? "программа {$programId}") . ' — проверка цен сайтов', 0, 500),
+            'title' => mb_substr('Мониторинг цен: ' . ($program->name ?? "программа {$programId}") . ' — проверка цен и запросы КП', 0, 500),
             'status' => 'active',
             'source' => 'monitoring',
             'is_customer_request' => 0,
@@ -248,7 +281,7 @@ class VerificationMailer
 
     private function lettersToday(): int
     {
-        return (int) MpAsk::query()->where('queued_at', '>=', now()->startOfDay())->distinct()->count('batch_id');
+        return (int) MpAsk::query()->where('kind', 'verify')->where('queued_at', '>=', now()->startOfDay())->distinct()->count('batch_id');
     }
 
     /** @return array<int, object> supplier_id => строка поставщика (только годные к рассылке) */

@@ -897,11 +897,16 @@ components:
 
     MonitoringPriceSource:
       type: object
-      description: Цена одного поставщика (страница его сайта)
+      description: |
+        Цена одного поставщика. `source_type=site` — страница его сайта (цена сайта в `price`, КП — в `kp`;
+        у страниц «цена по запросу» `price` пуст, а цена приходит в `kp` после запроса КП).
+        `source_type=kp` — только КП поставщика без страницы товара (режим hybrid, запрос КП профильным
+        поставщикам IQOT): `url` и `price` пусты, цена — в `kp`.
       properties:
-        supplier_domain: { type: string, example: zaplift.ru }
-        url: { type: string, format: uri, description: 'Страница поставщика, откуда получена цена' }
-        price: { type: [number, 'null'] }
+        source_type: { type: string, enum: [site, kp] }
+        supplier_domain: { type: [string, 'null'], example: zaplift.ru }
+        url: { type: [string, 'null'], format: uri, description: 'Страница поставщика, откуда получена цена (null для source_type=kp)' }
+        price: { type: [number, 'null'], description: 'Цена с сайта' }
         currency: { type: [string, 'null'], example: RUB }
         price_kind: { type: [string, 'null'], enum: [retail, from, wholesale_tier, on_request] }
         vat_included: { type: [boolean, 'null'] }
@@ -919,7 +924,7 @@ components:
             currency: { type: [string, 'null'] }
             vat_included: { type: [boolean, 'null'] }
             received_at: { type: string, format: date-time }
-        site_trust_level: { type: integer, minimum: 0, maximum: 3, description: 'Доверие к ценам сайта (растёт с подтверждениями поставщика), справочно' }
+        site_trust_level: { type: [integer, 'null'], minimum: 0, maximum: 3, description: 'Доверие к ценам сайта (растёт с подтверждениями поставщика), справочно' }
         history:
           type: array
           description: 'Только в карточке позиции: история цен источника за history_days'
@@ -933,7 +938,7 @@ components:
 
     MonitoringPriceSummary:
       type: [object, 'null']
-      description: 'Сводка по сопоставимым ценам: RUB, розница или «от», статус active'
+      description: 'Сводка по сопоставимым ценам: RUB, розница или «от», статус active. Цена источника — цена сайта, а где её нет — цена КП'
       properties:
         best_price: { type: number }
         min: { type: number }
@@ -954,8 +959,9 @@ components:
           properties:
             price: { type: number }
             currency: { type: string }
-            supplier_domain: { type: string }
-            url: { type: string, format: uri }
+            supplier_domain: { type: [string, 'null'] }
+            url: { type: [string, 'null'], format: uri }
+            price_source: { type: string, enum: [web, kp], description: 'web — цена сайта, kp — цена из КП поставщика' }
             flags: { $ref: '#/components/schemas/MonitoringPriceFlags' }
         summary: { $ref: '#/components/schemas/MonitoringPriceSummary' }
         sources:

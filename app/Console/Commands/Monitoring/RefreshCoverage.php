@@ -74,15 +74,19 @@ class RefreshCoverage extends Command
         DB::table('mp_products')->where('search_state', 'queued')->where('last_search_at', '<', now()->subHours(12))
             ->update(['search_state' => 'new', 'updated_at' => now()]);
 
-        // 3. Свежесть позиций программ.
+        // 3. Свежесть позиций программ: цена сайта или КП поставщика (Гибрид) — что свежее.
+        //    price_source = site, если есть цена на сайте; kp — только КП (сайт «по запросу» / пул).
         DB::statement("
             UPDATE program_items pi
             LEFT JOIN (
                 SELECT product_id, MAX(observed_at) last_obs
                 FROM mp_listings WHERE bench = 0 AND status = 'active' AND price IS NOT NULL GROUP BY product_id
             ) l ON l.product_id = pi.product_id
-            SET pi.last_priced_at = l.last_obs,
-                pi.price_source = IF(l.last_obs IS NULL, 'none', 'site')
+            LEFT JOIN (
+                SELECT product_id, MAX(received_at) last_kp FROM mp_kp_offers GROUP BY product_id
+            ) k ON k.product_id = pi.product_id
+            SET pi.last_priced_at = GREATEST(COALESCE(l.last_obs, k.last_kp), COALESCE(k.last_kp, l.last_obs)),
+                pi.price_source = IF(l.last_obs IS NOT NULL, 'site', IF(k.last_kp IS NOT NULL, 'kp', 'none'))
         ");
 
         // 4. Покрытие программ.

@@ -45,9 +45,7 @@ final class PriceComparator
             return ['outcome' => 'inconclusive', 'diff_pct' => null, 'note' => "валюты {$sc}/{$kc}"];
         }
 
-        $analog = in_array(mb_strtolower((string) ($hints['offer_type'] ?? '')), ['analog', 'alternative', 'replacement'], true)
-            || preg_match(self::ANALOG_RE, (string) ($hints['notes'] ?? ''));
-        if ($analog) {
+        if (self::isAnalog($hints)) {
             return ['outcome' => 'match_error', 'diff_pct' => self::diff($sitePrice, $kpPrice), 'note' => 'КП на аналог/замену'];
         }
 
@@ -73,6 +71,13 @@ final class PriceComparator
         }
 
         return ['outcome' => 'price_mismatch', 'diff_pct' => $diff, 'note' => $note];
+    }
+
+    /** КП предложено как аналог/замена (по разметке AI или тексту примечания) — не цена нашего товара. */
+    public static function isAnalog(array $hints): bool
+    {
+        return in_array(mb_strtolower((string) ($hints['offer_type'] ?? '')), ['analog', 'alternative', 'replacement'], true)
+            || (bool) preg_match(self::ANALOG_RE, (string) ($hints['notes'] ?? ''));
     }
 
     private static function diff(float $site, float $kp): float

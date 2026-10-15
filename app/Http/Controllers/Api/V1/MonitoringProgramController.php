@@ -11,6 +11,7 @@ use App\Services\Monitoring\MonitoringPlanLimits;
 use App\Services\Monitoring\ProgramItemImporter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 /**
@@ -19,6 +20,9 @@ use Illuminate\Support\Facades\Validator;
  */
 class MonitoringProgramController extends Controller
 {
+    /** КП старше — не показываем (цена устарела). */
+    private const KP_MAX_AGE_DAYS = 180;
+
     public function __construct(
         private readonly MonitoringPlanLimits $limits,
         private readonly ProgramItemImporter $importer,
@@ -315,7 +319,7 @@ class MonitoringProgramController extends Controller
                         $s = $p['summary'] ?? null;
                         $base = [$i->client_ref, $i->raw_name, $i->raw_brand, $i->raw_article, $i->match_status,
                             $s['best_price'] ?? null, $s['min'] ?? null, $s['median'] ?? null, $s['max'] ?? null, $s['sources_priced'] ?? 0];
-                        $priced = collect($p['sources'])->filter(fn ($x) => $x['price'] !== null && $x['status'] === 'active');
+                        $priced = collect($p['sources'])->filter(fn ($x) => ($x['price'] !== null || $x['kp'] !== null) && $x['status'] === 'active');
                         if ($priced->isEmpty()) {
                             fputcsv($out, array_merge($base, array_fill(0, 13, null)), ';');
                             continue;
@@ -323,7 +327,7 @@ class MonitoringProgramController extends Controller
                         foreach ($priced as $x) {
                             fputcsv($out, array_merge($base, [$x['supplier_domain'], $x['url'], $x['price'], $x['currency'],
                                 $x['vat_included'] === null ? null : (int) $x['vat_included'], $x['price_unit'], $x['availability'],
-                                $x['observed_at'], 1, (int) $x['flags']['email_confirmed'], (int) $x['flags']['kp'],
+                                $x['observed_at'], (int) $x['flags']['web_price'], (int) $x['flags']['email_confirmed'], (int) $x['flags']['kp'],
                                 $x['kp']['price'] ?? null, $x['site_trust_level']]), ';');
                         }
                     }
@@ -349,8 +353,19 @@ class MonitoringProgramController extends Controller
         $listings = \App\Models\Monitoring\MpListing::query()->with('site')->whereIn('product_id', $productIds)->where('bench', false)
             ->whereIn('status', [\App\Models\Monitoring\MpListing::STATUS_ACTIVE, \App\Models\Monitoring\MpListing::STATUS_SUSPICIOUS])
             ->get();
-        $kp = \App\Models\Monitoring\MpVerification::query()->whereIn('listing_id', $listings->pluck('id'))->whereNotNull('kp_price')
-            ->orderBy('verified_at')->get()->keyBy('listing_id'); // последняя по времени перекрывает
+        // КП по листингу: из сверок и из КП-офферов Гибрида (в т.ч. по страницам «цена по запросу») — берём последнее.
+        $kp = collect();
+        foreach (\App\Models\Monitoring\MpVerification::query()->whereIn('listing_id', $listings->pluck('id'))->whereNotNull('kp_price')->get() as $v) {
+            $kp->push(['listing_id' => $v->listing_id, 'price' => (float) $v->kp_price, 'currency' => $v->kp_currency,
+                'vat_included' => $v->kp_vat_included, 'at' => $v->verified_at]);
+        }
+        $offers = \App\Models\Monitoring\MpKpOffer::query()->whereIn('product_id', $productIds)
+            ->where('received_at', '>=', now()->subDays(self::KP_MAX_AGE_DAYS))->orderBy('received_at')->get();
+        foreach ($offers->whereNotNull('listing_id') as $o) {
+            $kp->push(['listing_id' => $o->listing_id, 'price' => (float) $o->price, 'currency' => $o->currency,
+                'vat_included' => $o->vat_included, 'at' => $o->received_at]);
+        }
+        $kp = $kp->sortBy('at')->keyBy('listing_id'); // последнее по времени перекрывает
         $history = $withHistory
             ? \App\Models\Monitoring\MpPriceObservation::query()->whereIn('listing_id', $listings->pluck('id'))
                 ->where('observed_at', '>=', now()->subDays($historyDays))->whereNotNull('price')
@@ -358,9 +373,10 @@ class MonitoringProgramController extends Controller
                 ->get(['listing_id', 'price', 'currency', 'method', 'observed_at'])->groupBy('listing_id')
             : collect();
 
-        return $listings->map(function ($l) use ($kp, $history, $withHistory) {
+        $rows = $listings->map(function ($l) use ($kp, $history, $withHistory) {
             $v = $kp[$l->id] ?? null;
             $row = [
+                'source_type' => 'site',
                 'supplier_domain' => $l->site?->domain,
                 'url' => $l->url,
                 'price' => $l->price !== null ? (float) $l->price : null,
@@ -378,8 +394,8 @@ class MonitoringProgramController extends Controller
                     'kp' => $v !== null,
                 ],
                 'email_confirmed_at' => $l->confirmed_at?->toIso8601String(),
-                'kp' => $v ? ['price' => (float) $v->kp_price, 'currency' => $v->kp_currency, 'vat_included' => $v->kp_vat_included,
-                    'received_at' => $v->verified_at?->toIso8601String()] : null,
+                'kp' => $v ? ['price' => $v['price'], 'currency' => $v['currency'], 'vat_included' => $v['vat_included'],
+                    'received_at' => $v['at']?->toIso8601String()] : null,
                 'site_trust_level' => (int) ($l->site?->trust_level ?? 0),
                 'product_id' => $l->product_id,
             ];
@@ -391,15 +407,66 @@ class MonitoringProgramController extends Controller
             }
 
             return $row;
-        })->groupBy('product_id')->map(fn ($g) => $g->map(fn ($r) => \Illuminate\Support\Arr::except($r, ['product_id']))->values());
+        });
+
+        // КП поставщиков без страницы товара (запрос пулу IQOT) — отдельные источники без url.
+        $poolOffers = $offers->whereNull('listing_id')->sortBy('received_at')->keyBy(fn ($o) => $o->product_id . '|' . $o->supplier_id);
+        if ($poolOffers->isNotEmpty()) {
+            $suppliers = DB::connection('reports')->table('suppliers')->whereIn('id', $poolOffers->pluck('supplier_id')->unique())
+                ->get(['id', 'name', 'email', 'website'])->keyBy('id');
+            foreach ($poolOffers as $o) {
+                $s = $suppliers[$o->supplier_id] ?? null;
+                $kpRow = ['price' => (float) $o->price, 'currency' => $o->currency, 'vat_included' => $o->vat_included,
+                    'received_at' => $o->received_at?->toIso8601String()];
+                $row = [
+                    'source_type' => 'kp',
+                    'supplier_domain' => $s ? self::supplierDomain($s) : null,
+                    'url' => null,
+                    'price' => null, 'currency' => $o->currency, 'price_kind' => null, 'vat_included' => $o->vat_included,
+                    'price_unit' => null, 'price_unit_qty' => null, 'availability' => null,
+                    'observed_at' => $o->received_at?->toIso8601String(), 'status' => 'active',
+                    'flags' => ['web_price' => false, 'email_confirmed' => false, 'kp' => true],
+                    'email_confirmed_at' => null, 'kp' => $kpRow, 'site_trust_level' => null,
+                    'product_id' => $o->product_id,
+                ];
+                if ($withHistory) {
+                    $row['history'] = [['observed_at' => $kpRow['received_at'], 'price' => $kpRow['price'], 'currency' => $o->currency, 'source' => 'kp']];
+                }
+                $rows->push($row);
+            }
+        }
+
+        return $rows->groupBy('product_id')->map(fn ($g) => $g->map(fn ($r) => \Illuminate\Support\Arr::except($r, ['product_id']))->values());
+    }
+
+    /** Домен поставщика из КП: сайт, иначе домен почты (кроме бесплатной почты). */
+    private static function supplierDomain(object $s): ?string
+    {
+        $free = ['mail.ru', 'gmail.com', 'yandex.ru', 'ya.ru', 'yandex.by', 'yandex.kz', 'bk.ru', 'list.ru', 'inbox.ru',
+            'internet.ru', 'rambler.ru', 'mail.com', 'outlook.com', 'hotmail.com', 'yahoo.com', 'icloud.com'];
+        if ($s->website) {
+            $host = parse_url(str_contains($s->website, '//') ? $s->website : 'http://' . $s->website, PHP_URL_HOST);
+            if ($host) {
+                return preg_replace('~^www\.~', '', mb_strtolower($host));
+            }
+        }
+        $d = $s->email && str_contains($s->email, '@') ? mb_strtolower(trim(substr(strrchr($s->email, '@'), 1))) : null;
+
+        return $d && !in_array($d, $free, true) ? $d : null;
     }
 
     /** Позиция с ценами: сводка по сопоставимым ценам (RUB, розница/«от») + источники. */
     private function priceItem(ProgramItem $i, $sources): array
     {
-        $priced = collect($sources)->filter(fn ($s) => $s['price'] !== null && $s['status'] === 'active'
-            && ($s['currency'] ?? 'RUB') === 'RUB' && $s['price_kind'] !== 'wholesale_tier')->sortBy('price')->values();
-        $prices = $priced->pluck('price')->all();
+        // Цена источника для сводки: цена сайта, а где её нет («по запросу», пул) — цена КП.
+        $priced = collect($sources)->map(function ($s) {
+            $s['_price'] = $s['price'] ?? ($s['kp']['price'] ?? null);
+            $s['_currency'] = $s['price'] !== null ? ($s['currency'] ?? 'RUB') : ($s['kp']['currency'] ?? 'RUB');
+
+            return $s;
+        })->filter(fn ($s) => $s['_price'] !== null && $s['status'] === 'active'
+            && $s['_currency'] === 'RUB' && $s['price_kind'] !== 'wholesale_tier')->sortBy('_price')->values();
+        $prices = $priced->pluck('_price')->all();
         $n = count($prices);
         $median = $n === 0 ? null : ($n % 2 ? $prices[intdiv($n, 2)] : round(($prices[$n / 2 - 1] + $prices[$n / 2]) / 2, 2));
         $best = $priced->first();
@@ -409,8 +476,8 @@ class MonitoringProgramController extends Controller
             'name' => $i->raw_name,
             'prices_changed_at' => $i->prices_changed_at?->toIso8601String(),
             'last_priced_at' => $i->last_priced_at?->toIso8601String(),
-            'best_price' => $best ? ['price' => $best['price'], 'currency' => $best['currency'], 'supplier_domain' => $best['supplier_domain'],
-                'url' => $best['url'], 'flags' => $best['flags']] : null,
+            'best_price' => $best ? ['price' => $best['_price'], 'currency' => $best['_currency'], 'supplier_domain' => $best['supplier_domain'],
+                'url' => $best['url'], 'price_source' => $best['price'] !== null ? 'web' : 'kp', 'flags' => $best['flags']] : null,
             'summary' => $n === 0 ? null : [
                 'best_price' => $prices[0], 'min' => $prices[0], 'median' => $median, 'max' => $prices[$n - 1],
                 'sources_priced' => $n, 'currency' => 'RUB',

@@ -3,6 +3,7 @@
 namespace App\Services\Monitoring\Hybrid;
 
 use App\Models\Monitoring\MpAsk;
+use App\Models\Monitoring\MpKpOffer;
 use App\Models\Monitoring\MpListing;
 use App\Models\Monitoring\MpPriceObservation;
 use App\Models\Monitoring\MpSite;
@@ -29,7 +30,7 @@ class VerificationCollector
     /** @return array<string,int> */
     public function collectAsks(): array
     {
-        $stats = ['sent' => 0, 'verified' => 0, 'availability' => 0, 'expired' => 0, 'requeued' => 0];
+        $stats = ['sent' => 0, 'verified' => 0, 'kp' => 0, 'availability' => 0, 'declined' => 0, 'expired' => 0, 'requeued' => 0];
 
         // 1. Отправка.
         $queued = MpAsk::query()->where('status', MpAsk::STATUS_QUEUED)->whereNotNull('email_queue_id')->get();
@@ -67,17 +68,31 @@ class VerificationCollector
                 }
                 $kp = (float) ($r->price_per_unit ?: $r->total_price);
                 $h = ($hints[$ask->request_item_id] ?? []) + ['notes' => $r->notes];
-                $this->verify(MpSite::find($ask->site_id), 'ask', (int) $ask->request_item_id, (int) $ask->supplier_id, (int) $ask->product_id,
-                    (int) $ask->listing_id, $ask->site_price, $ask->site_vat_included, $ask->site_currency,
-                    $kp, $r->price_includes_vat === null ? null : (bool) $r->price_includes_vat, $r->currency, $h, $ask->id);
+                $vat = $r->price_includes_vat === null ? null : (bool) $r->price_includes_vat;
+                if (!PriceComparator::isAnalog($h)) {
+                    $this->recordKp($ask, $kp, $vat, $r->currency, $r->notes);
+                }
+                if ($ask->kind === 'verify') {
+                    $this->verify(MpSite::find($ask->site_id), 'ask', (int) $ask->request_item_id, (int) $ask->supplier_id, (int) $ask->product_id,
+                        (int) $ask->listing_id, $ask->site_price, $ask->site_vat_included, $ask->site_currency,
+                        $kp, $vat, $r->currency, $h, $ask->id);
+                    $stats['verified']++;
+                } else {
+                    $stats['kp']++;
+                }
                 $ask->forceFill(['status' => MpAsk::STATUS_ANSWERED, 'answered_at' => now()])->save();
-                $stats['verified']++;
             }
 
             // 3. Отказ «нет в наличии» по письму — сверка наличия (уровень не трогает).
             foreach ($this->notAvailable($open) as $askId) {
                 $ask = $open->firstWhere('id', $askId);
                 if (!$ask || $ask->status === MpAsk::STATUS_ANSWERED) {
+                    continue;
+                }
+                if ($ask->kind !== 'verify') {
+                    // Запрос КП: «нет в наличии» — просто закрываем (сайта/листинга для сверки нет или цены нет).
+                    $ask->forceFill(['status' => MpAsk::STATUS_ANSWERED, 'answered_at' => now()])->save();
+                    $stats['declined']++;
                     continue;
                 }
                 $this->verify(MpSite::find($ask->site_id), 'ask', (int) $ask->request_item_id, (int) $ask->supplier_id, (int) $ask->product_id,
@@ -88,8 +103,13 @@ class VerificationCollector
             }
         }
 
-        // 4. Без ответа — expired (не штраф сайту).
-        $stats['expired'] = MpAsk::query()->whereIn('status', [MpAsk::STATUS_SENT, MpAsk::STATUS_PLANNED])
+        // 4. Запрос КП так и не ушёл (не хватило ящиков/капов за 14 дней) — отменяем, чтобы планировщик
+        //    мог запросить заново (expired блокирует повтор на email_refresh_days).
+        $stats['unsent_cancelled'] = MpAsk::query()->where('kind', 'rfq')->where('status', MpAsk::STATUS_PLANNED)
+            ->where('expires_at', '<', now())->update(['status' => MpAsk::STATUS_CANCELLED, 'updated_at' => now()]);
+
+        // 5. Без ответа — expired (не штраф сайту).
+        $stats['expired'] =MpAsk::query()->whereIn('status', [MpAsk::STATUS_SENT, MpAsk::STATUS_PLANNED])
             ->where('expires_at', '<', now())->update(['status' => MpAsk::STATUS_EXPIRED, 'updated_at' => now()]);
 
         return $stats;
@@ -166,6 +186,33 @@ class VerificationCollector
         }
 
         return $made;
+    }
+
+    /**
+     * КП поставщика по товару мониторинга — источник цены «Есть КП / счёт» (в т.ч. без цены на сайте).
+     * Повторный ответ по той же позиции тех. заявки перезаписывает КП.
+     */
+    private function recordKp(MpAsk $ask, float $price, ?bool $vat, ?string $currency, ?string $notes): void
+    {
+        $source = $ask->kind === 'verify' ? 'verify' : ($ask->reason === 'pool' ? 'pool' : 'on_request');
+        MpKpOffer::query()->updateOrCreate(
+            ['request_item_id' => (int) $ask->request_item_id, 'supplier_id' => (int) $ask->supplier_id],
+            [
+                'product_id' => (int) $ask->product_id, 'ask_id' => $ask->id, 'listing_id' => $ask->listing_id, 'site_id' => $ask->site_id,
+                'source' => $source, 'price' => round($price, 2),
+                'currency' => $currency ? strtoupper(mb_substr($currency, 0, 3)) : 'RUB', 'vat_included' => $vat,
+                'notes' => $notes ? mb_substr($notes, 0, 255) : null, 'received_at' => now(),
+            ]
+        );
+        // КП по листингу «по запросу» — в историю цен листинга (цена сайта не подменяется).
+        if ($ask->kind !== 'verify' && $ask->listing_id) {
+            MpPriceObservation::create([
+                'listing_id' => $ask->listing_id, 'product_id' => (int) $ask->product_id, 'price' => round($price, 2),
+                'currency' => $currency ? strtoupper(mb_substr($currency, 0, 3)) : 'RUB', 'vat_included' => $vat,
+                'method' => 'kp', 'status' => MpPriceObservation::STATUS_OK, 'note' => 'КП (по запросу)', 'observed_at' => now(),
+            ]);
+        }
+        DB::table('program_items')->where('product_id', $ask->product_id)->update(['prices_changed_at' => now()]);
     }
 
     private function verify(?MpSite $site, string $source, int $requestItemId, int $supplierId, int $productId, int $listingId,
