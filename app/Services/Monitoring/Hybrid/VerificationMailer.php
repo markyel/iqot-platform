@@ -53,7 +53,10 @@ class VerificationMailer
      */
     public function send(bool $dryRun = false): array
     {
-        $all = MpAsk::query()->where('status', MpAsk::STATUS_PLANNED)->where('expires_at', '>', now())->orderBy('created_at')->get();
+        // Только активные программы в Гибриде: пауза или возврат в lite останавливают и уже запланированные письма.
+        $programs = DB::table('monitoring_programs')->where('status', 'active')->where('price_mode', 'hybrid')->pluck('id');
+        $all = MpAsk::query()->where('status', MpAsk::STATUS_PLANNED)->where('expires_at', '>', now())
+            ->whereIn('program_id', $programs)->orderBy('created_at')->get();
         if ($all->isEmpty()) {
             return ['letters' => 0, 'items' => 0, 'skipped_suppliers' => 0];
         }

@@ -240,6 +240,8 @@ class VerificationCollector
                 'diff_pct' => $cmp['diff_pct'], 'outcome' => $cmp['outcome'], 'note' => $cmp['note'] ? mb_substr($cmp['note'], 0, 255) : null,
                 'level_before' => $levels['level_before'], 'level_after' => $levels['level_after'], 'verified_at' => now(),
             ]);
+            // Подтверждение/КП — изменение для клиента: позиция попадёт в инкрементальную выгрузку API.
+            DB::table('program_items')->where('product_id', $productId)->update(['prices_changed_at' => now()]);
             $listing = $listingId ? MpListing::find($listingId) : null;
             if ($listing && $cmp['outcome'] === 'match') {
                 $listing->forceFill(['confirmed_price' => $sitePrice, 'confirmed_at' => now()])->save();
