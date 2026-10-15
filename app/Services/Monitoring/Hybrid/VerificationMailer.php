@@ -44,7 +44,7 @@ class VerificationMailer
 
     /**
      * Три вида писем мониторинга, по очереди (письма разных видов не смешиваются):
-     *  verify     — «подтвердите цену с вашего сайта» (бюджет «проверочных писем в сутки», ящику — раз в 7 дней);
+     *  verify     — «подтвердите цену с вашего сайта» (бюджет «проверочных писем в сутки», любому поставщику — одно письмо мониторинга любого вида раз в 7 дней);
      *  on_request — «видели товар у вас на сайте, цены нет — пришлите КП» (адресно, со ссылкой);
      *  pool       — обычный запрос КП профильному пулу.
      * Для КП отдельного лимита нет (решение владельца 2026-10-15) — общие лимиты ящиков и капы
@@ -65,7 +65,7 @@ class VerificationMailer
             'pairs' => $this->recentPairs(),
             'touched' => [],
         ];
-        $verifyCooldown = MpAsk::query()->where('kind', 'verify')->whereIn('supplier_id', array_keys($suppliers))
+        $cooldown = MpAsk::query()->whereIn('supplier_id', array_keys($suppliers))
             ->where('queued_at', '>', now()->subDays(self::SUPPLIER_COOLDOWN_DAYS))->distinct()->pluck('supplier_id')->flip();
 
         $tools = $this->tools();
@@ -89,7 +89,7 @@ class VerificationMailer
                 $email = $sup ? mb_strtolower(trim($sup->email)) : null;
                 $reason = !$sup ? 'не годен к рассылке'
                     : (isset($state['touched'][$supplierId]) ? 'уже есть письмо в этом прогоне'
-                    : ($kind === 'verify' && isset($verifyCooldown[$supplierId]) ? 'проверка за 7 дней'
+                    : (isset($cooldown[$supplierId]) ? 'письмо мониторинга за 7 дней'
                     : (($state['recipientLeft'][$email] ?? 0) <= 0 ? 'кап получателя на сегодня' : null)));
                 if ($reason !== null) {
                     $out['skipped'][$reason] = ($out['skipped'][$reason] ?? 0) + 1;

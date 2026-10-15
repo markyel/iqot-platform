@@ -45,7 +45,9 @@ class RfqPlanner
         $rows = DB::table('mp_listings as l')->join('mp_sites as s', 's.id', '=', 'l.site_id')
             ->join('program_items as pi', 'pi.product_id', '=', 'l.product_id')
             ->where('pi.program_id', $program->id)->where('pi.active', true)
+            // Только страницы, где цена действительно «по запросу» (не сбой извлечения: price_kind NULL).
             ->where('l.bench', false)->where('l.status', 'active')->whereNull('l.price')
+            ->where('l.price_kind', 'on_request')->whereNotNull('l.checked_at')
             ->whereNotNull('s.supplier_id')
             ->where(fn ($q) => $q->whereNull('s.blocked_until')->orWhere('s.blocked_until', '<', now()))
             ->whereNotExists(fn ($q) => $q->from('mp_asks as a')->whereColumn('a.product_id', 'l.product_id')
