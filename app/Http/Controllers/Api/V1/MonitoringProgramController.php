@@ -378,6 +378,12 @@ class MonitoringProgramController extends Controller
                 'vat_included' => $o->vat_included, 'at' => $o->received_at]);
         }
         $kp = $kp->sortBy('at')->keyBy('listing_id'); // последнее по времени перекрывает
+        // «Подозрительно» из-за выброса от медианы ТОВАРА — пересчитывается по ценам позиции (PriceSanity).
+        $suspIds = $listings->where('status', \App\Models\Monitoring\MpListing::STATUS_SUSPICIOUS)->pluck('id')->all();
+        $outlierIds = $suspIds === [] ? [] : \App\Models\Monitoring\MpPriceObservation::query()
+            ->whereIn('id', \App\Models\Monitoring\MpPriceObservation::query()->whereIn('listing_id', $suspIds)
+                ->selectRaw('MAX(id)')->groupBy('listing_id'))
+            ->where('note', 'outlier vs median')->pluck('listing_id')->flip()->all();
         $history = $withHistory
             ? \App\Models\Monitoring\MpPriceObservation::query()->whereIn('listing_id', $listings->pluck('id'))
                 ->where('observed_at', '>=', now()->subDays($historyDays))->whereNotNull('price')
@@ -385,7 +391,7 @@ class MonitoringProgramController extends Controller
                 ->get(['listing_id', 'price', 'currency', 'method', 'observed_at'])->groupBy('listing_id')
             : collect();
 
-        $rows = $listings->map(function ($l) use ($kp, $history, $withHistory) {
+        $rows = $listings->map(function ($l) use ($kp, $history, $withHistory, $outlierIds) {
             $v = $kp[$l->id] ?? null;
             $row = [
                 'source_type' => 'site',
@@ -412,6 +418,7 @@ class MonitoringProgramController extends Controller
                 'product_id' => $l->product_id,
                 // Служебное (вырезается в priceItem): коды товара на странице — фильтр ItemScope.
                 '_codes' => \App\Support\Monitoring\ItemScope::listingCodes($l->matched_codes, $l->match_method, $l->match_evidence),
+                '_outlier' => isset($outlierIds[$l->id]),
             ];
             if ($withHistory) {
                 $row['history'] = ($history[$l->id] ?? collect())->map(fn ($o) => [
@@ -458,7 +465,8 @@ class MonitoringProgramController extends Controller
 
     /**
      * Источники, видимые позиции (ItemScope): у «узкой» позиции (товар несёт чужие кросс-номера) —
-     * только страницы с её кодами и КП пула, запрошенные по её программе. Служебные поля — вырезаем.
+     * только страницы с её кодами и КП пула, запрошенные по её программе. Выбросы цен — по ценам самой
+     * позиции (PriceSanity). Служебные поля — вырезаем.
      */
     private function scopeSources(ProgramItem $i, $sources)
     {
@@ -466,7 +474,7 @@ class MonitoringProgramController extends Controller
         $productCodes = $this->productCodes[(int) $i->product_id] ?? [];
         $narrow = \App\Support\Monitoring\ItemScope::isNarrow($itemCodes, $productCodes);
 
-        return collect($sources)->filter(function ($s) use ($i, $itemCodes, $productCodes, $narrow) {
+        $visible = collect($sources)->filter(function ($s) use ($i, $itemCodes, $productCodes, $narrow) {
             if (!$narrow) {
                 return true;
             }
@@ -475,7 +483,10 @@ class MonitoringProgramController extends Controller
             }
 
             return \App\Support\Monitoring\ItemScope::allows($itemCodes, $productCodes, (array) ($s['_codes'] ?? []));
-        })->map(fn ($s) => \Illuminate\Support\Arr::except($s, ['_codes', '_program']))->values();
+        })->values()->all();
+
+        return collect(\App\Support\Monitoring\PriceSanity::apply($visible))
+            ->map(fn ($s) => \Illuminate\Support\Arr::except($s, ['_codes', '_program', '_outlier']))->values();
     }
 
     /** Домен поставщика из КП: сайт, иначе домен почты (кроме бесплатной почты). */

@@ -234,6 +234,15 @@ class ListingChecker
             $cost = (float) $llm['cost_usd'];
             $this->governor->record('llm_call', 1, $cost);
             if ($llm['error'] !== null && $structured === null) {
+                // Отказ ИИ-прокси по перегрузке (nginx limit_req → 503, 429, 5xx) — не про страницу:
+                // повтор через 30–60 мин без счётчика неудач (иначе 5 отказов подряд = листинг failed навсегда).
+                if (preg_match('/HTTP (429|5\d\d)/', (string) $llm['error'])) {
+                    $this->observe($listing, null, MpPriceObservation::STATUS_FAILED, 'none', 'llm: ' . $llm['error'], null, $cost);
+                    $listing->forceFill(['checked_at' => now(), 'next_check_at' => now()->addMinutes(random_int(30, 60))])->save();
+
+                    return $this->result(MpPriceObservation::STATUS_FAILED, null, null, 'llm transient: ' . $llm['error']) + ['cost_usd' => $cost];
+                }
+
                 return $this->fail($listing, 'llm: ' . $llm['error'], MpPriceObservation::STATUS_FAILED, $cost);
             }
         }
