@@ -1,0 +1,4 @@
+
+# Скрипты и код релеев запускаются на Linux: всегда LF (CRLF ломает shebang — релей #3, 15.10.2026)
+deploy/**/*.sh text eol=lf
+deploy/relay/microservice/** text eol=lf

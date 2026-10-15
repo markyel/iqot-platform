@@ -98,7 +98,7 @@ cat <<NEXT
 
   (а) Один релей (текущая схема) — в .env прода:
         EMAILS_MICROSERVICE_URL=http://${RELAY_IP:-<RELAY_IP>}:${PORT}
-        EMAILS_MICROSERVICE_API_KEY=${API_KEY}
+        EMAILS_MICROSERVICE_API_KEY=<тот же ключ, что передан в API_KEY; в лог не печатаем>
       затем: php artisan config:clear + рестарт iqot-email-worker@{1,2} и iqot-replies-worker@1
 
   (б) Пул релеев — см. README «Несколько релеев» (перечень endpoint'ов + выбор в RelayHttpMailer).
