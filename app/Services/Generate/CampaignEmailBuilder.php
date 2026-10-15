@@ -74,7 +74,9 @@ class CampaignEmailBuilder
         // реальные закупщики пишут короткое имя (см. корпус mzCorp).
         $format = $template['items_format'] ?? 'table';
         $enrichedItems = $this->prepareItemsForRender($items, $format, $displayConfig);
-        $firstItemName = $this->shortSubjectName($this->cleanValue($enrichedItems[0]['name'] ?? null, 'оборудование'));
+        // subject_name — короткое имя для темы, если название позиции несёт служебный хвост
+        // (проверочное письмо Ф3: «… — на вашем сайте 12 400 ₽» в теме обрезалось до «— на»).
+        $firstItemName = $this->shortSubjectName($this->cleanValue($items[0]['subject_name'] ?? $enrichedItems[0]['name'] ?? null, 'оборудование'));
 
         $requestNumber = $batch->requestNumbers[0] ?? '';
         $subject = (string) ($template['subject_template'] ?? '');

@@ -150,7 +150,8 @@ class VerificationMailer
                 'created_at' => now(),
             ];
             $id = (int) DB::connection(self::CONN)->table('request_items')->insertGetId($row);
-            $itemRows[$ask->id] = ['id' => $id] + $row + ['request_number' => $request->request_number, 'is_customer_request' => 0, 'category' => null];
+            $itemRows[$ask->id] = ['id' => $id] + $row + ['request_number' => $request->request_number, 'is_customer_request' => 0,
+                'category' => null, 'subject_name' => trim($p->name)];
         }
         if ($itemRows === []) {
             return false;
