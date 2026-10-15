@@ -59,7 +59,9 @@ class VerificationPlanner
             ->get();
 
         $bySite = $rows->groupBy('site_id');
-        $sites = MpSite::query()->whereIn('id', $bySite->keys())->get()->keyBy('id')
+        $sites = MpSite::query()->whereIn('id', $bySite->keys())->get()
+            ->reject(fn (MpSite $s) => \App\Support\Monitoring\DomainPolicy::isBlocked($s->domain)) // стоп-лист (маркетплейсы и т. п.)
+            ->keyBy('id')
             ->sortBy(fn (MpSite $s) => [
                 (int) $s->trust_level === 0 ? 0 : 1,
                 $s->next_verification_due_at === null || $s->next_verification_due_at->isPast() ? 0 : 1,

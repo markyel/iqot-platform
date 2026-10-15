@@ -131,7 +131,7 @@ return [
         'ozon.ru', 'wildberries.ru', 'market.yandex.ru', 'avito.ru', 'sbermegamarket.ru', 'megamarket.ru',
         'kazanexpress.ru', 'aliexpress.', 'alibaba.', 'made-in-china.', 'amazon.', 'ebay.', 'youla.ru',
         'tiu.ru', 'pulscen.ru', 'satom.ru', 'blizko.ru', 'all.biz', 'prom.ua',
-        'sportmaster.ru', 'lamoda.ru', 'ostin.com', 'farpost.ru', 'olx.',
+        'sportmaster.ru', 'lamoda.ru', 'ostin.com', 'farpost.ru', 'olx.', 'emex.ru',
         // Собственные ресурсы (LazyLift) — не рынок: их цены не мониторим и в покрытие не считаем.
         'liftway.ru',
         'yandex.ru', 'google.', 'youtube.', 'rutube.ru', 'dzen.ru', 'wikipedia.', 'vk.com', 'ok.ru',
