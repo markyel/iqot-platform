@@ -42,7 +42,7 @@ class VerificationMailer
 
     private const HELD = '2037-01-01';
 
-    /** @return array{letters: int, items: int, skipped_suppliers: int} */
+    /** @return array{letters: int, items: int, skipped_suppliers: int, skipped?: array<string,int>} */
     public function send(bool $dryRun = false): array
     {
         $budget = MonitoringSettings::get('verify_letters_per_day') - $this->lettersToday();
@@ -66,20 +66,21 @@ class VerificationMailer
         $tools = $this->tools();
         $letters = 0;
         $items = 0;
-        $skipped = 0;
+        $skipped = ['не годен к рассылке' => 0, 'писали за 7 дней' => 0, 'кап получателя на сегодня' => 0, 'нет свободного ящика' => 0, 'пропущено при записи' => 0, 'ошибка' => 0];
         foreach ($asks as $supplierId => $supplierAsks) {
             if ($letters >= $budget) {
                 break;
             }
             $sup = $suppliers[$supplierId] ?? null;
             $email = $sup ? mb_strtolower(trim($sup->email)) : null;
-            if (!$sup || isset($cooldown[$supplierId]) || ($recipientLeft[$email] ?? 0) <= 0) {
-                $skipped++;
+            $reason = !$sup ? 'не годен к рассылке' : (isset($cooldown[$supplierId]) ? 'писали за 7 дней' : (($recipientLeft[$email] ?? 0) <= 0 ? 'кап получателя на сегодня' : null));
+            if ($reason !== null) {
+                $skipped[$reason]++;
                 continue;
             }
             $senderId = $this->pickSender($senders, $pairs, $email);
             if ($senderId === null) {
-                $skipped++;
+                $skipped['нет свободного ящика']++;
                 continue;
             }
             $letterAsks = $supplierAsks->take(self::MAX_ITEMS_PER_LETTER)->values();
@@ -97,15 +98,15 @@ class VerificationMailer
                     $recipientLeft[$email]--;
                     app(MonitoringGovernor::class)->record('email', 1, 0.0);
                 } else {
-                    $skipped++;
+                    $skipped['пропущено при записи']++;
                 }
             } catch (\Throwable $e) {
                 Log::error('VerificationMailer: письмо не собрано', ['supplier_id' => $supplierId, 'error' => $e->getMessage()]);
-                $skipped++;
+                $skipped['ошибка']++;
             }
         }
 
-        return ['letters' => $letters, 'items' => $items, 'skipped_suppliers' => $skipped];
+        return ['letters' => $letters, 'items' => $items, 'skipped_suppliers' => array_sum($skipped), 'skipped' => array_filter($skipped)];
     }
 
     /** @param \Illuminate\Support\Collection<int, MpAsk> $asks */

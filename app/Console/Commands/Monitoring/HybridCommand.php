@@ -63,7 +63,7 @@ class HybridCommand extends Command
                     $dry = true;
                 }
                 $r = (new VerificationMailer())->send($dry);
-                $this->info("Проверочные письма: {$r['letters']} писем, {$r['items']} позиций, пропущено поставщиков {$r['skipped_suppliers']}" . ($dry ? ' (dry-run)' : ''));
+                $this->info("Проверочные письма: {$r['letters']} писем, {$r['items']} позиций, пропущено поставщиков {$r['skipped_suppliers']}" . ($dry ? ' (dry-run)' : '') . (empty($r['skipped']) ? '' : ' ' . json_encode($r['skipped'], JSON_UNESCAPED_UNICODE)));
                 break;
             case 'collect':
                 $r = (new VerificationCollector())->collectAsks();
