@@ -27,6 +27,12 @@ class RefreshCoverage extends Command
             return self::SUCCESS;
         }
 
+        // 0. Цены-заглушки сайтов: одно значение у ≥10 товаров и ≥20% цен сайта («по запросу» под
+        //    видом цены; snab-lift 15.10.2026: 1 500 ₽ — 41%, 15 000 ₽ — 23%). Список у сайта только
+        //    пополняется (после очистки значение из статистики уйдёт, а заглушкой быть не перестанет);
+        //    такие цены снимаются с листингов, позиции помечаются изменёнными (синхронизация API).
+        $this->placeholderPrices();
+
         // 1. Счётчики листингов по товарам (без стенда).
         DB::statement("
             UPDATE mp_products p
@@ -90,5 +96,52 @@ class RefreshCoverage extends Command
         $this->info("Search finalized: {$done}");
 
         return self::SUCCESS;
+    }
+
+    private function placeholderPrices(): void
+    {
+        $rows = DB::select("
+            SELECT l.site_id, l.price, COUNT(*) c, t.total
+            FROM mp_listings l
+            JOIN (SELECT site_id, COUNT(*) total FROM mp_listings
+                  WHERE bench = 0 AND status = 'active' AND price IS NOT NULL GROUP BY site_id) t ON t.site_id = l.site_id
+            WHERE l.bench = 0 AND l.status = 'active' AND l.price IS NOT NULL
+            GROUP BY l.site_id, l.price, t.total
+            HAVING c >= 10 AND c / t.total >= 0.2
+        ");
+        $bySite = [];
+        foreach ($rows as $r) {
+            $bySite[(int) $r->site_id][] = round((float) $r->price, 2);
+        }
+        foreach ($bySite as $siteId => $prices) {
+            $site = \App\Models\Monitoring\MpSite::find($siteId);
+            if (!$site) {
+                continue;
+            }
+            $stats = (array) ($site->stats_30d ?? []);
+            $known = array_map('floatval', (array) ($stats['placeholder_prices'] ?? []));
+            $merged = array_values(array_unique(array_merge($known, $prices), SORT_REGULAR));
+            if ($merged !== $known) {
+                $stats['placeholder_prices'] = $merged;
+                $site->forceFill(['stats_30d' => $stats])->save();
+                $this->warn("Цены-заглушки {$site->domain}: " . implode(', ', $merged));
+            }
+        }
+
+        // Снять заглушки с листингов (и при новых значениях, и для сайтов с уже известными).
+        foreach (\App\Models\Monitoring\MpSite::query()->whereNotNull('stats_30d')->get(['id', 'stats_30d']) as $site) {
+            $prices = (array) (($site->stats_30d ?? [])['placeholder_prices'] ?? []);
+            if ($prices === []) {
+                continue;
+            }
+            $affected = DB::table('mp_listings')->where('site_id', $site->id)->where('bench', false)
+                ->whereIn('price', $prices)->pluck('product_id')->unique();
+            if ($affected->isEmpty()) {
+                continue;
+            }
+            DB::table('mp_listings')->where('site_id', $site->id)->where('bench', false)->whereIn('price', $prices)
+                ->update(['price' => null, 'price_kind' => 'on_request', 'updated_at' => now()]);
+            DB::table('program_items')->whereIn('product_id', $affected)->update(['prices_changed_at' => now()]);
+        }
     }
 }

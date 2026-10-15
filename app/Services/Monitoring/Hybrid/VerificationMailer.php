@@ -83,6 +83,21 @@ class VerificationMailer
                 $skipped['нет свободного ящика']++;
                 continue;
             }
+            // Цена листинга с момента выборки снята (заглушка, аналог, «по запросу») или изменилась —
+            // спрашивать про неё нельзя: такие запросы отменяем.
+            $supplierAsks = $supplierAsks->filter(function (MpAsk $a) {
+                $l = $a->listing;
+                $ok = $l && $l->status === \App\Models\Monitoring\MpListing::STATUS_ACTIVE && $l->price !== null
+                    && abs((float) $l->price - (float) $a->site_price) < 0.01;
+                if (!$ok) {
+                    $a->forceFill(['status' => MpAsk::STATUS_CANCELLED])->save();
+                }
+
+                return $ok;
+            });
+            if ($supplierAsks->isEmpty()) {
+                continue;
+            }
             $letterAsks = $supplierAsks->take(self::MAX_ITEMS_PER_LETTER)->values();
             if ($dryRun) {
                 $letters++;

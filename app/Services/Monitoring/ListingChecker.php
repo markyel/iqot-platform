@@ -230,7 +230,10 @@ class ListingChecker
             }
         }
 
-        $identity = $this->verifier->verify($product, $window, $structured, $llm);
+        // Контекст для признаков аналога: адрес карточки (разделители → пробелы) + её заголовок.
+        $context = str_replace(['-', '_', '/', '.'], ' ', rawurldecode((string) parse_url($listing->url, PHP_URL_PATH)))
+            . ' ' . (\App\Support\Monitoring\ProductPageDigest::fromHtml($html)['title'] ?? '');
+        $identity = $this->verifier->verify($product, $window, $structured, $llm, $context);
         if (!$identity['accepted']) {
             $this->observe($listing, null, MpPriceObservation::STATUS_MISMATCH, $structured ? 'structured' : 'llm', $identity['reason'], $blockHash, $cost);
             if ($listing->price !== null) {
@@ -262,6 +265,13 @@ class ListingChecker
                 $price = null;
                 $found['price_kind'] = null;
             }
+        }
+        // Цена-заглушка сайта (одно значение у большой доли его товаров — «по запросу» под видом
+        // цены; snab-lift: 1 500 ₽ у 41% и 15 000 ₽ у 23% карточек) — не цена.
+        $placeholders = array_map('floatval', (array) (($site->stats_30d ?? [])['placeholder_prices'] ?? []));
+        if ($price !== null && $placeholders !== [] && in_array(round((float) $price, 2), $placeholders, true)) {
+            $price = null;
+            $found['price_kind'] = 'on_request';
         }
         $fields = [
             'currency' => $price !== null ? (string) ($found['currency'] ?? 'RUB') : null,

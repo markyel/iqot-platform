@@ -17,16 +17,25 @@ use App\Support\Monitoring\ArticleNormalizer;
  */
 class ListingIdentityVerifier
 {
+    /** Признаки аналога/замены в адресе или заголовке карточки (рус. и транслит). */
+    public const ANALOG_RE = '~(?<![\p{L}])(аналог\p{L}*|analog\p{L}*|заменител\p{L}*|zamenitel\p{L}*|взамен|vzamen|совместим\p{L}*\s+с|sovmestim\p{L}*)(?![\p{L}])~iu';
+
     /**
      * @param array{sku_matched?: bool}|null $structured результат StructuredPriceExtractor
      * @param array{is_same_product?: ?bool, is_analog?: bool, evidence_identity?: string}|null $llm результат LlmPriceExtractor
      * @return array{accepted: bool, method: ?string, confidence: float, reason: string, evidence: string}
      */
-    public function verify(MpProduct $product, string $pageText, ?array $structured, ?array $llm): array
+    public function verify(MpProduct $product, string $pageText, ?array $structured, ?array $llm, string $context = ''): array
     {
         $codes = $product->articleCodes();
         $llmEvidence = (string) ($llm['evidence_identity'] ?? '');
 
+        // Аналог по адресу/заголовку карточки («…-analog-gda25005b1…», «Плата … (аналог …)»): наш артикул
+        // на такой странице стоит как «аналог чего», а SKU в разметке совпадает — без этой проверки
+        // аналог проходил как oem_exact/structured_sku и сбивал лучшую цену (API 15.10.2026: 53 листинга).
+        if ($context !== '' && preg_match(self::ANALOG_RE, $context, $am) && !preg_match(self::ANALOG_RE, (string) $product->name)) {
+            return $this->reject('analog_marker', $am[0]);
+        }
         if ($llm !== null && !empty($llm['is_analog'])) {
             return $this->reject('analog', $llmEvidence);
         }

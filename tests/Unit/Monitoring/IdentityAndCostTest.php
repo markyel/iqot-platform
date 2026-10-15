@@ -38,6 +38,24 @@ class IdentityAndCostTest extends TestCase
         $this->assertSame('analog', $r['reason']);
     }
 
+    public function test_analog_marker_in_url_or_title_rejects_even_with_markup_sku(): void
+    {
+        $v = new ListingIdentityVerifier();
+        $p = $this->product('Плата RS-14 Otis', ['GDA25005B1']);
+        $ctx = 'product plata rs 14 om4351ajf analog gda25005b1 xizi otis Плата RS-14 (аналог GDA25005B1)';
+        $r = $v->verify($p, 'Плата RS-14 GDA25005B1 цена 913 ₽', ['sku_matched' => true], null, $ctx);
+        $this->assertFalse($r['accepted']);
+        $this->assertSame('analog_marker', $r['reason']);
+
+        // Обычная карточка — без признаков аналога — принимается.
+        $ok = $v->verify($p, 'Плата RS-14 GDA25005B1 цена 4 500 ₽', ['sku_matched' => true], null, 'product plata rs 14 gda25005b1 Плата RS-14');
+        $this->assertTrue($ok['accepted']);
+
+        // Наша позиция сама «аналог» — признак на странице не отклоняет.
+        $own = $this->product('Плата RS-14 аналог GDA25005B1', ['OM4351AJF']);
+        $this->assertTrue($v->verify($own, 'OM4351AJF', ['sku_matched' => true], null, $ctx)['accepted']);
+    }
+
     public function test_gray_zone_requires_llm_confirmation(): void
     {
         $v = new ListingIdentityVerifier();
