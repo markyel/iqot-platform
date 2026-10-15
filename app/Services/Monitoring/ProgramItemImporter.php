@@ -2,7 +2,7 @@
 
 namespace App\Services\Monitoring;
 
-use App\Jobs\Monitoring\ClassifyMonitoringProductsJob;
+use App\Jobs\Monitoring\ClassifyMonitoringCategoriesJob;
 use App\Jobs\Monitoring\ImportProgramItemsJob;
 use App\Models\Monitoring\MonitoringProgram;
 use App\Models\Monitoring\MpImport;
@@ -75,6 +75,18 @@ class ProgramItemImporter
 
             $activeCount = ProgramItem::query()->where('program_id', $program->id)->where('active', true)->count();
 
+            // Категории заказчика (client_category, как в заявках) — один upsert на категорию пачки.
+            $categoryIds = [];
+            if ($program->api_client_id) {
+                $registry = app(\App\Services\Api\ClientCategoryRegistry::class);
+                foreach ($byRef as [$i, $row]) {
+                    $code = is_array($row['client_category'] ?? null) ? (string) ($row['client_category']['code'] ?? '') : '';
+                    if ($code !== '' && !isset($categoryIds[$code])) {
+                        $categoryIds[$code] = $registry->upsert((int) $program->api_client_id, $row['client_category']);
+                    }
+                }
+            }
+
             foreach (array_chunk($byRef, (int) config('monitoring.import.chunk', 500), true) as $chunk) {
                 foreach ($chunk as [$i, $row]) {
                     $error = $this->validate($row);
@@ -104,6 +116,11 @@ class ProgramItemImporter
                         'raw_attributes' => is_array($row['attributes'] ?? null) ? $row['attributes'] : null,
                         'active' => $active,
                     ];
+                    // Категорию меняем, только если её прислали (повторная загрузка без неё не стирает).
+                    $catCode = is_array($row['client_category'] ?? null) ? (string) ($row['client_category']['code'] ?? '') : '';
+                    if ($catCode !== '' && !empty($categoryIds[$catCode])) {
+                        $attrs['client_category_id'] = $categoryIds[$catCode];
+                    }
 
                     if (!$existing) {
                         $item = ProgramItem::create($attrs + ['program_id' => $program->id, 'client_ref' => $ref]);
@@ -153,8 +170,11 @@ class ProgramItemImporter
                 'errors' => $errors ?: null,
             ])->save();
 
-            if ($newProducts !== []) {
-                ClassifyMonitoringProductsJob::dispatch(array_values(array_unique($newProducts)));
+            // Классификация по таксономии IQOT — ПО КАТЕГОРИИ заказчика (≤1 GPT на категорию), а не
+            // поштучно gpt-4o (решение владельца 2026-10-15). Позиции без категории не классифицируем:
+            // классификация нужна только будущему RFQ-режиму.
+            if ($categoryIds !== []) {
+                ClassifyMonitoringCategoriesJob::dispatch((int) $program->id);
             }
         } catch (\Throwable $e) {
             Log::error('ProgramItemImporter: import failed', ['import_id' => $import->id, 'error' => $e->getMessage()]);

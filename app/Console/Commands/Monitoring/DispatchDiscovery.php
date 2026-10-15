@@ -47,7 +47,11 @@ class DispatchDiscovery extends Command
             // Сколько товаров программы уже искали сегодня — суточный лимит discovery_rate.
             $today = (int) DB::table('program_items as pi')->join('mp_products as p', 'p.id', '=', 'pi.product_id')
                 ->where('pi.program_id', $program->id)->where('p.last_search_at', '>=', now()->startOfDay())->count();
-            $budget = min($global, max(0, (int) $program->discovery_rate - $today));
+            // discovery_rate = 0 — без собственного потолка программы: скорость задаёт только
+            // агрессивность (решение владельца 15.10.2026; раньше дефолт 500/сутки резал 30 тыс.
+            // позиций до 60 дней независимо от настроек).
+            $rate = (int) $program->discovery_rate;
+            $budget = $rate > 0 ? min($global, max(0, $rate - $today)) : $global;
             if ($this->option('limit')) {
                 $budget = min($budget, (int) $this->option('limit'));
             }

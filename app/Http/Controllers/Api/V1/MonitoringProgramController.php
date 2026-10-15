@@ -109,6 +109,12 @@ class MonitoringProgramController extends Controller
             'items.*.unit' => 'nullable|string|max:32',
             'items.*.attributes' => 'nullable|array',
             'items.*.active' => 'nullable|boolean',
+            // Категория заказчика — как в заявках: по ней (а не поштучно AI) товары относятся к таксономии IQOT.
+            'items.*.client_category' => 'nullable|array',
+            'items.*.client_category.code' => 'required_with:items.*.client_category|string|max:128',
+            'items.*.client_category.path' => 'nullable|array|max:10',
+            'items.*.client_category.path.*' => 'string|max:255',
+            'items.*.client_category.metadata' => 'nullable|array',
         ]);
         if ($v->fails()) {
             return $this->error(422, 'validation_error', 'Invalid items.', $rid, array_slice($v->errors()->toArray(), 0, 50, true));

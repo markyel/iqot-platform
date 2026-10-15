@@ -16,7 +16,7 @@ class ProgramItem extends Model
     public const MATCH_REJECTED = 'rejected';
 
     protected $fillable = [
-        'program_id', 'client_ref', 'raw_name', 'raw_brand', 'raw_article', 'raw_unit',
+        'program_id', 'client_ref', 'raw_name', 'raw_brand', 'raw_article', 'raw_unit', 'client_category_id',
         'raw_attributes', 'product_id', 'match_status', 'match_note', 'active', 'priority',
         'last_priced_at', 'price_source', 'prices_changed_at', 'next_due_at',
     ];

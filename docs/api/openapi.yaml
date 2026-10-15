@@ -842,7 +842,21 @@ components:
         article: { type: [string, 'null'], maxLength: 255,  description: 'Артикул производителя (OEM/MPN) — главный ключ поиска; без него поиск идёт по названию' }
         unit: { type: [string, 'null'], maxLength: 32 }
         attributes: { type: [object, 'null'], additionalProperties: true }
-        active: { type: [boolean, 'null'],  default: true }
+        active: { type: [boolean, 'null'], default: true }
+        client_category:
+          type: [object, 'null']
+          description: |
+            Ваша категория товара — тот же формат, что в заявках (`/submissions`). Соответствие вашей
+            категории и таксономии IQOT устанавливается один раз на категорию и используется для
+            подбора поставщиков; без категории позиция мониторится, но не классифицируется.
+          required: [code]
+          properties:
+            code: { type: string, maxLength: 128 }
+            path:
+              type: array
+              maxItems: 10
+              items: { type: string, maxLength: 255 }
+            metadata: { type: object, additionalProperties: true }
 
     MonitoringImport:
       type: object
