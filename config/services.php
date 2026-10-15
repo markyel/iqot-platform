@@ -556,6 +556,19 @@ return [
         'bot_token' => env('TELEGRAM_BOT_TOKEN'),
     ],
 
+    // Служебные оповещения (ops:health-check, каждые 5 мин) в Telegram-бот IQOT.
+    // Введены после инцидента 15.10.2026 (диск прода 100% ~2,5 ч, заметили случайно).
+    'ops_alerts' => [
+        'telegram_bot_token' => env('OPS_ALERT_TELEGRAM_BOT_TOKEN', env('TELEGRAM_BOT_TOKEN')),
+        'telegram_chat_id' => env('OPS_ALERT_TELEGRAM_CHAT_ID'),
+        'repeat_minutes' => (int) env('OPS_ALERT_REPEAT_MINUTES', 60),
+        'disk_free_min_pct' => (float) env('OPS_DISK_FREE_MIN_PCT', 15),
+        'disk_drop_gb_per_hour' => (float) env('OPS_DISK_DROP_GB_PER_HOUR', 1.5),
+        'email_errors_per_hour' => (int) env('OPS_EMAIL_ERRORS_PER_HOUR', 30),
+        'stuck_job_minutes' => (int) env('OPS_STUCK_JOB_MINUTES', 30),
+        'stuck_job_min_count' => (int) env('OPS_STUCK_JOB_MIN_COUNT', 20),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Email Validation Services

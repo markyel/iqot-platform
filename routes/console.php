@@ -225,3 +225,9 @@ Schedule::job(new \App\Jobs\Api\ReconcilePromotionJob())->everyFiveMinutes()->wi
 
 // Публичный API: физическое удаление revoked ключей (>30 дней) — раз в сутки (§9.5).
 Schedule::job(new \App\Jobs\Api\CleanupRevokedApiKeysJob())->daily();
+
+// Служебные проверки прода (диск, ошибки почты, зависшие очереди, релеи) → Telegram-бот IQOT.
+// Введено после инцидента 15.10.2026 (диск 100% ~2,5 ч). Без OPS_ALERT_TELEGRAM_CHAT_ID — только лог.
+Schedule::command('ops:health-check')
+    ->everyFiveMinutes()
+    ->withoutOverlapping();
