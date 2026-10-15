@@ -23,6 +23,9 @@ class MonitoringProgramController extends Controller
     /** КП старше — не показываем (цена устарела). */
     private const KP_MAX_AGE_DAYS = 180;
 
+    /** @var array<int, array<int,string>> product_id => OEM/MPN (кеш на запрос, для ItemScope) */
+    private array $productCodes = [];
+
     public function __construct(
         private readonly MonitoringPlanLimits $limits,
         private readonly ProgramItemImporter $importer,
@@ -110,6 +113,9 @@ class MonitoringProgramController extends Controller
             'items.*.name' => 'required|string|min:2|max:1000',
             'items.*.brand' => 'nullable|string|max:255',
             'items.*.article' => 'nullable|string|max:255',
+            // Все OEM-артикулы позиции (кросс-номера) — по ним ищем и только по ним показываем страницы.
+            'items.*.oem_articles' => 'nullable|array|max:20',
+            'items.*.oem_articles.*' => 'nullable|string|max:255',
             'items.*.unit' => 'nullable|string|max:32',
             'items.*.attributes' => 'nullable|array',
             'items.*.active' => 'nullable|boolean',
@@ -174,6 +180,7 @@ class MonitoringProgramController extends Controller
                 'name' => $i->raw_name,
                 'brand' => $i->raw_brand,
                 'article' => $i->raw_article,
+                'oem_articles' => $i->oem_articles ?? [],
                 'active' => $i->active,
                 'match_status' => $i->match_status,
                 'match_note' => $i->match_note,
@@ -255,6 +262,7 @@ class MonitoringProgramController extends Controller
             'name' => $item->raw_name,
             'brand' => $item->raw_brand,
             'article' => $item->raw_article,
+            'oem_articles' => $item->oem_articles ?? [],
             'active' => $item->active,
             'match_status' => $item->match_status,
             'match_note' => $item->match_note,
@@ -266,7 +274,10 @@ class MonitoringProgramController extends Controller
             $data['product'] = $product ? [
                 'name' => $product->name,
                 'brand' => $product->brand,
+                // Кросс-номера, которые товару добавили другие клиенты, позиции не показываем.
                 'identifiers' => $product->identifiers->whereIn('kind', ['oem', 'mpn', 'gtin'])
+                    ->filter(fn ($x) => \App\Support\Monitoring\ItemScope::itemCodes($item) === [] || $x->kind === 'gtin'
+                        || in_array((string) $x->value_norm, \App\Support\Monitoring\ItemScope::itemCodes($item), true))
                     ->map(fn ($x) => ['kind' => $x->kind, 'value' => $x->value])->values(),
             ] : null;
             $days = min(365, max(1, (int) $request->query('history_days', 90)));
@@ -350,6 +361,7 @@ class MonitoringProgramController extends Controller
         if ($productIds === []) {
             return collect();
         }
+        $this->productCodes += \App\Support\Monitoring\ItemScope::productCodes(array_diff($productIds, array_keys($this->productCodes)));
         $listings = \App\Models\Monitoring\MpListing::query()->with('site')->whereIn('product_id', $productIds)->where('bench', false)
             ->whereIn('status', [\App\Models\Monitoring\MpListing::STATUS_ACTIVE, \App\Models\Monitoring\MpListing::STATUS_SUSPICIOUS])
             ->get();
@@ -398,6 +410,8 @@ class MonitoringProgramController extends Controller
                     'received_at' => $v['at']?->toIso8601String()] : null,
                 'site_trust_level' => (int) ($l->site?->trust_level ?? 0),
                 'product_id' => $l->product_id,
+                // Служебное (вырезается в priceItem): коды товара на странице — фильтр ItemScope.
+                '_codes' => \App\Support\Monitoring\ItemScope::listingCodes($l->matched_codes, $l->match_method, $l->match_evidence),
             ];
             if ($withHistory) {
                 $row['history'] = ($history[$l->id] ?? collect())->map(fn ($o) => [
@@ -414,6 +428,7 @@ class MonitoringProgramController extends Controller
         if ($poolOffers->isNotEmpty()) {
             $suppliers = DB::connection('reports')->table('suppliers')->whereIn('id', $poolOffers->pluck('supplier_id')->unique())
                 ->get(['id', 'name', 'email', 'website'])->keyBy('id');
+            $askProgram = DB::table('mp_asks')->whereIn('id', $poolOffers->pluck('ask_id')->filter()->unique())->pluck('program_id', 'id');
             foreach ($poolOffers as $o) {
                 $s = $suppliers[$o->supplier_id] ?? null;
                 $kpRow = ['price' => (float) $o->price, 'currency' => $o->currency, 'vat_included' => $o->vat_included,
@@ -428,6 +443,8 @@ class MonitoringProgramController extends Controller
                     'flags' => ['web_price' => false, 'email_confirmed' => false, 'kp' => true],
                     'email_confirmed_at' => null, 'kp' => $kpRow, 'site_trust_level' => null,
                     'product_id' => $o->product_id,
+                    // КП пула запрашивалось по позиции конкретной программы (её названию/артикулу).
+                    '_program' => (int) ($askProgram[$o->ask_id] ?? 0),
                 ];
                 if ($withHistory) {
                     $row['history'] = [['observed_at' => $kpRow['received_at'], 'price' => $kpRow['price'], 'currency' => $o->currency, 'source' => 'kp']];
@@ -437,6 +454,28 @@ class MonitoringProgramController extends Controller
         }
 
         return $rows->groupBy('product_id')->map(fn ($g) => $g->map(fn ($r) => \Illuminate\Support\Arr::except($r, ['product_id']))->values());
+    }
+
+    /**
+     * Источники, видимые позиции (ItemScope): у «узкой» позиции (товар несёт чужие кросс-номера) —
+     * только страницы с её кодами и КП пула, запрошенные по её программе. Служебные поля — вырезаем.
+     */
+    private function scopeSources(ProgramItem $i, $sources)
+    {
+        $itemCodes = \App\Support\Monitoring\ItemScope::itemCodes($i);
+        $productCodes = $this->productCodes[(int) $i->product_id] ?? [];
+        $narrow = \App\Support\Monitoring\ItemScope::isNarrow($itemCodes, $productCodes);
+
+        return collect($sources)->filter(function ($s) use ($i, $itemCodes, $productCodes, $narrow) {
+            if (!$narrow) {
+                return true;
+            }
+            if (($s['source_type'] ?? 'site') === 'kp') {
+                return ($s['_program'] ?? 0) === (int) $i->program_id;
+            }
+
+            return \App\Support\Monitoring\ItemScope::allows($itemCodes, $productCodes, (array) ($s['_codes'] ?? []));
+        })->map(fn ($s) => \Illuminate\Support\Arr::except($s, ['_codes', '_program']))->values();
     }
 
     /** Домен поставщика из КП: сайт, иначе домен почты (кроме бесплатной почты). */
@@ -458,6 +497,7 @@ class MonitoringProgramController extends Controller
     /** Позиция с ценами: сводка по сопоставимым ценам (RUB, розница/«от») + источники. */
     private function priceItem(ProgramItem $i, $sources): array
     {
+        $sources = $this->scopeSources($i, $sources);
         // Цена источника для сводки: цена сайта, а где её нет («по запросу», пул) — цена КП.
         $priced = collect($sources)->map(function ($s) {
             $s['_price'] = $s['price'] ?? ($s['kp']['price'] ?? null);

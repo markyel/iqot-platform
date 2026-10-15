@@ -13,6 +13,7 @@ use App\Services\Generate\CampaignSenderAssigner;
 use App\Services\Generate\CampaignTokenGenerator;
 use App\Services\Generate\SenderDailyCapacity;
 use App\Services\Monitoring\MonitoringGovernor;
+use App\Support\Monitoring\ItemScope;
 use App\Support\Monitoring\MonitoringSettings;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -168,24 +169,20 @@ class VerificationMailer
                 continue;
             }
             $ask->loadMissing('listing');
-            $article = null;
-            foreach ($p->identifiers as $i) {
-                if (in_array($i->kind, ['oem', 'mpn'], true)) {
-                    $article = $i->value;
-                    break;
-                }
-            }
+            // Название и артикул — позиции клиента (не общего товара: у него могут быть кросс-номера
+            // других вариантов, M02502); артикул — код, найденный на странице поставщика, если он есть.
+            [$baseName, $article] = $this->naming($ask, $p);
             if ($kind === 'verify') {
                 $priceText = number_format((float) $ask->site_price, fmod((float) $ask->site_price, 1.0) > 0 ? 2 : 0, ',', ' ') . ' ₽';
                 $vat = $ask->site_vat_included === null ? '' : ($ask->site_vat_included ? ' с НДС' : ' без НДС');
                 $avail = ['in_stock' => 'в наличии', 'on_order' => 'под заказ', 'out_of_stock' => 'нет в наличии'][$ask->site_availability] ?? null;
-                $name = trim($p->name) . " — на вашем сайте {$priceText}{$vat}";
+                $name = $baseName . " — на вашем сайте {$priceText}{$vat}";
                 $description = 'Цена на сайте: ' . $priceText . $vat . ($avail ? ", {$avail}" : '') . '. Страница: ' . ($ask->listing?->url ?? '');
             } elseif ($kind === 'on_request') {
-                $name = trim($p->name);
+                $name = $baseName;
                 $description = 'Товар на вашем сайте (цена не указана): ' . ($ask->listing?->url ?? '');
             } else {
-                $name = trim($p->name);
+                $name = $baseName;
                 $description = null;
             }
             $row = [
@@ -204,7 +201,7 @@ class VerificationMailer
             ];
             $id = (int) DB::connection(self::CONN)->table('request_items')->insertGetId($row);
             $itemRows[$ask->id] = ['id' => $id] + $row + ['request_number' => $request->request_number, 'is_customer_request' => 0,
-                'category' => null, 'subject_name' => trim($p->name)];
+                'category' => null, 'subject_name' => $baseName];
         }
         if ($itemRows === []) {
             return false;
@@ -259,6 +256,36 @@ class VerificationMailer
             ->update(['total_items' => DB::raw('total_items + ' . count($itemRows)), 'updated_at' => now()]);
 
         return true;
+    }
+
+    /**
+     * Название и артикул для письма: позиция программы, которой видна страница запроса (ItemScope);
+     * артикул — её код, найденный на странице, иначе её артикул, иначе первый OEM товара.
+     *
+     * @return array{0: string, 1: ?string}
+     */
+    private function naming(MpAsk $ask, MpProduct $p): array
+    {
+        $productCodes = $p->identifiers->whereIn('kind', ['oem', 'mpn'])->pluck('value_norm')->map(fn ($v) => (string) $v)->all();
+        $listingCodes = $ask->listing ? ItemScope::listingCodes($ask->listing->matched_codes, $ask->listing->match_method, $ask->listing->match_evidence) : [];
+        $item = \App\Models\Monitoring\ProgramItem::query()->where('program_id', $ask->program_id)->where('product_id', $p->id)
+            ->where('active', true)->get()
+            ->first(fn ($i) => !$ask->listing || ItemScope::allows(ItemScope::itemCodes($i), $productCodes, $listingCodes));
+        $name = trim((string) ($item?->raw_name ?: $p->name));
+
+        $own = $item ? ItemScope::itemCodes($item) : $productCodes;
+        $code = array_values(array_intersect($listingCodes, $own ?: $productCodes))[0] ?? null;
+        if ($code !== null) {
+            $raw = $p->identifiers->first(fn ($i) => (string) $i->value_norm === $code);
+
+            return [$name, $raw?->value ?? $code];
+        }
+        if ($item?->raw_article) {
+            return [$name, $item->raw_article];
+        }
+        $first = $p->identifiers->first(fn ($i) => in_array($i->kind, ['oem', 'mpn'], true) && ($own === [] || in_array((string) $i->value_norm, $own, true)));
+
+        return [$name, $first?->value];
     }
 
     /** Техническая заявка программы в reports (source=monitoring, системный пользователь). */

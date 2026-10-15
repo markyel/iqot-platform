@@ -112,6 +112,7 @@ class ProgramItemImporter
                         'raw_name' => mb_substr(trim((string) $row['name']), 0, 1000),
                         'raw_brand' => $this->str($row['brand'] ?? null, 255),
                         'raw_article' => $this->str($row['article'] ?? null, 255),
+                        'oem_articles' => $this->oemArticles($row['oem_articles'] ?? null),
                         'raw_unit' => $this->str($row['unit'] ?? null, 32),
                         'raw_attributes' => is_array($row['attributes'] ?? null) ? $row['attributes'] : null,
                         'active' => $active,
@@ -127,6 +128,7 @@ class ProgramItemImporter
                         $toResolve[] = $item->id;
                     } else {
                         $identityChanged = $existing->raw_article !== $attrs['raw_article']
+                            || ($existing->oem_articles ?? null) !== $attrs['oem_articles']
                             || $existing->raw_brand !== $attrs['raw_brand']
                             || ($existing->raw_article === null && $existing->raw_name !== $attrs['raw_name']);
                         $existing->fill($attrs);
@@ -204,6 +206,23 @@ class ProgramItemImporter
         if (count($errors) < 100) {
             $errors[] = ['row' => $index, 'client_ref' => $row['client_ref'] ?? null, 'error' => $code];
         }
+    }
+
+    /** OEM-артикулы позиции (кросс-номера) — до 20 непустых строк, без повторов. */
+    private function oemArticles(mixed $v): ?array
+    {
+        if (!is_array($v)) {
+            return null;
+        }
+        $out = [];
+        foreach ($v as $a) {
+            $a = is_scalar($a) ? mb_substr(trim((string) $a), 0, 255) : '';
+            if ($a !== '' && !in_array($a, $out, true)) {
+                $out[] = $a;
+            }
+        }
+
+        return $out === [] ? null : array_slice($out, 0, 20);
     }
 
     private function str(mixed $v, int $max): ?string

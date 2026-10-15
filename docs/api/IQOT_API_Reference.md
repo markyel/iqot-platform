@@ -378,6 +378,7 @@ Upsert по `client_ref`, до 5 000 позиций за вызов; больш�
 | `name` | string 2–1000 | да | Наименование |
 | `brand` | string ≤255 | нет | Бренд / производитель |
 | `article` | string ≤255 | нет | **Артикул производителя (OEM/MPN) — главный ключ поиска.** Внутренние коды учётных систем (1С, SAP и т. п.) передавайте в `client_ref`, а не сюда |
+| `oem_articles` | array of string, до 20 | нет | Все OEM-артикулы позиции (кросс-номера), например `["KM247024", "KM85869H01", "PC-04L=600"]`. См. «Какие страницы видит позиция» ниже |
 | `unit` | string ≤32 | нет | Единица измерения |
 | `attributes` | object | нет | Произвольные характеристики |
 | `active` | boolean | нет | `false` снимает позицию с мониторинга, `true` возвращает |
@@ -399,6 +400,8 @@ curl -X POST https://iqot.ru/api/v1/monitoring/programs/mon_01M4…/items \
 
 Строки сверх лимита тарифа отклоняются построчно с ошибкой `plan_limit_exceeded`.
 
+**Какие страницы видит позиция.** Позиции показываются страницы поставщиков, на которых найден хотя бы один её артикул (`article` или `oem_articles`). Страницы других вариантов товара не показываются, даже если поставщики указывают их под общими кросс-номерами. Пример: позиция «Ремень тахометра D4×600, KM247024» не получит страницы ремня D4×550 (FI264123). Поэтому передавайте **все** OEM-артикулы позиции: страница, где указан только кросс-номер, которого нет в вашем списке, не попадёт в выдачу.
+
 ### 10.6. `GET /monitoring/programs/{id}/imports/{import_id}` — ход импорта
 
 ```json
@@ -416,7 +419,7 @@ curl -X POST https://iqot.ru/api/v1/monitoring/programs/mon_01M4…/items \
 
 Параметры: `match_status` (`pending` \| `matched` \| `ambiguous` \| `rejected`), `cursor`, `limit` (1–1000, по умолчанию 500).
 
-Ответ: `{ "items": [...], "next_cursor": 12345 | null }`. Позиция: `client_ref`, `name`, `brand`, `article`, `active`, `match_status`, `match_note`, `last_priced_at`.
+Ответ: `{ "items": [...], "next_cursor": 12345 | null }`. Позиция: `client_ref`, `name`, `brand`, `article`, `oem_articles`, `active`, `match_status`, `match_note`, `last_priced_at`.
 
 Значения `match_status`:
 
@@ -429,7 +432,7 @@ curl -X POST https://iqot.ru/api/v1/monitoring/programs/mon_01M4…/items \
 
 `client_ref` передаётся в URL-кодировке. Параметр `history_days` (1–365, по умолчанию 90) задаёт глубину истории цен.
 
-Ответ — объект цены позиции (§10.10) плюс поля `brand`, `article`, `active`, `match_status`, `match_note` и `product` (сопоставленный товар: `name`, `brand`, `identifiers[]` с `kind` из `oem`/`mpn`/`gtin` и `value`). У каждого источника есть `history[]`: `observed_at`, `price`, `currency`, `source` (`web` \| `kp`).
+Ответ — объект цены позиции (§10.10) плюс поля `brand`, `article`, `oem_articles`, `active`, `match_status`, `match_note` и `product` (сопоставленный товар: `name`, `brand`, `identifiers[]` с `kind` из `oem`/`mpn`/`gtin` и `value`). У каждого источника есть `history[]`: `observed_at`, `price`, `currency`, `source` (`web` \| `kp`).
 
 ### 10.9. `DELETE /monitoring/programs/{id}/items/{client_ref}` — снять позицию
 

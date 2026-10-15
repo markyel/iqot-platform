@@ -203,11 +203,19 @@ class ListingChecker
             $site->forceFill(['has_structured_markup' => true])->save();
         }
 
+        // Контекст для признаков аналога: адрес карточки (разделители → пробелы) + её заголовок.
+        $context = str_replace(['-', '_', '/', '.'], ' ', rawurldecode((string) parse_url($listing->url, PHP_URL_PATH)))
+            . ' ' . (\App\Support\Monitoring\ProductPageDigest::fromHtml($html)['title'] ?? '');
+        // Какие коды товара есть на странице: позиции клиента видят только страницы со СВОИМИ кодами
+        // (ItemScope — кросс-номера разных вариантов, которые товару добавил другой клиент).
+        $matchedCodes = $this->matchedCodes($codes, $window . ' ' . $context . ' ' . (string) ($structured['evidence'] ?? ''));
+
         // Блок товара не изменился и разметки нет — цена та же, LLM не нужен.
         if ($structured === null && $listing->content_hash === $blockHash && $listing->checked_at !== null
             && $listing->status === MpListing::STATUS_ACTIVE) {
             $this->observe($listing, $listing->price, MpPriceObservation::STATUS_OK, 'unchanged', null, $blockHash);
-            $this->schedule($listing, ['observed_at' => $listing->price !== null ? now() : $listing->observed_at, 'fail_count' => 0], $res, $finalHash);
+            $this->schedule($listing, ['observed_at' => $listing->price !== null ? now() : $listing->observed_at, 'fail_count' => 0,
+                'matched_codes' => $matchedCodes], $res, $finalHash);
 
             return $this->result(MpPriceObservation::STATUS_OK, 'unchanged', $listing->price, 'block unchanged');
         }
@@ -230,9 +238,6 @@ class ListingChecker
             }
         }
 
-        // Контекст для признаков аналога: адрес карточки (разделители → пробелы) + её заголовок.
-        $context = str_replace(['-', '_', '/', '.'], ' ', rawurldecode((string) parse_url($listing->url, PHP_URL_PATH)))
-            . ' ' . (\App\Support\Monitoring\ProductPageDigest::fromHtml($html)['title'] ?? '');
         $identity = $this->verifier->verify($product, $window, $structured, $llm, $context);
         if (!$identity['accepted']) {
             $this->observe($listing, null, MpPriceObservation::STATUS_MISMATCH, $structured ? 'structured' : 'llm', $identity['reason'], $blockHash, $cost);
@@ -243,6 +248,7 @@ class ListingChecker
                 'status' => MpListing::STATUS_MISMATCH,
                 'price' => null,
                 'match_evidence' => $identity['evidence'] ?: $identity['reason'],
+                'matched_codes' => $matchedCodes,
                 'checked_at' => now(),
                 'next_check_at' => null,
             ])->save();
@@ -287,6 +293,7 @@ class ListingChecker
             'match_method' => $identity['method'],
             'match_confidence' => $identity['confidence'],
             'match_evidence' => $identity['evidence'],
+            'matched_codes' => $matchedCodes,
         ];
         $siteFlags = ['publishes_prices' => $price !== null ? true : $site->publishes_prices];
         if (($fields['availability'] ?? null) && $fields['availability'] !== 'unknown') {
@@ -326,7 +333,7 @@ class ListingChecker
             }
         }
 
-        $status = $this->isOutlier($listing, $price) ? MpListing::STATUS_SUSPICIOUS : MpListing::STATUS_ACTIVE;
+        $status = $this->isOutlier($listing, $price, $matchedCodes, count($codes)) ? MpListing::STATUS_SUSPICIOUS : MpListing::STATUS_ACTIVE;
         if ($reference === null || abs($reference - $price) >= 0.01 || $listing->status !== $status) {
             $this->markChanged($listing);
         }
@@ -353,14 +360,40 @@ class ListingChecker
             ->update(['prices_changed_at' => now()]);
     }
 
-    /** Выброс ×4 от медианы при ≥4 ценах товара (флаг храним в БД, не считаем на лету). */
-    private function isOutlier(MpListing $listing, float $price): bool
+    /**
+     * Коды товара, найденные ТОКЕНОМ в тексте страницы.
+     *
+     * @param array<int,string> $codes
+     * @return array<int,string>
+     */
+    private function matchedCodes(array $codes, string $text): array
     {
-        $others = MpListing::query()
+        if ($codes === []) {
+            return [];
+        }
+        $tokens = array_map('strval', array_keys(ArticleNormalizer::tokens($text)));
+
+        return array_values(array_intersect(array_map('strval', $codes), $tokens));
+    }
+
+    /**
+     * Выброс ×4 от медианы при ≥4 ценах (флаг храним в БД, не считаем на лету). Сравниваем с ценами
+     * ТОГО ЖЕ варианта: если страница сопоставлена по конкретным кодам, а у товара их несколько, —
+     * только со страницами, где есть хотя бы один из этих кодов (M02502: ремни 550/600/650 мм под
+     * одним товаром — 550 ₽ за D4×600 считался выбросом на фоне 5 000 ₽ за другие длины).
+     */
+    private function isOutlier(MpListing $listing, float $price, array $mine = [], int $productCodeCount = 0): bool
+    {
+        $rows = MpListing::query()
             ->where('product_id', $listing->product_id)->where('id', '!=', $listing->id)
             ->where('status', MpListing::STATUS_ACTIVE)->where('bench', false)->whereNotNull('price')
             ->where(fn ($q) => $q->whereNull('currency')->orWhere('currency', 'RUB'))
-            ->pluck('price')->map(fn ($p) => (float) $p)->all();
+            ->get(['price', 'matched_codes', 'match_method', 'match_evidence']);
+        if ($mine !== [] && $productCodeCount > 1) {
+            $rows = $rows->filter(fn ($r) => array_intersect(
+                \App\Support\Monitoring\ItemScope::listingCodes($r->matched_codes, $r->match_method, $r->match_evidence), $mine) !== []);
+        }
+        $others = $rows->pluck('price')->map(fn ($p) => (float) $p)->all();
         $all = array_merge($others, [$price]);
         if (count($all) < (int) config('monitoring.sanity.outlier_min_prices', 4)) {
             return false;

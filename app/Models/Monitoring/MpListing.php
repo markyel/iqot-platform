@@ -23,7 +23,7 @@ class MpListing extends Model
 
     protected $fillable = [
         'product_id', 'site_id', 'url', 'url_hash', 'bench', 'found_via', 'match_confidence', 'match_method',
-        'match_evidence', 'price', 'currency', 'price_kind', 'vat_included', 'price_unit',
+        'match_evidence', 'matched_codes', 'price', 'currency', 'price_kind', 'vat_included', 'price_unit',
         'price_unit_qty', 'min_order_qty', 'availability', 'stock_qty', 'lead_days',
         'price_evidence', 'status', 'fail_count', 'observed_at', 'checked_at', 'next_check_at',
         'final_url_hash', 'content_hash', 'price_method', 'etag', 'last_modified',
@@ -32,6 +32,7 @@ class MpListing extends Model
 
     protected $casts = [
         'bench' => 'boolean',
+        'matched_codes' => 'array',
         'match_confidence' => 'float',
         'price' => 'float',
         'vat_included' => 'boolean',

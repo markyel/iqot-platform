@@ -89,6 +89,10 @@ class RefreshCoverage extends Command
                 pi.price_source = IF(l.last_obs IS NOT NULL, 'site', IF(k.last_kp IS NOT NULL, 'kp', 'none'))
         ");
 
+        // 3b. «Узкие» позиции (товар несёт чужие кросс-номера, ItemScope) — свежесть только по своим
+        //     страницам и КП своей программы.
+        $this->narrowItemsFreshness();
+
         // 4. Покрытие программ.
         foreach (MonitoringProgram::query()->whereIn('status', ['active', 'paused'])->get() as $program) {
             $covered = DB::table('program_items')->where('program_id', $program->id)->where('active', true)
@@ -100,6 +104,34 @@ class RefreshCoverage extends Command
         $this->info("Search finalized: {$done}");
 
         return self::SUCCESS;
+    }
+
+    private function narrowItemsFreshness(): void
+    {
+        $items = DB::table('program_items')->where('active', true)->whereNotNull('product_id')->whereNotNull('identity_codes')
+            ->get(['id', 'program_id', 'product_id', 'identity_codes']);
+        $productCodes = \App\Support\Monitoring\ItemScope::productCodes($items->pluck('product_id')->all());
+        $narrow = $items->filter(fn ($i) => \App\Support\Monitoring\ItemScope::isNarrow(
+            \App\Support\Monitoring\ItemScope::itemCodes($i), $productCodes[(int) $i->product_id] ?? []));
+        foreach ($narrow->groupBy('product_id') as $productId => $group) {
+            $listings = DB::table('mp_listings')->where('product_id', $productId)->where('bench', false)->where('status', 'active')
+                ->get(['id', 'price', 'observed_at', 'matched_codes', 'match_method', 'match_evidence']);
+            $offers = DB::table('mp_kp_offers as k')->leftJoin('mp_asks as a', 'a.id', '=', 'k.ask_id')
+                ->where('k.product_id', $productId)->get(['k.listing_id', 'k.received_at', 'a.program_id']);
+            foreach ($group as $item) {
+                $codes = \App\Support\Monitoring\ItemScope::itemCodes($item);
+                $allowed = $listings->filter(fn ($l) => \App\Support\Monitoring\ItemScope::allows($codes, $productCodes[(int) $productId] ?? [],
+                    \App\Support\Monitoring\ItemScope::listingCodes($l->matched_codes, $l->match_method, $l->match_evidence)));
+                $site = $allowed->whereNotNull('price')->max('observed_at');
+                $allowedIds = $allowed->pluck('id')->flip();
+                $kp = $offers->filter(fn ($o) => $o->listing_id ? isset($allowedIds[$o->listing_id]) : (int) $o->program_id === (int) $item->program_id)
+                    ->max('received_at');
+                DB::table('program_items')->where('id', $item->id)->update([
+                    'last_priced_at' => max($site, $kp) ?: null,
+                    'price_source' => $site ? 'site' : ($kp ? 'kp' : 'none'),
+                ]);
+            }
+        }
     }
 
     private function placeholderPrices(): void

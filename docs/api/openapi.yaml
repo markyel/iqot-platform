@@ -841,6 +841,14 @@ components:
         name: { type: string, minLength: 2, maxLength: 1000 }
         brand: { type: [string, 'null'], maxLength: 255 }
         article: { type: [string, 'null'], maxLength: 255,  description: 'Артикул производителя (OEM/MPN) — главный ключ поиска; без него поиск идёт по названию' }
+        oem_articles:
+          type: [array, 'null']
+          maxItems: 20
+          items: { type: string, maxLength: 255 }
+          description: |
+            Все OEM-артикулы позиции (кросс-номера), если их несколько, например `["KM247024", "KM85869H01", "PC-04L=600"]`.
+            Позиции показываются только страницы поставщиков, на которых найден хотя бы один её артикул
+            (`article` или `oem_articles`) — страницы других вариантов товара (другая длина, другое исполнение) отсекаются.
         unit: { type: [string, 'null'], maxLength: 32 }
         attributes: { type: [object, 'null'], additionalProperties: true }
         active: { type: [boolean, 'null'], default: true }
@@ -883,6 +891,7 @@ components:
         name: { type: string }
         brand: { type: [string, 'null'] }
         article: { type: [string, 'null'] }
+        oem_articles: { type: array, items: { type: string } }
         active: { type: boolean }
         match_status: { type: string, enum: [pending, matched, ambiguous, rejected] }
         match_note: { type: [string, 'null'] }
@@ -976,6 +985,7 @@ components:
           properties:
             brand: { type: [string, 'null'] }
             article: { type: [string, 'null'] }
+            oem_articles: { type: array, items: { type: string } }
             active: { type: boolean }
             match_status: { type: string, enum: [pending, matched, ambiguous, rejected] }
             match_note: { type: [string, 'null'] }

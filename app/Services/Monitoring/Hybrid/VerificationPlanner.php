@@ -4,6 +4,7 @@ namespace App\Services\Monitoring\Hybrid;
 
 use App\Models\Monitoring\MpAsk;
 use App\Models\Monitoring\MpSite;
+use App\Support\Monitoring\ItemScope;
 use App\Support\Monitoring\MonitoringSettings;
 use Illuminate\Support\Facades\DB;
 
@@ -41,8 +42,9 @@ class VerificationPlanner
             return ['budget_items' => $budget, 'planned' => 0, 'sites' => 0];
         }
 
-        // Кандидаты: листинг × программа (первая hybrid-программа товара).
-        $rows = DB::table('mp_listings as l')
+        // Кандидаты: листинг × позиция hybrid-программы, которой эта страница видна (ItemScope: у позиции,
+        // заявившей не все коды товара, — только страницы с её кодами); программа — первая из таких.
+        $raw = DB::table('mp_listings as l')
             ->join('mp_sites as s', 's.id', '=', 'l.site_id')
             ->join('program_items as pi', 'pi.product_id', '=', 'l.product_id')
             ->whereIn('pi.program_id', $programs)->where('pi.active', true)
@@ -52,9 +54,13 @@ class VerificationPlanner
             ->where(fn ($q) => $q->whereNull('s.blocked_until')->orWhere('s.blocked_until', '<', now()))
             ->whereNotExists(fn ($q) => $q->from('mp_asks as a')->whereColumn('a.listing_id', 'l.id')
                 ->where('a.created_at', '>', now()->subDays(self::ASK_COOLDOWN_DAYS))->where('a.status', '!=', MpAsk::STATUS_CANCELLED))
-            ->groupBy('l.id', 'l.site_id', 'l.product_id', 'l.price', 'l.currency', 'l.vat_included', 'l.availability', 'l.observed_at', 'l.confirmed_price', 's.supplier_id')
-            ->selectRaw('l.id, l.site_id, l.product_id, l.price, l.currency, l.vat_included, l.availability, l.observed_at, l.confirmed_price, s.supplier_id, MIN(pi.program_id) program_id')
-            ->get();
+            ->orderBy('pi.program_id')
+            ->get(['l.id', 'l.site_id', 'l.product_id', 'l.price', 'l.currency', 'l.vat_included', 'l.availability', 'l.observed_at',
+                'l.confirmed_price', 'l.matched_codes', 'l.match_method', 'l.match_evidence', 's.supplier_id', 'pi.program_id', 'pi.identity_codes']);
+        $productCodes = ItemScope::productCodes($raw->pluck('product_id')->all());
+        $rows = $raw->filter(fn ($r) => ItemScope::allows(ItemScope::itemCodes($r), $productCodes[(int) $r->product_id] ?? [],
+            ItemScope::listingCodes($r->matched_codes, $r->match_method, $r->match_evidence)))
+            ->unique('id')->values();
 
         $bySite = $rows->groupBy('site_id');
         $sites = MpSite::query()->whereIn('id', $bySite->keys())->get()

@@ -6,6 +6,7 @@ use App\Models\Monitoring\MpAsk;
 use App\Services\Generate\Batch;
 use App\Services\Generate\CampaignSupplierSelector;
 use App\Support\Monitoring\DomainPolicy;
+use App\Support\Monitoring\ItemScope;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -55,13 +56,19 @@ class RfqPlanner
                 ->where('a.created_at', '>', now()->subDays($refresh))->where('a.status', '!=', MpAsk::STATUS_CANCELLED))
             ->whereNotExists(fn ($q) => $q->from('mp_kp_offers as k')->whereColumn('k.product_id', 'l.product_id')
                 ->whereColumn('k.supplier_id', 's.supplier_id')->where('k.received_at', '>', now()->subDays($refresh)))
-            ->get(['l.id', 'l.site_id', 'l.product_id', 's.supplier_id', 's.domain']);
+            ->get(['l.id', 'l.site_id', 'l.product_id', 's.supplier_id', 's.domain', 'l.matched_codes', 'l.match_method', 'l.match_evidence', 'pi.identity_codes']);
+        $productCodes = ItemScope::productCodes($rows->pluck('product_id')->all());
 
         $made = 0;
         $seen = [];
         foreach ($rows as $r) {
             $key = $r->product_id . '|' . $r->supplier_id;
             if (isset($seen[$key]) || DomainPolicy::isBlocked($r->domain)) {
+                continue;
+            }
+            // Страница чужого варианта (кросс-номер, которого позиция не заявляла) — не спрашиваем.
+            if (!ItemScope::allows(ItemScope::itemCodes($r), $productCodes[(int) $r->product_id] ?? [],
+                ItemScope::listingCodes($r->matched_codes, $r->match_method, $r->match_evidence))) {
                 continue;
             }
             $seen[$key] = true;
@@ -83,21 +90,34 @@ class RfqPlanner
         $products = DB::table('program_items as pi')->join('mp_products as p', 'p.id', '=', 'pi.product_id')
             ->where('pi.program_id', $program->id)->where('pi.active', true)->where('pi.match_status', 'matched')
             ->whereNotNull('p.product_type_id')
-            ->distinct()->get(['p.id', 'p.product_type_id', 'p.domain_id']);
+            ->get(['p.id', 'p.product_type_id', 'p.domain_id', 'pi.identity_codes'])->unique('id')->values();
         if ($products->isEmpty()) {
             return 0;
         }
         $ids = $products->pluck('id')->all();
+        $productCodes = ItemScope::productCodes($ids);
 
-        // Сколько цен у товара: сайты (активные с ценой) + свежие КП (разные поставщики).
-        $sitePriced = DB::table('mp_listings')->whereIn('product_id', $ids)->where('bench', false)->where('status', 'active')
-            ->whereNotNull('price')->groupBy('product_id')->selectRaw('product_id, COUNT(DISTINCT site_id) c')->pluck('c', 'product_id');
-        $kp = DB::table('mp_kp_offers')->whereIn('product_id', $ids)->where('received_at', '>', now()->subDays($refresh))
-            ->groupBy('product_id')->selectRaw('product_id, COUNT(DISTINCT supplier_id) c')->pluck('c', 'product_id');
-        // Раунд «по запросу» ещё идёт — пул позже; пул по товару уже спрашивали в окне — не повторяем.
-        $open = DB::table('mp_asks')->whereIn('product_id', $ids)->where('kind', 'rfq')
+        // Сколько цен у позиции: сайты (активные с ценой, видимые позиции — ItemScope) + свежие КП
+        // (по страницам, видимым позиции, и пула этой программы).
+        $listings = DB::table('mp_listings')->whereIn('product_id', $ids)->where('bench', false)->where('status', 'active')
+            ->get(['id', 'product_id', 'site_id', 'price', 'matched_codes', 'match_method', 'match_evidence'])->groupBy('product_id');
+        $offers = DB::table('mp_kp_offers as k')->leftJoin('mp_asks as a', 'a.id', '=', 'k.ask_id')->whereIn('k.product_id', $ids)
+            ->where('k.received_at', '>', now()->subDays($refresh))->get(['k.product_id', 'k.supplier_id', 'k.listing_id', 'a.program_id'])->groupBy('product_id');
+        $sitePriced = [];
+        $kp = [];
+        foreach ($products as $p) {
+            $allowed = ($listings[$p->id] ?? collect())->filter(fn ($l) => ItemScope::allows(ItemScope::itemCodes($p), $productCodes[(int) $p->id] ?? [],
+                ItemScope::listingCodes($l->matched_codes, $l->match_method, $l->match_evidence)));
+            $sitePriced[$p->id] = $allowed->whereNotNull('price')->pluck('site_id')->unique()->count();
+            $allowedIds = $allowed->pluck('id')->flip();
+            $kp[$p->id] = ($offers[$p->id] ?? collect())->filter(fn ($o) => $o->listing_id ? isset($allowedIds[$o->listing_id])
+                : (int) $o->program_id === (int) $program->id)->pluck('supplier_id')->unique()->count();
+        }
+        // Раунд «по запросу» ещё идёт — пул позже; пул по товару этой программой уже спрашивали в окне — не повторяем
+        // (по программе: у разных клиентов под одним товаром могут быть разные варианты).
+        $open = DB::table('mp_asks')->whereIn('product_id', $ids)->where('kind', 'rfq')->where('program_id', $program->id)
             ->whereIn('status', [MpAsk::STATUS_PLANNED, MpAsk::STATUS_QUEUED, MpAsk::STATUS_SENT])->distinct()->pluck('product_id')->flip();
-        $poolDone = DB::table('mp_asks')->whereIn('product_id', $ids)->where('kind', 'rfq')->where('reason', 'pool')
+        $poolDone = DB::table('mp_asks')->whereIn('product_id', $ids)->where('kind', 'rfq')->where('reason', 'pool')->where('program_id', $program->id)
             ->where('created_at', '>', now()->subDays($refresh))->where('status', '!=', MpAsk::STATUS_CANCELLED)
             ->distinct()->pluck('product_id')->flip();
 
@@ -125,12 +145,17 @@ class RfqPlanner
             if ($poolCache[$ck] === []) {
                 continue;
             }
-            // Исключить: уже спрошенных по товару в окне (любой запрос) и тех, у кого на сайте есть цена.
-            $asked = DB::table('mp_asks')->where('product_id', $p->id)->where('created_at', '>', now()->subDays($refresh))
+            // Исключить: уже спрошенных по товару этой программой в окне и тех, у кого на сайте есть цена
+            // на ВИДИМОЙ позиции странице (цена чужого варианта — не повод не спросить про наш).
+            $asked = DB::table('mp_asks')->where('product_id', $p->id)->where('program_id', $program->id)
+                ->where('created_at', '>', now()->subDays($refresh))
                 ->where('status', '!=', MpAsk::STATUS_CANCELLED)->pluck('supplier_id')->flip();
             $withPrice = DB::table('mp_listings as l')->join('mp_sites as s', 's.id', '=', 'l.site_id')
                 ->where('l.product_id', $p->id)->where('l.status', 'active')->whereNotNull('l.price')->whereNotNull('s.supplier_id')
-                ->pluck('s.supplier_id')->flip();
+                ->get(['s.supplier_id', 'l.matched_codes', 'l.match_method', 'l.match_evidence'])
+                ->filter(fn ($l) => ItemScope::allows(ItemScope::itemCodes($p), $productCodes[(int) $p->id] ?? [],
+                    ItemScope::listingCodes($l->matched_codes, $l->match_method, $l->match_evidence)))
+                ->pluck('supplier_id')->flip();
             $take = 0;
             foreach ($poolCache[$ck] as $sid) {
                 if ($take >= self::POOL_SUPPLIERS_PER_ROUND) {

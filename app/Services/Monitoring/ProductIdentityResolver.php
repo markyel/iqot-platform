@@ -34,7 +34,10 @@ class ProductIdentityResolver
     public function resolve(ProgramItem $item): void
     {
         $brandNorm = BrandNormalizer::normalize($item->raw_brand);
-        $codes = $this->extractCodes($item->raw_article, $item->raw_name, $brandNorm);
+        $codes = $this->itemCodes($item, $brandNorm);
+        // Коды САМОЙ позиции: по ним клиенту показываются страницы товара (ItemScope) — кросс-номера,
+        // которые товару добавили другие клиенты, на эту позицию не действуют.
+        $item->identity_codes = $codes;
 
         if ($codes === []) {
             $product = $this->findOrCreateByName($item, $brandNorm);
@@ -130,6 +133,36 @@ class ProductIdentityResolver
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+    }
+
+    /**
+     * Коды позиции: артикул + все OEM-артикулы клиента (`oem_articles`); коды из наименования —
+     * только если клиент не прислал ни одного артикула.
+     *
+     * @return array<int,string> нормализованные коды
+     */
+    public function itemCodes(ProgramItem $item, string $brandNorm = ''): array
+    {
+        $oem = $this->oemArticles($item);
+        $codes = $this->extractCodes($item->raw_article, $oem === [] ? $item->raw_name : null, $brandNorm);
+        foreach ($oem as $article) {
+            foreach ($this->extractCodes($article, null, $brandNorm) as $code) {
+                $codes[] = $code;
+            }
+        }
+
+        return array_values(array_unique(array_map('strval', $codes)));
+    }
+
+    /** @return array<int,string> */
+    private function oemArticles(ProgramItem $item): array
+    {
+        $raw = $item->oem_articles ?? [];
+        if (is_string($raw)) {
+            $raw = json_decode($raw, true) ?: [];
+        }
+
+        return array_values(array_filter(array_map(fn ($v) => is_scalar($v) ? trim((string) $v) : '', (array) $raw)));
     }
 
     /**
@@ -255,7 +288,8 @@ class ProductIdentityResolver
     private function insertCodes(int $productId, array $codes, string $brandNorm, ProgramItem $item): int
     {
         $rawByNorm = [];
-        foreach (preg_split('/\s*[;,|]\s*|\s+\/\s+/u', (string) $item->raw_article) ?: [] as $part) {
+        $rawAll = implode(';', array_merge([(string) $item->raw_article], $this->oemArticles($item)));
+        foreach (preg_split('/\s*[;,|]\s*|\s+\/\s+/u', $rawAll) ?: [] as $part) {
             $n = ArticleNormalizer::normalize($part);
             if ($n !== '') {
                 $rawByNorm[$n] = trim($part);
