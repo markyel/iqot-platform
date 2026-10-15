@@ -77,6 +77,8 @@ class PlanDayCampaign extends Command
             // Окно свежести — по позициям (частичный промоушен API дописывает позиции
             // в уже созданную заявку), см. PositionCoverage::freshItemIds.
             $reqQuery->whereIn('status', ['draft', 'new', 'active', 'queued_for_sending', 'emails_sent', 'responses_received']);
+            // Техническая заявка мониторинга (Ф3) — адресные проверочные письма, не пул.
+            $reqQuery->where('source', '!=', 'monitoring');
             PositionCoverage::whereHasFreshItems($reqQuery, $freshSince);
         }
         $requests = $reqQuery->get(['id', 'offer_target', 'max_reach', 'is_customer_request', 'created_at']);

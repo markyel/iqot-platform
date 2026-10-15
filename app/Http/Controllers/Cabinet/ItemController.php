@@ -13,7 +13,9 @@ class ItemController extends Controller
 {
     public function index(Request $request)
     {
-        $query = ExternalRequestItem::with('request');
+        // Без позиций тех. заявки мониторинга (Ф3 «Гибрид»): это служебные проверки цен сайтов.
+        $query = ExternalRequestItem::with('request')
+            ->whereHas('request', fn ($q) => $q->where('source', '!=', 'monitoring'));
 
         // Search filter
         if ($search = $request->get('search')) {

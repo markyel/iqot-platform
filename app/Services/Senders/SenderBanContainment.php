@@ -144,6 +144,21 @@ class SenderBanContainment
         $requestIds = $items->pluck('request_id')->map(fn ($v) => (int) $v)->unique()->values()->all();
         $first = $items->first();
 
+        // Проверочное письмо мониторинга (Ф3 «Гибрид») — адресное, с ценой сайта: обычной
+        // регенерацией на пул его не перебросить. Возвращаем запросы в план — на следующем
+        // прогоне их отправит другой ящик.
+        $isMonitoring = DB::connection(self::CONN)->table('requests')->whereIn('id', $requestIds)
+            ->where('source', 'monitoring')->exists();
+        if ($isMonitoring) {
+            \App\Models\Monitoring\MpAsk::query()->whereIn('request_item_id', $itemIds)
+                ->whereIn('supplier_id', $supplierIds)
+                ->where('status', \App\Models\Monitoring\MpAsk::STATUS_QUEUED)
+                ->update(['status' => \App\Models\Monitoring\MpAsk::STATUS_PLANNED, 'request_item_id' => null,
+                    'batch_id' => null, 'email_queue_id' => null, 'queued_at' => null, 'updated_at' => now()]);
+
+            return false;
+        }
+
         DB::connection(self::CONN)->table('deferred_batches')->insert([
             'request_ids' => json_encode($requestIds, JSON_UNESCAPED_UNICODE),
             'item_ids' => json_encode($itemIds, JSON_UNESCAPED_UNICODE),

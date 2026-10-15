@@ -18,7 +18,7 @@ class MpSite extends Model
         'domain', 'supplier_id', 'kind', 'publishes_prices', 'publishes_stock',
         'has_structured_markup', 'search_url_template', 'sitemap_url', 'sitemap_indexed_at', 'sitemap_pages', 'fetch_mode', 'egress',
         'blocked_until', 'blocked_reason', 'rate_limit_ms', 'trust_level', 'trust_scope',
-        'sample_every', 'verified_ok', 'verified_mismatch', 'consecutive_ok',
+        'sample_every', 'verified_ok', 'verified_mismatch', 'consecutive_ok', 'consecutive_mismatch',
         'last_verified_at', 'next_verification_due_at', 'stats_30d',
     ];
 

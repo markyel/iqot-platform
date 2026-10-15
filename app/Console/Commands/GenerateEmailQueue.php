@@ -67,6 +67,7 @@ class GenerateEmailQueue extends Command
         // Порт «Get Requests»: именные в приоритете, старые раньше.
         $eligible = DB::connection(self::CONN)->table('requests')
             ->whereIn('status', ['draft', 'new', 'active'])
+            ->where('source', '!=', 'monitoring') // тех. заявка мониторинга (Ф3) — не в пулы
             ->when($maxAgeDays > 0, fn ($q) => $q->where('created_at', '>=', now()->subDays($maxAgeDays)))
             ->orderBy('is_customer_request', 'desc')
             ->orderBy('created_at', 'asc')

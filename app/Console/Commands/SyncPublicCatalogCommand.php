@@ -28,6 +28,8 @@ class SyncPublicCatalogCommand extends Command
 
             // Получаем позиции с 3+ предложениями из external БД
             $externalItems = ExternalRequestItem::with(['request', 'productType', 'applicationDomain'])
+                // Позиции тех. заявки мониторинга (Ф3) — проверки цен сайтов, не каталог.
+                ->whereHas('request', fn ($q) => $q->where('source', '!=', 'monitoring'))
                 ->whereHas('offers', function($q) {
                     $q->whereIn('status', ['received', 'processed']);
                 })

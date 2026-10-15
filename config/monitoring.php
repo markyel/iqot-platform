@@ -40,6 +40,12 @@ return [
         'down_seconds' => (int) env('MONITORING_EGRESS_DOWN_SECONDS', 300),
     ],
 
+    // Ф3 «Гибрид»: проверочные КП к ценам сайтов. Отправка реальных писем поставщикам — только
+    // при send_enabled (выбор позиций, сбор ответов и «бесплатные» сверки работают и без него).
+    'hybrid' => [
+        'send_enabled' => (bool) env('MONITORING_HYBRID_SEND', false),
+    ],
+
     // Суточные квоты (MonitoringGovernor). Общие на все программы.
     'quotas' => [
         'yandex_query' => (int) env('MONITORING_YANDEX_PER_DAY', 2000),
@@ -48,7 +54,8 @@ return [
         // Обход карточек сайтов по sitemap (индекс заголовков/артикулов) — отдельно от проверок цен.
         'fetch_index' => (int) env('MONITORING_INDEX_PER_DAY', 60000),
         'llm_usd' => (float) env('MONITORING_LLM_USD_PER_DAY', 5),
-        'email' => (int) env('MONITORING_EMAILS_PER_DAY', 0),
+        // Проверочные письма Гибрида (Ф3) в сутки — делят ящики и капы получателей с заявками.
+        'email' => (int) env('MONITORING_EMAILS_PER_DAY', 100),
     ],
 
     'llm' => [

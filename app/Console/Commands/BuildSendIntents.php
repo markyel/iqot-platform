@@ -54,6 +54,7 @@ class BuildSendIntents extends Command
             // часть ответов, но с ещё незакрытыми позициями. Дедуп не даст двойной отправки.
             // Окно свежести — по позициям (как в plan-day, см. PositionCoverage::freshItemIds).
             $q->whereIn('status', ['draft', 'new', 'active', 'queued_for_sending', 'emails_sent', 'responses_received']);
+            $q->where('source', '!=', 'monitoring'); // тех. заявка мониторинга (Ф3) — не в пулы
             PositionCoverage::whereHasFreshItems($q, now()->subDays($freshDays));
             $q->orderBy('is_customer_request', 'desc')->orderBy('created_at', 'desc')
                 ->limit(max(1, (int) ($this->option('limit') ?: config('services.email_planner.build_request_limit', 50))));

@@ -23,6 +23,7 @@ final class MonitoringSettings
         'headless_per_day' => ['monitoring.quotas.fetch_headless', 'int'],
         'llm_usd_per_day' => ['monitoring.quotas.llm_usd', 'float'],
         'index_per_day' => ['monitoring.quotas.fetch_index', 'int'],
+        'verify_letters_per_day' => ['monitoring.quotas.email', 'int'],
     ];
 
     /** Квота MonitoringGovernor (ресурс ledger) → ключ настройки. */
@@ -32,28 +33,29 @@ final class MonitoringSettings
         'fetch_headless' => 'headless_per_day',
         'llm_usd' => 'llm_usd_per_day',
         'fetch_index' => 'index_per_day',
+        'email' => 'verify_letters_per_day',
     ];
 
     public const PRESETS = [
         'economy' => [
             'label' => 'Эконом', 'hint' => 'минимум расходов, поиск неглубокий',
             'search_queries' => 2, 'search_candidates' => 12, 'yandex_per_day' => 1000,
-            'fetch_per_day' => 15000, 'headless_per_day' => 1000, 'llm_usd_per_day' => 3, 'index_per_day' => 20000,
+            'fetch_per_day' => 15000, 'headless_per_day' => 1000, 'llm_usd_per_day' => 3, 'index_per_day' => 20000, 'verify_letters_per_day' => 50,
         ],
         'standard' => [
             'label' => 'Стандарт', 'hint' => 'оптимум по замеру: 4 запроса дают ~90% полноты от 8',
             'search_queries' => 4, 'search_candidates' => 25, 'yandex_per_day' => 2500,
-            'fetch_per_day' => 30000, 'headless_per_day' => 2000, 'llm_usd_per_day' => 8, 'index_per_day' => 60000,
+            'fetch_per_day' => 30000, 'headless_per_day' => 2000, 'llm_usd_per_day' => 8, 'index_per_day' => 60000, 'verify_letters_per_day' => 100,
         ],
         'fast' => [
             'label' => 'Быстрый', 'hint' => 'та же глубина, втрое быстрее проглатываем позиции',
             'search_queries' => 4, 'search_candidates' => 25, 'yandex_per_day' => 7500,
-            'fetch_per_day' => 70000, 'headless_per_day' => 4000, 'llm_usd_per_day' => 20, 'index_per_day' => 120000,
+            'fetch_per_day' => 70000, 'headless_per_day' => 4000, 'llm_usd_per_day' => 20, 'index_per_day' => 120000, 'verify_letters_per_day' => 200,
         ],
         'max' => [
             'label' => 'Максимум', 'hint' => 'глубина как у Content Engine, дорого',
             'search_queries' => 8, 'search_candidates' => 25, 'yandex_per_day' => 10000,
-            'fetch_per_day' => 80000, 'headless_per_day' => 4000, 'llm_usd_per_day' => 25, 'index_per_day' => 150000,
+            'fetch_per_day' => 80000, 'headless_per_day' => 4000, 'llm_usd_per_day' => 25, 'index_per_day' => 150000, 'verify_letters_per_day' => 300,
         ],
     ];
 

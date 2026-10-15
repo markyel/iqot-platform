@@ -94,4 +94,7 @@ class Batch
 
     /** id вставленной строки email_batches. */
     public ?int $batchId = null;
+
+    /** Назначение письма: null — запрос КП; 'verify' — проверка цен с сайта поставщика (Ф3 «Гибрид»). */
+    public ?string $purpose = null;
 }

@@ -213,6 +213,14 @@ Schedule::command('monitoring:index-pages')
 Schedule::command('monitoring:sitemap match --all --create')
     ->dailyAt('05:00')
     ->withoutOverlapping();
+// Ф3 «Гибрид»: выборка и отправка проверочных КП — будни ПОСЛЕ plan-day (07:30 МСК), чтобы
+// заявки клиентов заняли ящики и капы получателей первыми; сбор ответов/сверок — каждые 30 мин.
+Schedule::command('monitoring:hybrid daily')
+    ->weekdays()->dailyAt('08:40')->timezone('Europe/Moscow')
+    ->withoutOverlapping();
+Schedule::command('monitoring:hybrid sync')
+    ->everyThirtyMinutes()
+    ->withoutOverlapping();
 
 // Публичный API: оркестратор Discovery поставщиков — каждые 10 минут (§7).
 Schedule::job(new \App\Jobs\Api\DiscoveryOrchestratorJob())->everyTenMinutes()->withoutOverlapping();
