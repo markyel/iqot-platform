@@ -172,9 +172,12 @@ class SitemapCommand extends Command
         $domains = array_values(array_filter(array_map('trim', (array) $this->option('domain'))));
         if ($domains === [] && $this->option('all')) {
             $domains = $this->argument('action') === 'index'
-                // Продавцы, у которых мы уже нашли хоть одну цену (не стенд).
-                ? DB::table('mp_sites as s')->whereExists(fn ($q) => $q->from('mp_listings as l')->whereColumn('l.site_id', 's.id')
-                    ->where('l.bench', false)->where('l.status', 'active')->whereNotNull('l.price'))
+                // Продавцы, у которых мы уже нашли ≥3 цен (не стенд): одна случайная цена на
+                // универсальном магазине — не повод индексировать его каталог (15.10.2026: 132 сайта).
+                ? DB::table('mp_sites as s')->whereRaw(
+                    '(SELECT COUNT(*) FROM mp_listings l WHERE l.site_id = s.id AND l.bench = 0 AND l.status = ? AND l.price IS NOT NULL) >= 3',
+                    ['active']
+                )
                     ->where(fn ($q) => $q->whereNull('s.sitemap_indexed_at')->orWhere('s.sitemap_indexed_at', '<', now()->subDays(6)))
                     ->pluck('s.domain')->all()
                 : DB::table('mp_sites')->where('sitemap_pages', '>', 0)->pluck('domain')->all();

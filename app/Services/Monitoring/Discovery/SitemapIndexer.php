@@ -37,9 +37,18 @@ class SitemapIndexer
     }
 
     /**
-     * @return array{status: string, files: int, pages: int, error?: string}
+     * Потолок адресов на сайт. Профильные продавцы — до ~25 тыс. карточек; sitemap на сотни
+     * тысяч — универсальный магазин (автозапчасти, электроника), а не поставщик лифтового
+     * оборудования. 15.10.2026 без потолка `--all` занёс 132 сайта / 13,7 млн строк → бинлог
+     * MySQL забил диск прода.
      */
-    public function index(MpSite $site, int $maxFiles = 80, int $maxPages = 300_000): array
+    public const MAX_PAGES = 60_000;
+
+    /**
+     * @return array{status: string, files: int, pages: int, error?: string}
+     *   status: ok | partial | empty | too_big | banned
+     */
+    public function index(MpSite $site, int $maxFiles = 80, int $maxPages = self::MAX_PAGES): array
     {
         $channel = $this->pool->pick($site->domain, $site->egress);
         if ($channel === null) {
@@ -56,7 +65,8 @@ class SitemapIndexer
         $files = 0;
         $pages = 0;
         $buffer = [];
-        while ($queue !== [] && $files < $maxFiles && $pages < $maxPages) {
+        $tooBig = false;
+        while ($queue !== [] && $files < $maxFiles && !$tooBig) {
             $url = array_shift($queue);
             if (isset($seenFiles[$url])) {
                 continue;
@@ -80,19 +90,30 @@ class SitemapIndexer
                     || ($robots !== null && !$robots->isAllowed($this->pathOf($loc), 'iqotbot'))) {
                     continue;
                 }
-                $buffer[] = [
+                // Копим в памяти: в БД — только после прохода в пределах потолка.
+                $buffer[UrlCanonicalizer::hash($loc)] = [
                     'site_id' => $site->id, 'url' => mb_substr($loc, 0, 1000), 'url_hash' => UrlCanonicalizer::hash($loc),
                     'lastmod' => $lastmod, 'seen_at' => now(),
                 ];
-                $pages++;
-                if (count($buffer) >= 1000) {
-                    $this->flush($buffer);
+                $pages = count($buffer);
+                if ($pages > $maxPages) {
+                    $tooBig = true;
+                    break;
                 }
             }
         }
-        $this->flush($buffer);
 
-        $complete = $queue === [] && $files < $maxFiles && $pages < $maxPages;
+        if ($tooBig) {
+            DB::table('mp_site_pages')->where('site_id', $site->id)->delete();
+            $site->forceFill(['sitemap_indexed_at' => now(), 'sitemap_pages' => 0])->save();
+
+            return ['status' => 'too_big', 'files' => $files, 'pages' => $pages];
+        }
+
+        foreach (array_chunk(array_values($buffer), 1000) as $chunk) {
+            $this->flush($chunk);
+        }
+        $complete = $queue === [] && $files < $maxFiles;
         if ($complete && $pages > 0) {
             DB::table('mp_site_pages')->where('site_id', $site->id)->where('seen_at', '<', $started)->delete();
         }
