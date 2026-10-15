@@ -830,6 +830,7 @@ components:
             items_max: { type: integer, description: 'Максимум позиций на мониторинге по тарифу' }
             items_included: { type: integer, description: 'Включено в абонентскую плату' }
             price_per_item: { type: number, description: 'Цена покрытой позиции сверх включённых, ₽ в месяц' }
+            kp_price_multiplier: { type: number, example: 3, description: 'Множитель ставки для позиции со свежим КП поставщика (режим hybrid)' }
         created_at: { type: string, format: date-time }
 
     MonitoringItemInput:

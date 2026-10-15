@@ -15,12 +15,10 @@ use Illuminate\Support\Facades\DB;
  * листингу за 60 дней. По сайту — TrustPolicy::sampleSize (уровень 0: 3–5 позиций, выше — 1 из
  * 10/50/100, не реже раза в 20 дней). Порядок позиций: цена не подтверждалась или изменилась
  * после подтверждения → дороже → прочие. Сайты: сначала уровень 0 и подошедший срок проверки.
- * Бюджет — проверочных писем в сутки (агрессивность) × ~3 позиции в письме.
+ * Бюджет — проверочных писем в сутки (агрессивность) × позиций в письме (как в обычной рассылке).
  */
 class VerificationPlanner
 {
-    public const ITEMS_PER_LETTER = 3;
-
     public const ASK_COOLDOWN_DAYS = 60;
 
     public const SITE_PRICE_MAX_AGE_DAYS = 14;
@@ -32,7 +30,7 @@ class VerificationPlanner
      */
     public function plan(bool $dryRun = false): array
     {
-        $budget = MonitoringSettings::get('verify_letters_per_day') * self::ITEMS_PER_LETTER
+        $budget = MonitoringSettings::get('verify_letters_per_day') * VerificationMailer::itemsPerLetter()
             - MpAsk::query()->where('created_at', '>=', now()->startOfDay())->count();
         if ($budget <= 0) {
             return ['budget_items' => 0, 'planned' => 0, 'sites' => 0];

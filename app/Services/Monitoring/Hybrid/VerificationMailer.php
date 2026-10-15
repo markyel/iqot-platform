@@ -24,11 +24,11 @@ use Illuminate\Support\Facades\Log;
  * (source='monitoring'), до N писем в сутки (агрессивность), приоритет у заявок клиентов —
  * поэтому запуск ПОСЛЕ plan-day и с учётом уже занятых капов.
  *
- *  - получатель: поставщик сайта (mp_sites.supplier_id), не чаще одного проверочного письма
- *    в 7 дней, с остатком дневного капа, не заблокирован, не на паузе отписки;
+ *  - получатель: поставщик сайта (mp_sites.supplier_id) или пула, с остатком дневного капа,
+ *    не заблокирован, не на паузе отписки;
  *  - ящик: активный, не персональный, остаток дневного лимита (SenderDailyCapacity — учитывает
  *    уже поставленное на сегодня), не писал этому получателю 7 дней; шаблон/тон/угол — ящика;
- *  - письмо: до 4 позиций; у каждой запроса своя позиция тех. заявки (повторно спрашивать ту же
+ *  - письмо: позиций — как в обычной рассылке (itemsPerLetter); у каждой запроса своя позиция тех. заявки (повторно спрашивать ту же
  *    позицию тот же поставщик persister не даст), цена сайта — в названии позиции (видна в любом
  *    формате шаблона и в AI-разборе ответа), страница — в описании.
  */
@@ -36,19 +36,18 @@ class VerificationMailer
 {
     private const CONN = 'reports';
 
-    private const MAX_ITEMS_PER_LETTER = 4;
-
-    private const SUPPLIER_COOLDOWN_DAYS = 7;
-
     private const HELD = '2037-01-01';
 
     /**
      * Три вида писем мониторинга, по очереди (письма разных видов не смешиваются):
-     *  verify     — «подтвердите цену с вашего сайта» (бюджет «проверочных писем в сутки», любому поставщику — одно письмо мониторинга любого вида раз в 7 дней);
+     *  verify     — «подтвердите цену с вашего сайта» (бюджет «проверочных писем в сутки»);
      *  on_request — «видели товар у вас на сайте, цены нет — пришлите КП» (адресно, со ссылкой);
      *  pool       — обычный запрос КП профильному пулу.
-     * Для КП отдельного лимита нет (решение владельца 2026-10-15) — общие лимиты ящиков и капы
-     * получателей; одному поставщику — не больше одного письма мониторинга за прогон.
+     * Решения владельца 2026-10-15: письма малопозиционные — размер как у обычной рассылки
+     * (services.email_planner.dayplan_max_per_email; анализ 05.09–05.10: в письме на 1 позицию
+     * цен на позицию в 4,7 раза больше, чем в письме на 4, у тех же получателей); сколько писем
+     * получит поставщик — решают только общие лимиты: остаток дневного капа получателя (после
+     * заявок клиентов), ящики с остатком ёмкости, не писавшие ему 7 дней. Отдельного кулдауна нет.
      *
      * @return array{letters: int, items: int, skipped_suppliers: int, skipped?: array<string,int>, by_kind?: array<string,int>}
      */
@@ -59,17 +58,16 @@ class VerificationMailer
             return ['letters' => 0, 'items' => 0, 'skipped_suppliers' => 0];
         }
         $suppliers = $this->eligibleSuppliers($all->pluck('supplier_id')->unique()->all());
-        $state = [
-            'recipientLeft' => $this->recipientCaps(array_map(fn ($s) => mb_strtolower(trim($s->email)), $suppliers)),
-            'senders' => $this->senders(),
-            'pairs' => $this->recentPairs(),
-            'touched' => [],
-        ];
-        $cooldown = MpAsk::query()->whereIn('supplier_id', array_keys($suppliers))
-            ->where('queued_at', '>', now()->subDays(self::SUPPLIER_COOLDOWN_DAYS))->distinct()->pluck('supplier_id')->flip();
+        $recipientLeft = $this->recipientCaps(array_map(fn ($s) => mb_strtolower(trim($s->email)), $suppliers));
+        $senders = $this->senders();
+        $pairs = $this->recentPairs();
+        $perLetter = self::itemsPerLetter();
 
         $tools = $this->tools();
         $out = ['letters' => 0, 'items' => 0, 'skipped' => [], 'by_kind' => []];
+        $skip = function (string $reason) use (&$out) {
+            $out['skipped'][$reason] = ($out['skipped'][$reason] ?? 0) + 1;
+        };
         $kinds = [
             'verify' => fn (MpAsk $a) => $a->kind === 'verify',
             'on_request' => fn (MpAsk $a) => $a->kind === 'rfq' && $a->reason === 'on_request',
@@ -79,22 +77,14 @@ class VerificationMailer
             $budget = $kind === 'verify'
                 ? MonitoringSettings::get('verify_letters_per_day') - $this->lettersToday()
                 : PHP_INT_MAX;
-            $asks = $all->filter($filter)->groupBy('supplier_id');
             $sent = 0;
-            foreach ($asks as $supplierId => $supplierAsks) {
-                if ($sent >= $budget) {
-                    break;
-                }
+            foreach ($all->filter($filter)->groupBy('supplier_id') as $supplierId => $supplierAsks) {
                 $sup = $suppliers[$supplierId] ?? null;
-                $email = $sup ? mb_strtolower(trim($sup->email)) : null;
-                $reason = !$sup ? 'не годен к рассылке'
-                    : (isset($state['touched'][$supplierId]) ? 'уже есть письмо в этом прогоне'
-                    : (isset($cooldown[$supplierId]) ? 'письмо мониторинга за 7 дней'
-                    : (($state['recipientLeft'][$email] ?? 0) <= 0 ? 'кап получателя на сегодня' : null)));
-                if ($reason !== null) {
-                    $out['skipped'][$reason] = ($out['skipped'][$reason] ?? 0) + 1;
+                if (!$sup) {
+                    $skip('не годен к рассылке');
                     continue;
                 }
+                $email = mb_strtolower(trim($sup->email));
                 if ($kind === 'verify') {
                     // Цена листинга с момента выборки снята (заглушка, аналог, «по запросу») или изменилась —
                     // спрашивать про неё нельзя: такие запросы отменяем.
@@ -108,34 +98,42 @@ class VerificationMailer
 
                         return $ok;
                     });
-                    if ($supplierAsks->isEmpty()) {
-                        continue;
+                }
+                // Письма поставщику, пока позволяют общие лимиты (кап получателя, свободный ящик).
+                foreach ($supplierAsks->values()->chunk($perLetter) as $letterAsks) {
+                    if ($sent >= $budget) {
+                        break 2;
                     }
-                }
-                $senderId = $this->pickSender($state['senders'], $state['pairs'], $email);
-                if ($senderId === null) {
-                    $out['skipped']['нет свободного ящика'] = ($out['skipped']['нет свободного ящика'] ?? 0) + 1;
-                    continue;
-                }
-                $letterAsks = $supplierAsks->take(self::MAX_ITEMS_PER_LETTER)->values();
-                try {
-                    if ($dryRun || $this->sendLetter($letterAsks, $sup, $senderId, $tools, $kind)) {
-                        $sent++;
-                        $out['letters']++;
-                        $out['items'] += $letterAsks->count();
-                        $state['senders'][$senderId]--;
-                        $state['pairs'][$senderId . '|' . $email] = true;
-                        $state['recipientLeft'][$email]--;
-                        $state['touched'][$supplierId] = true;
-                        if (!$dryRun) {
-                            app(MonitoringGovernor::class)->record('email', 1, 0.0);
+                    if (($recipientLeft[$email] ?? 0) <= 0) {
+                        $skip('кап получателя на сегодня');
+                        break;
+                    }
+                    $senderId = $this->pickSender($senders, $pairs, $email);
+                    if ($senderId === null) {
+                        $skip('нет свободного ящика');
+                        break;
+                    }
+                    $letterAsks = $letterAsks->values();
+                    try {
+                        if ($dryRun || $this->sendLetter($letterAsks, $sup, $senderId, $tools, $kind)) {
+                            $sent++;
+                            $out['letters']++;
+                            $out['items'] += $letterAsks->count();
+                            $senders[$senderId]--;
+                            $pairs[$senderId . '|' . $email] = true;
+                            $recipientLeft[$email]--;
+                            if (!$dryRun) {
+                                app(MonitoringGovernor::class)->record('email', 1, 0.0);
+                            }
+                        } else {
+                            $skip('пропущено при записи');
+                            break;
                         }
-                    } else {
-                        $out['skipped']['пропущено при записи'] = ($out['skipped']['пропущено при записи'] ?? 0) + 1;
+                    } catch (\Throwable $e) {
+                        Log::error('VerificationMailer: письмо не собрано', ['supplier_id' => $supplierId, 'kind' => $kind, 'error' => $e->getMessage()]);
+                        $skip('ошибка');
+                        break;
                     }
-                } catch (\Throwable $e) {
-                    Log::error('VerificationMailer: письмо не собрано', ['supplier_id' => $supplierId, 'kind' => $kind, 'error' => $e->getMessage()]);
-                    $out['skipped']['ошибка'] = ($out['skipped']['ошибка'] ?? 0) + 1;
                 }
             }
             $out['by_kind'][$kind] = $sent;
@@ -143,6 +141,12 @@ class VerificationMailer
 
         return ['letters' => $out['letters'], 'items' => $out['items'], 'skipped_suppliers' => array_sum($out['skipped']),
             'skipped' => $out['skipped'], 'by_kind' => $out['by_kind']];
+    }
+
+    /** Позиций в письме мониторинга — как в обычной рассылке (малопозиционные письма). */
+    public static function itemsPerLetter(): int
+    {
+        return max(1, (int) config('services.email_planner.dayplan_max_per_email', 4));
     }
 
     /** @param \Illuminate\Support\Collection<int, MpAsk> $asks */

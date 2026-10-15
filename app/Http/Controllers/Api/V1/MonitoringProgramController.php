@@ -506,6 +506,7 @@ class MonitoringProgramController extends Controller
                 'items_max' => $limits['max'],
                 'items_included' => $limits['included'],
                 'price_per_item' => $limits['price'],
+                'kp_price_multiplier' => $limits['kp_multiplier'],
             ],
             'created_at' => $p->created_at?->toIso8601String(),
         ];
