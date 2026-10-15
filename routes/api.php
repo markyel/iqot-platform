@@ -138,4 +138,15 @@ Route::prefix('v1')
             ->name('monitoring.imports.show');
         Route::get('monitoring/programs/{id}/prices', [\App\Http\Controllers\Api\V1\MonitoringProgramController::class, 'prices'])
             ->name('monitoring.prices.index');
+        Route::get('monitoring/programs', [\App\Http\Controllers\Api\V1\MonitoringProgramController::class, 'index'])
+            ->name('monitoring.programs.index');
+        Route::get('monitoring/programs/{id}/export', [\App\Http\Controllers\Api\V1\MonitoringProgramController::class, 'export'])
+            ->middleware('api.throttle:get_monitoring_export,6/min')
+            ->name('monitoring.export');
+        Route::get('monitoring/programs/{id}/items/{clientRef}', [\App\Http\Controllers\Api\V1\MonitoringProgramController::class, 'item'])
+            ->where('clientRef', '.+')
+            ->name('monitoring.items.show');
+        Route::delete('monitoring/programs/{id}/items/{clientRef}', [\App\Http\Controllers\Api\V1\MonitoringProgramController::class, 'destroyItem'])
+            ->where('clientRef', '.+')
+            ->name('monitoring.items.destroy');
     });

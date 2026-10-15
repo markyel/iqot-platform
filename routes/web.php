@@ -106,6 +106,13 @@ Route::middleware(['auth', 'verified'])->prefix('cabinet')->name('cabinet.')->gr
         Route::delete('/{key}', [\App\Http\Controllers\Cabinet\ApiKeyController::class, 'destroy'])->name('destroy');
     });
 
+    // Документация публичного API (руководство, справочник Redoc, openapi.yaml).
+    Route::prefix('api-docs')->name('api-docs.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Cabinet\ApiDocsController::class, 'guide'])->name('guide');
+        Route::get('/reference', [\App\Http\Controllers\Cabinet\ApiDocsController::class, 'reference'])->name('reference');
+        Route::get('/openapi.yaml', [\App\Http\Controllers\Cabinet\ApiDocsController::class, 'openapi'])->name('openapi');
+    });
+
     // API-заявки пользователя (список + детали).
     Route::prefix('api-submissions')->name('api-submissions.')->group(function () {
         Route::get('/', [\App\Http\Controllers\Cabinet\ApiSubmissionController::class, 'index'])->name('index');

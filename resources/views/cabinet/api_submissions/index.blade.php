@@ -5,11 +5,7 @@
 @section('content')
 <x-page-header title="Мои API-заявки" description="Заявки, созданные через публичное API" />
 
-<div class="api-sub-nav" style="margin-bottom: var(--space-4); display: flex; gap: var(--space-3);">
-    <a href="{{ route('cabinet.api-keys.index') }}" class="btn btn-sm">Ключи</a>
-    <a href="{{ route('cabinet.senders.index') }}" class="btn btn-sm">Отправители</a>
-    <a href="{{ route('cabinet.api-submissions.index') }}" class="btn btn-sm btn-primary">Заявки</a>
-</div>
+@include('cabinet.api_docs._nav')
 
 <div class="card">
     <div class="card-body">

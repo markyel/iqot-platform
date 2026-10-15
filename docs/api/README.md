@@ -5,7 +5,8 @@
 **Формат:** `application/json; charset=utf-8`
 **Версионирование:** URL (`/v1/`). Breaking-changes только в `/v2/`.
 
-OpenAPI 3.1 спецификация: [`openapi.yaml`](./openapi.yaml).
+OpenAPI 3.1 спецификация: [`openapi.yaml`](./openapi.yaml). Разделы: заявки на закупку (`/submissions`)
+и [мониторинг цен](#мониторинг-цен) (`/monitoring`).
 
 ---
 
@@ -258,6 +259,135 @@ GET /taxonomy/product-types?domain_id=1
 ```
 
 Используйте эти id чтобы заранее отфильтровать товары перед отправкой.
+
+---
+
+## Мониторинг цен
+
+Регулярный сбор цен поставщиков по вашей номенклатуре — от сотен до десятков тысяч позиций.
+Вы передаёте позиции (код, название, бренд, артикул) — IQOT сам находит поставщиков и страницы
+товаров на их сайтах, сопоставляет их с позициями и регулярно обновляет цены. Поставщиков и ссылки
+вы видите полностью: у каждой цены — страница поставщика, откуда она получена.
+
+### Режимы (`price_mode`)
+
+| Режим | Что делает |
+|---|---|
+| `lite` | Цены с сайтов поставщиков (по умолчанию). |
+| `hybrid` | То же + выборочное подтверждение цен у поставщиков по почте («цена с вашего сайта актуальна?»). Подтверждённые цены получают признак `email_confirmed`, присланные КП — `kp`; растёт уровень доверия к сайту (`site_trust_level`, 0–3). |
+
+### Быстрый старт
+
+```bash
+# 1. Создать программу (статус draft)
+curl -X POST https://iqot.ru/api/v1/monitoring/programs \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"name":"Каталог лифтовых запчастей","price_mode":"lite","target_freshness_days":30}'
+# → 201 {"program_id":"mon_01J…","status":"draft","plan":{"items_max":10000,…},…}
+
+# 2. Загрузить позиции (upsert по client_ref, до 5000 за вызов; больше — несколькими вызовами)
+curl -X POST https://iqot.ru/api/v1/monitoring/programs/mon_01J…/items \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -H "Idempotency-Key: catalog-2026-10-15-part1" \
+  -d '{"items":[
+        {"client_ref":"LW-0001547","name":"Ролик натяжной","brand":"KONE","article":"KM713150G01"},
+        {"client_ref":"LW-0002478","name":"Кнопка СТОП с фиксацией","brand":"Schaefer","article":"P1EC400E40-K/E"}
+      ]}'
+# → 202 {"import_id":"imp_01J…","status":"queued",…}
+
+# 3. Дождаться импорта
+curl -H "Authorization: Bearer $KEY" https://iqot.ru/api/v1/monitoring/programs/mon_01J…/imports/imp_01J…
+# → {"status":"done","rows_ok":2,"rows_failed":0,"errors":[]}
+
+# 4. Запустить
+curl -X PATCH https://iqot.ru/api/v1/monitoring/programs/mon_01J… \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"status":"active"}'
+
+# 5. Забирать цены (инкрементально, см. ниже)
+curl -H "Authorization: Bearer $KEY" "https://iqot.ru/api/v1/monitoring/programs/mon_01J…/prices?limit=200"
+```
+
+Первые цены появляются в течение часов; полный первичный проход по большой номенклатуре —
+несколько дней (поиск идёт вежливо, с ограничением нагрузки на сайты поставщиков). Дальше цены
+перепроверяются каждые `site_refresh_days` дней.
+
+### Методы
+
+| Метод | Назначение |
+|---|---|
+| `GET /monitoring/programs` | Список программ |
+| `POST /monitoring/programs` | Создать программу (`draft`) |
+| `GET /monitoring/programs/{id}` | Программа: режим, свежесть, счётчики позиций, покрытие, лимиты тарифа |
+| `PATCH /monitoring/programs/{id}` | `status` (`active`/`paused`), `price_mode`, `name`, `target_freshness_days`, `site_refresh_days` |
+| `POST /monitoring/programs/{id}/items` | Загрузить/обновить позиции (асинхронно, 202 + `import_id`) |
+| `GET /monitoring/programs/{id}/imports/{import_id}` | Ход импорта, ошибки по строкам |
+| `GET /monitoring/programs/{id}/items` | Позиции и статус сопоставления (курсор `next_cursor`) |
+| `GET /monitoring/programs/{id}/items/{client_ref}` | Карточка позиции: товар, сводка цен, все источники, история цен (`history_days`, по умолчанию 90) |
+| `DELETE /monitoring/programs/{id}/items/{client_ref}` | Снять позицию с мониторинга |
+| `GET /monitoring/programs/{id}/prices` | Цены, изменившиеся с `updated_since` (курсор) |
+| `GET /monitoring/programs/{id}/export` | Вся программа в CSV (UTF-8, `;`) — для Excel и разовых выгрузок |
+
+### Позиции и сопоставление
+
+- `client_ref` — ваш уникальный код позиции; повторная загрузка с тем же `client_ref` обновляет позицию.
+- **Артикул производителя (`article`) — главный ключ поиска.** Внутренние коды учётных систем
+  (1С, SAP, «КСУ НСИ» и т. п.) артикулом не являются — передайте их в `client_ref`.
+- `match_status`: `pending` — ещё сопоставляется; `matched` — однозначно сопоставлена с товаром;
+  `ambiguous` — данных недостаточно (например, один артикул у нескольких вариантов товара) —
+  уточните название/бренд и загрузите позицию заново; `rejected` — не принята (см. `match_note`).
+- `active: false` в загрузке или `DELETE …/items/{client_ref}` снимает позицию с мониторинга;
+  `active: true` возвращает.
+- Лимит позиций на мониторинге — по тарифу (`plan.items_max`); строки сверх лимита отклоняются
+  в импорте с ошибкой `plan_limit_exceeded`.
+
+### Цены: источники и признаки
+
+Каждая позиция отдаётся с массивом `sources` — цена каждого найденного поставщика:
+`supplier_domain`, `url` (страница товара у поставщика), `price`, `currency`, `vat_included`,
+`price_unit` (штука/метр/комплект…), `price_kind` (`retail`, `from` — «цена от», `wholesale_tier`,
+`on_request`), `availability`, `observed_at`, `status` (`active`; `suspicious` — резкий скачок цены,
+перепроверяется) и признаки:
+
+| Признак (`flags`) | Значение |
+|---|---|
+| `web_price` | Цена получена со страницы сайта поставщика |
+| `email_confirmed` | Поставщик подтвердил цену сайта по почте (`email_confirmed_at`) |
+| `kp` | Есть КП / счёт поставщика по этому товару (`kp.price`, `kp.received_at`) |
+
+`summary` — сводка по сопоставимым ценам (рубли, розница или «от», без оптовых уровней):
+`best_price`, `min`, `median`, `max`, `sources_priced`. `best_price` — лучшая цена с поставщиком и ссылкой.
+
+Цены, которые сайт перестал показывать, не «залипают»: источник без актуальной цены уходит из
+сводки. Найденная страница, оказавшаяся другим товаром (аналог, другой типоразмер), в выдачу
+не попадает.
+
+### Синхронизация цен
+
+```text
+1. GET …/prices                          → items[], next_cursor, server_time  (первая полная выгрузка)
+   GET …/prices?cursor=<next_cursor>     … пока next_cursor != null
+2. Сохраните server_time из ПЕРВОГО ответа обхода.
+3. Через N часов: GET …/prices?updated_since=<server_time>  (+ cursor) — только изменившиеся позиции.
+```
+
+Рекомендуемая частота — не чаще раза в час: цены на сайтах перепроверяются раз в несколько дней.
+Для разовых и офлайн-задач удобнее `GET …/export` (CSV).
+
+### Покрытие и тарификация
+
+`items.covered` — позиции со свежей ценой (обновлена за `target_freshness_days`). Мониторинг
+доступен на тарифах с мониторингом цен; `plan.items_included` позиций входят в абонентскую плату,
+сверх них — `plan.price_per_item` ₽ в месяц за **покрытую** позицию (позиции без найденной цены
+не тарифицируются).
+
+### Ошибки мониторинга
+
+| HTTP | `code` | Когда |
+|---|---|---|
+| 403 | `monitoring_not_available` | Мониторинг не входит в текущий тариф |
+| 404 | `not_found` | Программа/позиция/импорт не найдены (или принадлежат другому ключу клиента) |
+| 422 | `validation_error` | Некорректные поля (`details` — по полям) |
+| 429 | `rate_limit_exceeded` | Загрузка позиций — 10 rpm, выгрузка CSV — 6 rpm |
 
 ---
 

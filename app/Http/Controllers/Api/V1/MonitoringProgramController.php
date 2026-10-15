@@ -74,6 +74,7 @@ class MonitoringProgramController extends Controller
         $v = Validator::make($request->all(), [
             'name' => 'sometimes|string|min:2|max:255',
             'status' => 'sometimes|in:active,paused',
+            'price_mode' => 'sometimes|in:lite,hybrid',
             'target_freshness_days' => 'sometimes|integer|min:7|max:180',
             'site_refresh_days' => 'sometimes|integer|min:7|max:90',
         ]);
@@ -206,51 +207,210 @@ class MonitoringProgramController extends Controller
         $next = $items->count() > $limit ? $items->slice(0, $limit)->last()->id : null;
         $items = $items->take($limit);
 
-        $listings = \App\Models\Monitoring\MpListing::query()->with('site')
-            ->whereIn('product_id', $items->pluck('product_id')->unique())
-            ->where('bench', false)
-            ->whereIn('status', [\App\Models\Monitoring\MpListing::STATUS_ACTIVE, \App\Models\Monitoring\MpListing::STATUS_SUSPICIOUS])
-            ->get()->groupBy('product_id');
-
-        $out = $items->map(function (ProgramItem $i) use ($listings) {
-            $sources = ($listings[$i->product_id] ?? collect())->map(fn ($l) => [
-                'supplier_domain' => $l->site?->domain,
-                'url' => $l->url,
-                'price' => $l->price,
-                'currency' => $l->currency,
-                'price_kind' => $l->price_kind,
-                'vat_included' => $l->vat_included,
-                'price_unit' => $l->price_unit,
-                'price_unit_qty' => $l->price_unit_qty,
-                'availability' => $l->availability,
-                'observed_at' => $l->observed_at?->toIso8601String(),
-                'status' => $l->status,
-                'flags' => [
-                    'web_price' => true,
-                    'email_confirmed' => $l->confirmed_at !== null,
-                    'kp' => false,
-                ],
-                'site_trust_level' => (int) ($l->site?->trust_level ?? 0),
-            ])->values();
-            $priced = $sources->filter(fn ($s) => $s['price'] !== null && $s['status'] === 'active'
-                && ($s['currency'] ?? 'RUB') === 'RUB' && $s['price_kind'] !== 'wholesale_tier');
-            $best = $priced->sortBy('price')->first();
-
-            return [
-                'client_ref' => $i->client_ref,
-                'name' => $i->raw_name,
-                'prices_changed_at' => $i->prices_changed_at?->toIso8601String(),
-                'last_priced_at' => $i->last_priced_at?->toIso8601String(),
-                'best_price' => $best ? ['price' => $best['price'], 'currency' => $best['currency'], 'supplier_domain' => $best['supplier_domain'], 'url' => $best['url']] : null,
-                'sources' => $sources,
-            ];
-        })->values();
+        $sources = $this->sourcesFor($items->pluck('product_id')->unique()->all());
+        $out = $items->map(fn (ProgramItem $i) => $this->priceItem($i, $sources[$i->product_id] ?? collect()))->values();
 
         return response()->json([
             'items' => $out,
             'next_cursor' => $next,
             'server_time' => $serverTime->toIso8601String(),
         ])->header('X-Request-Id', $rid);
+    }
+
+    /** Программы клиента. */
+    public function index(Request $request): JsonResponse
+    {
+        $client = $this->client($request);
+        $limits = $this->limits->forUser($client->user);
+        $programs = MonitoringProgram::query()->where('api_client_id', $client->id)->orderByDesc('id')->get();
+
+        return response()->json(['programs' => $programs->map(fn ($p) => $this->programArray($p, $limits))->values()])
+            ->header('X-Request-Id', $this->rid($request));
+    }
+
+    /**
+     * Карточка позиции: сопоставление, сводка цен, все источники с признаками и история цен
+     * по каждому источнику за history_days (по умолчанию 90, максимум 365).
+     */
+    public function item(Request $request, string $id, string $clientRef): JsonResponse
+    {
+        $rid = $this->rid($request);
+        $program = $this->find($request, $id);
+        $item = $program ? ProgramItem::query()->where('program_id', $program->id)->where('client_ref', $clientRef)->first() : null;
+        if (!$item) {
+            return $this->error(404, 'not_found', 'Item not found.', $rid);
+        }
+        $data = [
+            'client_ref' => $item->client_ref,
+            'name' => $item->raw_name,
+            'brand' => $item->raw_brand,
+            'article' => $item->raw_article,
+            'active' => $item->active,
+            'match_status' => $item->match_status,
+            'match_note' => $item->match_note,
+            'product' => null,
+        ] + ($item->product_id ? [] : ['summary' => null, 'sources' => []]);
+
+        if ($item->product_id) {
+            $product = \App\Models\Monitoring\MpProduct::query()->with('identifiers')->find($item->product_id);
+            $data['product'] = $product ? [
+                'name' => $product->name,
+                'brand' => $product->brand,
+                'identifiers' => $product->identifiers->whereIn('kind', ['oem', 'mpn', 'gtin'])
+                    ->map(fn ($x) => ['kind' => $x->kind, 'value' => $x->value])->values(),
+            ] : null;
+            $days = min(365, max(1, (int) $request->query('history_days', 90)));
+            $sources = $this->sourcesFor([$item->product_id], true, $days)[$item->product_id] ?? collect();
+            $data = array_merge($data, $this->priceItem($item, $sources));
+        }
+
+        return response()->json($data)->header('X-Request-Id', $rid);
+    }
+
+    /** Снять позицию с мониторинга (active=false; вернуть — повторной загрузкой с active=true). */
+    public function destroyItem(Request $request, string $id, string $clientRef): JsonResponse
+    {
+        $rid = $this->rid($request);
+        $program = $this->find($request, $id);
+        $item = $program ? ProgramItem::query()->where('program_id', $program->id)->where('client_ref', $clientRef)->first() : null;
+        if (!$item) {
+            return $this->error(404, 'not_found', 'Item not found.', $rid);
+        }
+        $item->forceFill(['active' => false])->save();
+        $program->refreshCounters();
+
+        return response()->json(['client_ref' => $item->client_ref, 'active' => false])->header('X-Request-Id', $rid);
+    }
+
+    /**
+     * Выгрузка программы в CSV (UTF-8 с BOM, разделитель «;» — открывается в Excel): строка на
+     * позицию × источник с ценой (позиции без цены — одной строкой). Для 10–30 тыс. позиций —
+     * потоком, без лимита страницы.
+     */
+    public function export(Request $request, string $id)
+    {
+        $rid = $this->rid($request);
+        $program = $this->find($request, $id);
+        if (!$program) {
+            return $this->error(404, 'not_found', 'Program not found.', $rid);
+        }
+
+        return response()->streamDownload(function () use ($program) {
+            $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF");
+            fputcsv($out, ['client_ref', 'name', 'brand', 'article', 'match_status', 'best_price', 'min_price', 'median_price', 'max_price',
+                'sources_priced', 'supplier_domain', 'url', 'price', 'currency', 'vat_included', 'price_unit', 'availability',
+                'observed_at', 'web_price', 'email_confirmed', 'kp', 'kp_price', 'site_trust_level'], ';');
+            ProgramItem::query()->where('program_id', $program->id)->where('active', true)->orderBy('id')
+                ->chunkById(500, function ($items) use ($out) {
+                    $sources = $this->sourcesFor($items->pluck('product_id')->filter()->unique()->all());
+                    foreach ($items as $i) {
+                        $p = $i->product_id ? $this->priceItem($i, $sources[$i->product_id] ?? collect()) : ['summary' => null, 'sources' => collect()];
+                        $s = $p['summary'] ?? null;
+                        $base = [$i->client_ref, $i->raw_name, $i->raw_brand, $i->raw_article, $i->match_status,
+                            $s['best_price'] ?? null, $s['min'] ?? null, $s['median'] ?? null, $s['max'] ?? null, $s['sources_priced'] ?? 0];
+                        $priced = collect($p['sources'])->filter(fn ($x) => $x['price'] !== null && $x['status'] === 'active');
+                        if ($priced->isEmpty()) {
+                            fputcsv($out, array_merge($base, array_fill(0, 13, null)), ';');
+                            continue;
+                        }
+                        foreach ($priced as $x) {
+                            fputcsv($out, array_merge($base, [$x['supplier_domain'], $x['url'], $x['price'], $x['currency'],
+                                $x['vat_included'] === null ? null : (int) $x['vat_included'], $x['price_unit'], $x['availability'],
+                                $x['observed_at'], 1, (int) $x['flags']['email_confirmed'], (int) $x['flags']['kp'],
+                                $x['kp']['price'] ?? null, $x['site_trust_level']]), ';');
+                        }
+                    }
+                });
+            fclose($out);
+        }, 'monitoring_' . $program->external_id . '_' . now()->format('Ymd_His') . '.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'X-Request-Id' => $rid,
+        ]);
+    }
+
+    /**
+     * Источники цен по товарам: листинги (active/suspicious) + последняя сверка с КП по листингу.
+     *
+     * @param array<int,int> $productIds
+     * @return \Illuminate\Support\Collection<int, \Illuminate\Support\Collection<int, array<string,mixed>>>
+     */
+    private function sourcesFor(array $productIds, bool $withHistory = false, int $historyDays = 90)
+    {
+        if ($productIds === []) {
+            return collect();
+        }
+        $listings = \App\Models\Monitoring\MpListing::query()->with('site')->whereIn('product_id', $productIds)->where('bench', false)
+            ->whereIn('status', [\App\Models\Monitoring\MpListing::STATUS_ACTIVE, \App\Models\Monitoring\MpListing::STATUS_SUSPICIOUS])
+            ->get();
+        $kp = \App\Models\Monitoring\MpVerification::query()->whereIn('listing_id', $listings->pluck('id'))->whereNotNull('kp_price')
+            ->orderBy('verified_at')->get()->keyBy('listing_id'); // последняя по времени перекрывает
+        $history = $withHistory
+            ? \App\Models\Monitoring\MpPriceObservation::query()->whereIn('listing_id', $listings->pluck('id'))
+                ->where('observed_at', '>=', now()->subDays($historyDays))->whereNotNull('price')
+                ->whereIn('status', ['ok', 'suspicious'])->orderBy('observed_at')
+                ->get(['listing_id', 'price', 'currency', 'method', 'observed_at'])->groupBy('listing_id')
+            : collect();
+
+        return $listings->map(function ($l) use ($kp, $history, $withHistory) {
+            $v = $kp[$l->id] ?? null;
+            $row = [
+                'supplier_domain' => $l->site?->domain,
+                'url' => $l->url,
+                'price' => $l->price !== null ? (float) $l->price : null,
+                'currency' => $l->currency,
+                'price_kind' => $l->price_kind,
+                'vat_included' => $l->vat_included,
+                'price_unit' => $l->price_unit,
+                'price_unit_qty' => $l->price_unit_qty !== null ? (float) $l->price_unit_qty : null,
+                'availability' => $l->availability,
+                'observed_at' => $l->observed_at?->toIso8601String(),
+                'status' => $l->status,
+                'flags' => [
+                    'web_price' => $l->price !== null,
+                    'email_confirmed' => $l->confirmed_at !== null,
+                    'kp' => $v !== null,
+                ],
+                'email_confirmed_at' => $l->confirmed_at?->toIso8601String(),
+                'kp' => $v ? ['price' => (float) $v->kp_price, 'currency' => $v->kp_currency, 'vat_included' => $v->kp_vat_included,
+                    'received_at' => $v->verified_at?->toIso8601String()] : null,
+                'site_trust_level' => (int) ($l->site?->trust_level ?? 0),
+                'product_id' => $l->product_id,
+            ];
+            if ($withHistory) {
+                $row['history'] = ($history[$l->id] ?? collect())->map(fn ($o) => [
+                    'observed_at' => $o->observed_at?->toIso8601String(), 'price' => (float) $o->price,
+                    'currency' => $o->currency, 'source' => $o->method === 'kp' ? 'kp' : 'web',
+                ])->values();
+            }
+
+            return $row;
+        })->groupBy('product_id')->map(fn ($g) => $g->map(fn ($r) => \Illuminate\Support\Arr::except($r, ['product_id']))->values());
+    }
+
+    /** Позиция с ценами: сводка по сопоставимым ценам (RUB, розница/«от») + источники. */
+    private function priceItem(ProgramItem $i, $sources): array
+    {
+        $priced = collect($sources)->filter(fn ($s) => $s['price'] !== null && $s['status'] === 'active'
+            && ($s['currency'] ?? 'RUB') === 'RUB' && $s['price_kind'] !== 'wholesale_tier')->sortBy('price')->values();
+        $prices = $priced->pluck('price')->all();
+        $n = count($prices);
+        $median = $n === 0 ? null : ($n % 2 ? $prices[intdiv($n, 2)] : round(($prices[$n / 2 - 1] + $prices[$n / 2]) / 2, 2));
+        $best = $priced->first();
+
+        return [
+            'client_ref' => $i->client_ref,
+            'name' => $i->raw_name,
+            'prices_changed_at' => $i->prices_changed_at?->toIso8601String(),
+            'last_priced_at' => $i->last_priced_at?->toIso8601String(),
+            'best_price' => $best ? ['price' => $best['price'], 'currency' => $best['currency'], 'supplier_domain' => $best['supplier_domain'],
+                'url' => $best['url'], 'flags' => $best['flags']] : null,
+            'summary' => $n === 0 ? null : [
+                'best_price' => $prices[0], 'min' => $prices[0], 'median' => $median, 'max' => $prices[$n - 1],
+                'sources_priced' => $n, 'currency' => 'RUB',
+            ],
+            'sources' => collect($sources)->values(),
+        ];
     }
 
     private function programArray(MonitoringProgram $p, array $limits): array
