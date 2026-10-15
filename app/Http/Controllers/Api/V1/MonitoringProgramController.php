@@ -485,7 +485,14 @@ class MonitoringProgramController extends Controller
             return \App\Support\Monitoring\ItemScope::allows($itemCodes, $productCodes, (array) ($s['_codes'] ?? []));
         })->values()->all();
 
-        return collect(\App\Support\Monitoring\PriceSanity::apply($visible))
+        // Выбросы по ценам позиции — только если позиция однозначна (узкая или с одним кодом). У «семейной»
+        // позиции (несколько вариантов под одним кодом клиента: ремни 550/600/650 мм у liftpages) медиана
+        // смешала бы варианты — там остаётся оценка проверки страниц по общим кодам варианта.
+        if ($narrow || count($itemCodes) <= 1) {
+            $visible = \App\Support\Monitoring\PriceSanity::apply($visible);
+        }
+
+        return collect($visible)
             ->map(fn ($s) => \Illuminate\Support\Arr::except($s, ['_codes', '_program', '_outlier']))->values();
     }
 

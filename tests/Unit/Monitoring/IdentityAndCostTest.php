@@ -89,6 +89,7 @@ class IdentityAndCostTest extends TestCase
         $this->assertSame(['MT42RUS'], $r->extractCodes('КСУ НСИ 000123', 'Выключатель МТ42RUS'));
         // Код серии не артикул; размеры тоже.
         $this->assertSame([], $r->extractCodes(null, 'Ступень ECO3000 шириной 1000ММ'));
+        $this->assertSame([], $r->extractCodes(null, 'Ремень тахометра D4*600')); // размер, не код (M02502)
         $this->assertSame([], $r->extractCodes('1234567890123', 'Позиция')); // длинный числовой без бренда
         $this->assertSame(['1234567890123'], $r->extractCodes('1234567890123', 'Позиция', 'OTIS'));
     }
