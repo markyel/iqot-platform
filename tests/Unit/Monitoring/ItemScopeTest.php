@@ -43,6 +43,11 @@ class ItemScopeTest extends TestCase
             'oem_articles' => ['KM85869H01', 'PC-04L=600', 'KM247024']]);
         $this->assertSame(['KM247024', 'KM85869H01', 'PC04L=600'], $r->itemCodes($item, 'KONE'));
 
+        // Комментарии в скобках отрезаются, короткие числа и размеры — не коды.
+        $dirty = new ProgramItem(['raw_name' => 'Гребенка', 'raw_article' => 'SMR313609',
+            'oem_articles' => ['50630296 ( компл. 4 шт.+ 2 боковинки)', '147', 'D4', 'SCB201', '3X02429*A']]);
+        $this->assertSame(['SMR313609', '50630296', 'SCB201', '3X02429*A'], $r->itemCodes($dirty, 'SCHINDLER'));
+
         $noArticle = new ProgramItem(['raw_name' => 'Выключатель МТ42RUS', 'raw_article' => null, 'oem_articles' => ['AB12345']]);
         $this->assertSame(['AB12345'], $r->itemCodes($noArticle));
     }

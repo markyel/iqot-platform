@@ -147,6 +147,11 @@ class ProductIdentityResolver
         $codes = $this->extractCodes($item->raw_article, $oem === [] ? $item->raw_name : null, $brandNorm);
         foreach ($oem as $article) {
             foreach ($this->extractCodes($article, null, $brandNorm) as $code) {
+                // «147», «600», «D4» — не код модели: совпадёт с любым числом на странице. Проверку на размер
+                // (как для слов из названия) не применяем: «3X02429*A» — настоящий артикул.
+                if (mb_strlen($code) < 5) {
+                    continue;
+                }
                 $codes[] = $code;
             }
         }
@@ -162,7 +167,8 @@ class ProductIdentityResolver
             $raw = json_decode($raw, true) ?: [];
         }
 
-        return array_values(array_filter(array_map(fn ($v) => is_scalar($v) ? trim((string) $v) : '', (array) $raw)));
+        // Кросс-номера из учётных систем бывают с комментариями: «50630296 ( компл. 4 шт.+ 2 боковинки)».
+        return array_values(array_filter(array_map(fn ($v) => is_scalar($v) ? trim((string) preg_replace('/\s*[(\[].*$/us', '', (string) $v)) : '', (array) $raw)));
     }
 
     /**
