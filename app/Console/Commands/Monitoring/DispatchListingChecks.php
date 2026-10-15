@@ -35,6 +35,13 @@ class DispatchListingChecks extends Command
 
         $limit = (int) ($this->option('limit') ?: config('monitoring.schedule.dispatch_batch', 500));
 
+        // Не больше, чем сайт успеет за тик (5 мин / пауза сайта): лишние джобы на один домен
+        // только переносятся по занятому слоту — каждый перенос пишет строку jobs, бинлог
+        // MySQL 14–15.10 вырос до ~1,2 ГБ/ч и забил диск прода (9 415 проверок sitemap разом).
+        $tickMs = 300_000;
+        $siteCap = DB::table('mp_sites')->pluck('rate_limit_ms', 'id')
+            ->map(fn ($ms) => max(1, (int) ceil($tickMs / max(1000, (int) $ms))))->all();
+
         $rows = DB::table('mp_listings as l')
             ->join('mp_sites as s', 's.id', '=', 'l.site_id')
             ->where('l.bench', false)
@@ -46,13 +53,15 @@ class DispatchListingChecks extends Command
                 $q->whereNull('s.blocked_until')->orWhere('s.blocked_until', '<=', now());
             })
             ->orderByRaw('l.next_check_at IS NULL DESC, l.next_check_at ASC')
-            ->limit($limit * 3)
+            ->limit($limit * 20)
             ->get(['l.id', 'l.site_id']);
 
-        // Round-robin по сайтам.
+        // Round-robin по сайтам, не больше капа сайта на тик.
         $bySite = [];
         foreach ($rows as $r) {
-            $bySite[$r->site_id][] = (int) $r->id;
+            if (count($bySite[$r->site_id] ?? []) < ($siteCap[$r->site_id] ?? 75)) {
+                $bySite[$r->site_id][] = (int) $r->id;
+            }
         }
         $picked = [];
         while (count($picked) < $limit && $bySite !== []) {

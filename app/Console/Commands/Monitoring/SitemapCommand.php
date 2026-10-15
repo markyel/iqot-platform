@@ -2,7 +2,6 @@
 
 namespace App\Console\Commands\Monitoring;
 
-use App\Jobs\Monitoring\CheckListingJob;
 use App\Models\Monitoring\MpListing;
 use App\Models\Monitoring\MpProduct;
 use App\Models\Monitoring\MpSite;
@@ -137,7 +136,7 @@ class SitemapCommand extends Command
             $rows
         );
         if ($this->option('create')) {
-            $this->info("Заведено листингов: {$createdTotal}, поставлены в проверку.");
+            $this->info("Заведено листингов: {$createdTotal} — проверит monitoring:dispatch-checks (кап на сайт за тик).");
         }
 
         return self::SUCCESS;
@@ -154,8 +153,10 @@ class SitemapCommand extends Command
                     ['site_id' => $site->id, 'url' => UrlCanonicalizer::canonicalize($c['url']), 'status' => MpListing::STATUS_ACTIVE,
                         'found_via' => 'sitemap', 'bench' => false, 'next_check_at' => now()]
                 );
+                // Проверку не ставим напрямую: тысячи джобов на один домен разом только
+                // переносятся по слоту (бинлог MySQL). next_check_at=now → темп задаёт
+                // monitoring:dispatch-checks (кап на сайт за тик).
                 if ($listing->wasRecentlyCreated) {
-                    CheckListingJob::dispatch($listing->id);
                     $created++;
                 }
             }
