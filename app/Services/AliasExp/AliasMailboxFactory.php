@@ -3,7 +3,6 @@
 namespace App\Services\AliasExp;
 
 use App\Services\Senders\BulkSenderImporter;
-use App\Services\Senders\SenderAddressGenerator;
 use App\Support\Senders\SenderPool;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Crypt;
@@ -13,7 +12,7 @@ use RuntimeException;
 
 /**
  * Фабрика ящика под батч (docs/alias-mailbox-design.md, Ф2): организация из резерва (самая давно
- * использованная) → адрес на домене пула → ящик в Beget с пересылкой всей почты в info@ домена (сам ящик
+ * использованная) → вымышленная персона (PersonaFactory: ФИО = адрес = подпись, телефон с изменённой цифрой) → ящик в Beget с пересылкой всей почты в info@ домена (сам ящик
  * её не хранит) → отправитель reports.senders (пул alias, 1 письмо в 5 мин) → карта alias_mailboxes.
  * Любой сбой после создания ящика в Beget откатывает ящик (dropMailbox), чтобы не копить сирот.
  */
@@ -22,7 +21,7 @@ class AliasMailboxFactory
     public function __construct(
         private readonly BegetMailApi $beget,
         private readonly OrgReserve $reserve,
-        private readonly SenderAddressGenerator $addresses,
+        private readonly PersonaFactory $personas,
         private readonly BulkSenderImporter $importer,
     ) {
     }
@@ -63,9 +62,11 @@ class AliasMailboxFactory
         foreach (DB::table('alias_mailboxes')->pluck('email') as $e) {
             $taken[mb_strtolower($e)] = true;
         }
-        $orgArr = (array) $org;
-        ['email' => $email, 'password' => $password] = $this->addresses->addressFor($orgArr, $dom->domain, $taken);
-        $local = strstr($email, '@', true);
+        // Полный набор персоны сразу: одно вымышленное ФИО — в адресе, имени отправителя и подписи.
+        $persona = $this->personas->make($dom->domain, $taken);
+        ['email' => $email, 'local' => $local] = $persona;
+        $password = BegetMailApi::password();
+        $phone = PersonaFactory::legendPhone($org->phone, (string) $org->inn);
 
         $this->beget->createMailbox($dom->domain, $local, $password);
         try {
@@ -75,8 +76,9 @@ class AliasMailboxFactory
             $res = $this->importer->importBlocks([[
                 'email' => $email, 'password' => $password, 'user' => $email,
                 'smtp' => $cfg['smtp'], 'imap' => $cfg['imap'],
+                'name' => $persona['display_name'], 'fullname' => $persona['full_name'], 'phone' => $phone,
                 'company' => $org->name, 'inn' => $org->inn, 'kpp' => $org->kpp, 'ogrn' => $org->ogrn,
-                'address' => $org->legal_address, 'company_phone' => $org->phone, 'director' => $org->director_name,
+                'address' => $org->legal_address, 'company_phone' => $phone, 'director' => $org->director_name,
                 'sender_overrides' => [
                     'pool' => SenderPool::ALIAS,
                     'send_delay_seconds' => (int) $cfg['send_delay_seconds'],

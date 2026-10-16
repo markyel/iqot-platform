@@ -121,7 +121,7 @@
             @else
                 <div class="alert alert-success" style="margin-bottom: var(--space-4);">
                     Строк в файле: {{ $reserveResult['rows'] }} · добавлено: <strong>{{ $reserveResult['added'] }}</strong> ·
-                    обновлено: {{ $reserveResult['updated'] }} · пропущено (нет ИНН/названия, дубль): {{ $reserveResult['skipped'] }}
+                    обновлено: {{ $reserveResult['updated'] }} · пропущено (нет ИНН/названия, дубль): {{ $reserveResult['skipped'] }} · исключено госсектор (фонды, ГУП, МУП, учреждения): {{ $reserveResult['excluded'] ?? 0 }}
                 </div>
             @endif
         @endif

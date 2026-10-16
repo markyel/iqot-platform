@@ -13,15 +13,35 @@ use Illuminate\Support\Facades\DB;
  */
 class OrgReserve
 {
+    /**
+     * Госсектор и некоммерческие учреждения — не легенда (решение владельца 16.10.2026: фонды, ГУП, МУП, учреждения).
+     * Ищется в кратком и полном наименовании.
+     */
+    private const PUBLIC_SECTOR_RE = '/(^|[^\p{L}])(фонд(?:а|у|ом|е|ы|ов)?|ф?гу?п|муп|[фгм]б?к?а?у|гбоу|мбоу|гкоу|гбуз|фгбу|фгбоу|фкп|фку'
+        . '|учрежден\p{L}*|государственн\p{L}*|муниципальн\p{L}*|казенн\p{L}*|казённ\p{L}*|бюджетн\p{L}*|унитарн\p{L}*'
+        . '|администраци\p{L}*|министерств\p{L}*|департамент\p{L}*|комитет\p{L}*|правительств\p{L}*|префектур\p{L}*'
+        . '|некоммерческ\p{L}*|региональный оператор)($|[^\p{L}])/iu';
+
+    public static function isPublicSector(?string ...$names): bool
+    {
+        foreach ($names as $n) {
+            if ($n !== null && preg_match(self::PUBLIC_SECTOR_RE, $n)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function __construct(private readonly OrganizationExcelParser $parser)
     {
     }
 
-    /** @return array{rows: int, added: int, updated: int, skipped: int} */
+    /** @return array{rows: int, added: int, updated: int, skipped: int, excluded: int} */
     public function import(string $path, ?string $sourceName = null): array
     {
         $rows = $this->parser->parse($path);
-        $stats = ['rows' => count($rows), 'added' => 0, 'updated' => 0, 'skipped' => 0];
+        $stats = ['rows' => count($rows), 'added' => 0, 'updated' => 0, 'skipped' => 0, 'excluded' => 0];
         $existing = DB::table('alias_org_reserve')->pluck('id', 'inn');
         $seen = [];
         $now = now();
@@ -34,6 +54,9 @@ class OrgReserve
                 continue;
             }
             $seen[$inn] = true;
+            // Госсектор хранится выключенным (видно, сколько отсеяно; повторная загрузка не вернёт).
+            $public = self::isPublicSector($name, $r['full_name'] ?? null);
+            $stats['excluded'] += (int) $public;
             $data = [
                 'kpp' => $this->digits($r['kpp'] ?? null, [9]),
                 'ogrn' => $this->digits($r['ogrn'] ?? null, [13, 15]),
@@ -49,7 +72,7 @@ class OrgReserve
                 'director_position' => $this->cut($r['director_position'] ?? null, 255),
                 'source_file' => $sourceName ? mb_substr($sourceName, 0, 255) : null,
                 'updated_at' => $now,
-            ];
+            ] + ($public ? ['active' => false] : []);
             if (isset($existing[$inn])) {
                 // Повторная загрузка обновляет реквизиты, счётчики использования не трогает.
                 DB::table('alias_org_reserve')->where('id', $existing[$inn])->update($data);
@@ -61,6 +84,18 @@ class OrgReserve
         }
 
         return $stats;
+    }
+
+    /** Выключить госсектор среди уже загруженных. @return int выключено */
+    public function excludePublicSector(): int
+    {
+        $ids = DB::table('alias_org_reserve')->where('active', true)->get(['id', 'name', 'full_name'])
+            ->filter(fn ($r) => self::isPublicSector($r->name, $r->full_name))->pluck('id')->all();
+        if ($ids !== []) {
+            DB::table('alias_org_reserve')->whereIn('id', $ids)->update(['active' => false, 'updated_at' => now()]);
+        }
+
+        return count($ids);
     }
 
     /** Самая давно использованная активная организация (для нового ящика). */

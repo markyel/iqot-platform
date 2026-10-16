@@ -20,6 +20,8 @@ use Illuminate\Support\Facades\DB;
  *   mailbox-create [--domain=] [--deadline=Y-m-d]
  *                                           — ручной ящик под батч (в Ф3 их создаёт план дня)
  *   drop-expired [--dry-run]                — удалить ящики с истёкшим сроком
+ *   mailbox-drop {email}                    — досрочно удалить ящик
+ *   reserve-filter                          — выключить госсектор среди загруженных организаций
  */
 class AliasExpCommand extends Command
 {
@@ -35,6 +37,8 @@ class AliasExpCommand extends Command
             'domain-add' => $this->domainAdd($beget),
             'mailbox-create' => $this->mailboxCreate($factory),
             'drop-expired' => $this->dropExpired($factory),
+            'reserve-filter' => $this->reserveFilter($reserve),
+            'mailbox-drop' => $this->mailboxDrop($factory),
             default => $this->unknown(),
         };
     }
@@ -142,9 +146,31 @@ class AliasExpCommand extends Command
         return self::SUCCESS;
     }
 
+    private function reserveFilter(OrgReserve $reserve): int
+    {
+        $this->info('Выключено организаций госсектора: ' . $reserve->excludePublicSector());
+
+        return self::SUCCESS;
+    }
+
+    /** Досрочно удалить ящик: alias-exp mailbox-drop {email} */
+    private function mailboxDrop(AliasMailboxFactory $factory): int
+    {
+        $mb = DB::table('alias_mailboxes')->where('email', (string) $this->argument('domain'))->where('status', 'active')->first();
+        if (!$mb) {
+            $this->error('Живой ящик не найден: alias-exp mailbox-drop {email}');
+
+            return self::FAILURE;
+        }
+        $factory->drop($mb);
+        $this->info("Удалён {$mb->email}, отправитель {$mb->sender_id} выключен");
+
+        return self::SUCCESS;
+    }
+
     private function unknown(): int
     {
-        $this->error('Действия: status | api-check {домен} | domain-add {домен} | mailbox-create | drop-expired');
+        $this->error('Действия: status | api-check {домен} | domain-add {домен} | mailbox-create | mailbox-drop {email} | drop-expired | reserve-filter');
 
         return self::FAILURE;
     }
