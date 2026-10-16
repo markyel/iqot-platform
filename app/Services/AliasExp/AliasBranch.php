@@ -81,15 +81,17 @@ class AliasBranch
      * @param array<int,array<string,mixed>> $positions itemId => мета плана (is_customer, urgency, …)
      * @param array<int,int[]> $poolMap остаточный пул
      * @param array<int,int> $emailedCount itemId => скольким поставщикам уже писали
+     * @param int[]|null $only (тест) только эти позиции, без проверки доли
      * @return int[]
      */
-    public static function candidates(array $positions, array $poolMap, array $emailedCount): array
+    public static function candidates(array $positions, array $poolMap, array $emailedCount, ?array $only = null): array
     {
         $claimed = self::claimedItemIds();
         $out = [];
         foreach ($positions as $id => $m) {
             if (!empty($m['is_customer']) || isset($claimed[$id]) || ($emailedCount[$id] ?? 0) > 0
-                || ($poolMap[$id] ?? []) === [] || !self::inShare((int) $id)) {
+                || ($poolMap[$id] ?? []) === []
+                || ($only !== null ? !in_array((int) $id, $only, true) : !self::inShare((int) $id))) {
                 continue;
             }
             $out[] = (int) $id;

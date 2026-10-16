@@ -52,6 +52,7 @@ class PlanDayCampaign extends Command
         {--limit=0 : Потолок писем за прогон, 0 = весь план (тест)}
         {--hold : (тест) сразу после persist уводить письма в held — диспетчер не заберёт}
         {--alias-only : (тест) только ветка «ящик на батч», без основного плана}
+        {--alias-items= : (тест) в ветку «ящик на батч» — только эти позиции (через запятую), без проверки доли}
         {--alias-limit= : Потолок батчей ветки «ящик на батч» за прогон (по умолчанию — дневной бюджет ящиков)}
         {--force : Запустить при выключенном флаге}';
 
@@ -227,12 +228,13 @@ class PlanDayCampaign extends Command
         foreach (AliasBranch::claimedItemIds() as $cid => $_) {
             unset($positions[$cid], $poolMap[$cid], $itemRows[$cid], $relevantMap[$cid]);
         }
-        if (AliasBranch::enabled() || $aliasOnly || $this->option('alias-limit') !== null) {
+        if (AliasBranch::enabled() || $aliasOnly || $this->option('alias-limit') !== null || $this->option('alias-items')) {
             $budget = AliasBranch::budgetToday();
             if ($this->option('alias-limit') !== null) {
                 $budget = min($budget, max(0, (int) $this->option('alias-limit')));
             }
-            $cands = AliasBranch::candidates($positions, $poolMap, $emailedCount);
+            $onlyAlias = $this->option('alias-items') ? array_map('intval', explode(',', (string) $this->option('alias-items'))) : null;
+            $cands = AliasBranch::candidates($positions, $poolMap, $emailedCount, $onlyAlias);
             $aliasGroups = array_slice(AliasBranch::group($cands, $itemRows, (int) config('services.alias_exp.items_per_batch', 2)), 0, $budget);
             foreach ($aliasGroups as $g) {
                 foreach ($g as $iid) {
