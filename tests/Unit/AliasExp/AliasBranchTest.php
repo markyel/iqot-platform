@@ -61,6 +61,10 @@ class AliasBranchTest extends TestCase
         $g = AliasBranch::group([1, 2, 3, 4, 5, 6], $rows, 2);
         $this->assertSame([[1, 3], [2], [4], [5], [6]], $g);
         $this->assertSame([[1], [2], [3]], AliasBranch::group([1, 2, 3], $rows, 1));
+        // Одна деталь из двух заявок — не пара.
+        $dup = [7 => ['product_type_id' => 405, 'domain_id' => 1, 'article' => 'MP431TWB14A', 'name' => 'КОНТАКТ ТОРМОЗА MP431TWB14A'],
+            8 => ['product_type_id' => 405, 'domain_id' => 1, 'article' => 'MP431TWB14A', 'name' => 'КОНТАКТ ТОРМОЗА MP431TWB14A']];
+        $this->assertSame([[7], [8]], AliasBranch::group([7, 8], $dup, 2));
     }
 
     public function test_no_double_period(): void

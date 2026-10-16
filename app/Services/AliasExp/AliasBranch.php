@@ -124,6 +124,10 @@ class AliasBranch
                 $pick = null;
                 foreach ($left as $i => $b) {
                     $rb = $itemRows[$b] ?? [];
+                    // Та же деталь из другой заявки — дубль, а не пара (две строки одной детали в письме — странно).
+                    if (self::sameProduct($ra, $rb)) {
+                        continue;
+                    }
                     if ((int) ($ra['product_type_id'] ?? 0) <= 0
                         || (int) ($rb['product_type_id'] ?? 0) . '|' . (int) ($rb['domain_id'] ?? 0) !== $typeKey) {
                         continue;
@@ -145,6 +149,14 @@ class AliasBranch
         }
 
         return $groups;
+    }
+
+    private static function sameProduct(array $a, array $b): bool
+    {
+        $norm = fn ($v) => preg_replace('/[^\p{L}\p{N}]+/u', '', mb_strtolower((string) $v));
+        $art = $norm($a['article'] ?? '');
+
+        return ($art !== '' && $art === $norm($b['article'] ?? '')) || $norm($a['name'] ?? '') === $norm($b['name'] ?? '');
     }
 
     /**
