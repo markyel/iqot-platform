@@ -972,6 +972,20 @@ class CampaignEmailBuilder
         return $html;
     }
 
+    /** В скелете шаблона есть подпись формата full (с организацией и ИНН). */
+    public static function signatureShowsOrganization(array $template): bool
+    {
+        $blocks = is_array($template['blocks'] ?? null) ? $template['blocks'] : (json_decode((string) ($template['blocks'] ?? ''), true) ?: []);
+        foreach ($blocks as $b) {
+            if (is_array($b) && ($b['type'] ?? '') === 'signature'
+                && ($b['format'] ?? ($template['signature_format'] ?? 'name_only')) === 'full') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** Завершающая точка шаблона не дублирует точку текста («1 шт.» + «.» = «1 шт..»). */
     public static function withSuffix(string $text, string $suffix): string
     {
@@ -1085,7 +1099,9 @@ class CampaignEmailBuilder
                 return $this->renderSignature((string) $sigFormat, $sender, $organization, $sigStyle);
 
             case 'company_footer':
-                if (!$organization) {
+                // Подпись формата full уже несёт название, адрес и ИНН — футер их повторял
+                // (шаблоны 4, 7, 14, 49: реквизиты дважды подряд, 16.10.2026).
+                if (!$organization || self::signatureShowsOrganization($template)) {
                     return '';
                 }
                 $innLine = !empty($organization['inn']) ? "ИНН: {$organization['inn']}" : '';

@@ -693,6 +693,9 @@ return [
         'send_delay_seconds' => (int) env('ALIAS_EXP_SEND_DELAY', 300),     // 1 письмо в 5 мин
         'daily_limit' => (int) env('ALIAS_EXP_DAILY_LIMIT', 120),
         'mailboxes_per_day' => (int) env('ALIAS_EXP_MAILBOXES_PER_DAY', 10),
+        // Лимиты на получателя для писем ветки мягче на 20%: дневной потолок ×1.2, интервал ÷1.2 (не ниже пола) —
+        // решение владельца 16.10.2026; основная ветка свой потолок не превышает.
+        'recipient_boost' => (float) env('ALIAS_EXP_RECIPIENT_BOOST', 1.2),
         'window_start_hour' => (int) env('ALIAS_EXP_WINDOW_START', 9),      // рабочие часы ветки (решение 16.10)
         'window_end_hour' => (int) env('ALIAS_EXP_WINDOW_END', 18),
         'window_timezone' => env('ALIAS_EXP_WINDOW_TZ', 'Europe/Moscow'),

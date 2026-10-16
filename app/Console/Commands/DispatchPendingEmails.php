@@ -112,7 +112,8 @@ class DispatchPendingEmails extends Command
         // «первые N писем подряд». Иначе фронт очереди, забитый остывающими
         // получателями с длинным хвостом писем, голодит созревших глубже.
         $eligibleKeys = array_keys($eligibleRecipients);
-        if ($eligibleKeys === []) {
+        // У писем ветки «ящик на батч» лимиты мягче — без созревших для основной ветки тик ещё может быть не пустым.
+        if ($eligibleKeys === [] && \App\Support\Senders\SenderPool::aliasIds() === []) {
             $this->info('Dispatched: 0 (нет созревших получателей на этот тик)');
             return self::SUCCESS;
         }
@@ -129,13 +130,24 @@ class DispatchPendingEmails extends Command
             ->pluck('n', 'sender_id');
         $dailyLimitHit = 0;
         // Ящики ветки «ящик на батч» шлют только в своё окно (будни 9–18 МСК), уже общего окна тика.
-        $aliasClosed = !\App\Services\AliasExp\AliasWindow::isOpen() ? \App\Support\Senders\SenderPool::aliasIds() : [];
+        $aliasIds = \App\Support\Senders\SenderPool::aliasIds();
+        $aliasClosed = !\App\Services\AliasExp\AliasWindow::isOpen() ? $aliasIds : [];
+        // Свои (на 20% мягче) лимиты получателя для писем ветки; основная ветка свой потолок не превышает.
+        $boost = (float) config('services.alias_exp.recipient_boost', 1.2);
+        $eligibleAlias = ($aliasIds !== [] && $boost > 1.0) ? $this->eligibleRecipients($boost) : $eligibleRecipients;
+        $eligibleAliasKeys = array_keys($eligibleAlias);
 
         foreach ($senders as $sender) {
             if ($dispatched >= $limit) {
                 break;
             }
             if (isset($aliasClosed[(int) $sender->id])) {
+                continue;
+            }
+            $isAlias = isset($aliasIds[(int) $sender->id]);
+            $eligibleNow = $isAlias ? $eligibleAlias : $eligibleRecipients;
+            $eligibleNowKeys = $isAlias ? $eligibleAliasKeys : $eligibleKeys;
+            if ($eligibleNowKeys === []) {
                 continue;
             }
 
@@ -177,7 +189,7 @@ class DispatchPendingEmails extends Command
                 })
                 // Только СОЗРЕВШИЕ получатели (пейсинг) — фильтр ДО лимита, иначе
                 // окно из первых N писем забивают остывающие и созревшие голодают.
-                ->whereIn(DB::raw('LOWER(to_email)'), $eligibleKeys)
+                ->whereIn(DB::raw('LOWER(to_email)'), $eligibleNowKeys)
                 // Не выбирать письма заблокированным получателям (см. выше).
                 ->whereNotExists(function ($q) {
                     $q->select(DB::raw(1))
@@ -201,7 +213,7 @@ class DispatchPendingEmails extends Command
 
                 $recipient = mb_strtolower(trim((string) $row->to_email));
                 // Получатель не созрел по интервалу ИЛИ уже получил письмо в этом тике.
-                if ($recipient === '' || !isset($eligibleRecipients[$recipient]) || isset($reserved[$recipient])) {
+                if ($recipient === '' || !isset($eligibleNow[$recipient]) || isset($reserved[$recipient])) {
                     continue;
                 }
 
@@ -248,7 +260,7 @@ class DispatchPendingEmails extends Command
      *
      * @return array<string,bool> нормализованный to_email => true
      */
-    private function eligibleRecipients(): array
+    private function eligibleRecipients(float $boost = 1.0): array
     {
         $minInterval = max(1, (int) config('services.email_dispatch.recipient_interval_min_seconds', 300));
         $maxInterval = max($minInterval, (int) config('services.email_dispatch.recipient_interval_max_seconds', 3600));
@@ -337,7 +349,8 @@ class DispatchPendingEmails extends Command
 
             // Дневной потолок на получателя (через все ящики) — анти-FBL. Per-адрес cap
             // (адаптивный daily_cap) с фолбэком на базу. Добрал за МСК-день → не eligible.
-            $cap = $capFor[$recipient] ?? $baseCap;
+            // $boost > 1 — письма ветки «ящик на батч»: потолок и темп на получателя мягче (services.alias_exp.recipient_boost).
+            $cap = (int) ceil(($capFor[$recipient] ?? $baseCap) * $boost);
             if ($cap > 0 && ($dailyCount[$recipient] ?? 0) >= $cap) {
                 continue;
             }
@@ -351,6 +364,9 @@ class DispatchPendingEmails extends Command
             // 60м и не давал слить весь бэклог за окно (жалоба пользователя).
             $floor = max($minInterval, (int) ($overrides[$recipient] ?? 0));
             $interval = max($floor, intdiv($remainingSec, max(1, (int) $n)));
+            if ($boost > 1.0) {
+                $interval = max($floor, (int) round($interval / $boost));
+            }
             $last = $lastDispatched[$recipient] ?? null;
 
             if ($last === null || Carbon::parse($last)->lte($now->copy()->subSeconds($interval))) {

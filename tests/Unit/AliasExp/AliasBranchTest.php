@@ -75,6 +75,14 @@ class AliasBranchTest extends TestCase
         $this->assertSame('Ролик — 1 шт.!', CampaignEmailBuilder::withSuffix('Ролик — 1 шт.', '!'));
     }
 
+    public function test_footer_skipped_when_signature_full(): void
+    {
+        $blocks = '[{"type": "signature"}, {"type": "company_footer"}]';
+        $this->assertTrue(CampaignEmailBuilder::signatureShowsOrganization(['blocks' => $blocks, 'signature_format' => 'full']));
+        $this->assertFalse(CampaignEmailBuilder::signatureShowsOrganization(['blocks' => $blocks, 'signature_format' => 'name_only']));
+        $this->assertTrue(CampaignEmailBuilder::signatureShowsOrganization(['blocks' => '[{"type": "signature", "format": "full"}]', 'signature_format' => 'name_only']));
+    }
+
     public function test_tagless_subject(): void
     {
         $this->assertSame('Запрос: Ролик', CampaignEmailBuilder::cleanTaglessSubject('Запрос: Ролик ()'));
