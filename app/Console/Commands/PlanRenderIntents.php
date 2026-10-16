@@ -142,6 +142,11 @@ class PlanRenderIntents extends Command
             if ($active === []) {
                 continue;
             }
+            // Позиции ветки «ящик на батч» ведёт только она (иначе ветки не сравнить).
+            $active = array_values(array_diff($active, array_keys($aliasClaimed ??= \App\Services\AliasExp\AliasBranch::claimedItemIds())));
+            if ($active === []) {
+                continue;
+            }
 
             $backlogSuppliers = DB::connection(self::CONN)->table('send_intents')
                 ->where('request_id', $rid)->where('status', 'backlog')

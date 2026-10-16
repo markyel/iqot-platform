@@ -44,6 +44,17 @@ final class SenderPool
         return self::hasColumn() ? " AND ({$col} IS NULL OR {$col} = '" . self::MAIN . "')" : '';
     }
 
+    /** @return array<int,true> id ящиков ветки «ящик на батч» */
+    public static function aliasIds(): array
+    {
+        if (!self::hasColumn()) {
+            return [];
+        }
+
+        return array_fill_keys(\Illuminate\Support\Facades\DB::connection('reports')->table('senders')
+            ->where('pool', self::ALIAS)->pluck('id')->map(fn ($v) => (int) $v)->all(), true);
+    }
+
     public static function forget(): void
     {
         self::$hasColumn = null;

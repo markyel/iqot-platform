@@ -128,10 +128,15 @@ class DispatchPendingEmails extends Command
             ->groupBy('sender_id')
             ->pluck('n', 'sender_id');
         $dailyLimitHit = 0;
+        // Ящики ветки «ящик на батч» шлют только в своё окно (будни 9–18 МСК), уже общего окна тика.
+        $aliasClosed = !\App\Services\AliasExp\AliasWindow::isOpen() ? \App\Support\Senders\SenderPool::aliasIds() : [];
 
         foreach ($senders as $sender) {
             if ($dispatched >= $limit) {
                 break;
+            }
+            if (isset($aliasClosed[(int) $sender->id])) {
+                continue;
             }
 
             $delaySec = max(1, (int) ($sender->send_delay_seconds ?: 2));

@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Support\Senders\SenderPool;
 use App\Jobs\DiscoverFromCampaignJob;
+use App\Services\AliasExp\AliasBranch;
 use App\Services\Api\OpenAIClassifierClient;
 use App\Services\Generate\Batch;
 use App\Services\Generate\CampaignBodyGenerator;
@@ -50,6 +51,8 @@ class PlanDayCampaign extends Command
         {--request= : Только эта заявка (тест)}
         {--limit=0 : Потолок писем за прогон, 0 = весь план (тест)}
         {--hold : (тест) сразу после persist уводить письма в held — диспетчер не заберёт}
+        {--alias-only : (тест) только ветка «ящик на батч», без основного плана}
+        {--alias-limit= : Потолок батчей ветки «ящик на батч» за прогон (по умолчанию — дневной бюджет ящиков)}
         {--force : Запустить при выключенном флаге}';
 
     protected $description = 'Фаза 2: построить дневной план рассылки (позиции→пулы→Яндекс→аффинность→назначатель)';
@@ -131,6 +134,7 @@ class PlanDayCampaign extends Command
         $selector = new CampaignSupplierSelector();
 
         $poolMap = [];        // itemId => [supplierId] (остаточный пул)
+        $emailedCount = [];   // itemId => скольким поставщикам уже писали (ветка «ящик на батч» берёт только 0)
         $supplierEmail = [];  // supplierId => email
 
         foreach ($grouper->group(array_values($itemRows)) as $batch) {
@@ -150,6 +154,7 @@ class PlanDayCampaign extends Command
                     continue;
                 }
                 $emailed = $coverage->emailedSuppliersPerItem([$iid])[$iid] ?? [];
+                $emailedCount[$iid] = count($emailed);
                 $poolMap[$iid] = $coverage->remainingPool($supIds, $emailed);
             }
         }
@@ -212,6 +217,42 @@ class PlanDayCampaign extends Command
                     }
                 }
             }
+        }
+
+        // 2c. Ветка «ящик на батч» (docs/alias-mailbox-design.md): позиции, отданные ей раньше, основная ветка
+        // не берёт; доля новых позиций уходит в неё сегодня, пока хватает дневного бюджета ящиков.
+        $aliasGroups = [];
+        $aliasRows = [];
+        $aliasOnly = (bool) $this->option('alias-only');
+        foreach (AliasBranch::claimedItemIds() as $cid => $_) {
+            unset($positions[$cid], $poolMap[$cid], $itemRows[$cid], $relevantMap[$cid]);
+        }
+        if (AliasBranch::enabled() || $aliasOnly || $this->option('alias-limit') !== null) {
+            $budget = AliasBranch::budgetToday();
+            if ($this->option('alias-limit') !== null) {
+                $budget = min($budget, max(0, (int) $this->option('alias-limit')));
+            }
+            $cands = AliasBranch::candidates($positions, $poolMap, $emailedCount);
+            $aliasGroups = array_slice(AliasBranch::group($cands, $itemRows, (int) config('services.alias_exp.items_per_batch', 2)), 0, $budget);
+            foreach ($aliasGroups as $g) {
+                foreach ($g as $iid) {
+                    $aliasRows[$iid] = $itemRows[$iid];
+                }
+            }
+            $this->line(sprintf('  [ВЕТКА ящик-на-батч] кандидатов %d, бюджет ящиков %d, батчей %d (позиций %d, получателей ~%d)',
+                count($cands), $budget, count($aliasGroups), count($aliasRows),
+                array_sum(array_map(fn ($g) => count(array_unique(array_merge(...array_map(fn ($i) => $poolMap[$i] ?? [], $g)))), $aliasGroups))));
+        }
+        $aliasPool = array_intersect_key($poolMap, $aliasRows);
+        $aliasRelevant = array_intersect_key($relevantMap, $aliasRows);
+        foreach (array_keys($aliasRows) as $aid) {
+            unset($positions[$aid], $poolMap[$aid], $itemRows[$aid], $relevantMap[$aid]);
+        }
+        if ($aliasOnly) {
+            if (!$dry && $aliasGroups !== []) {
+                $this->renderAlias($aliasGroups, $aliasRows, $aliasPool, $aliasRelevant, $useNewRouting);
+            }
+            return self::SUCCESS;
         }
 
         // 3. Аффинность.
@@ -287,6 +328,10 @@ class PlanDayCampaign extends Command
             $res['batch_ids'] ? implode(',', $res['batch_ids']) : '—',
         ));
 
+        if ($aliasGroups !== []) {
+            $this->renderAlias($aliasGroups, $aliasRows, $aliasPool, $aliasRelevant, $useNewRouting);
+        }
+
         // 10. Discovery новых доменов из Яндекс-выдачи (только боевой прогон): анализ
         // сайта + авто-добавление поставщика с таксономией — DiscoverFromCampaignJob
         // (очередь default). Найденных дошлёт top-up plan-render / завтрашний план.
@@ -313,6 +358,15 @@ class PlanDayCampaign extends Command
             'assign' => $assignStats,
         ]);
         return self::SUCCESS;
+    }
+
+    private function renderAlias(array $groups, array $rows, array $pool, array $relevant, bool $useNewRouting): void
+    {
+        $r = app(AliasBranch::class)->render($groups, $rows, $pool, $relevant,
+            fn (array $items) => $this->makeBatch($items, $useNewRouting), $this->makeClient(), (bool) $this->option('hold'));
+        $this->info(sprintf('Ветка «ящик на батч»: батчей %d, писем %d, сбоев %d. Ящики: %s', $r['batches'], $r['queued'], $r['errors'],
+            implode(', ', array_map(fn ($b, $m) => "{$m} (batch {$b})", array_keys($r['mailboxes']), $r['mailboxes'])) ?: '—'));
+        Log::info('PlanDayCampaign: ветка alias', $r);
     }
 
     private function cntArr(array $a): int
@@ -623,7 +677,9 @@ class PlanDayCampaign extends Command
         $today = Carbon::now('Europe/Moscow')->toDateString();
         $pending = DB::connection(self::CONN)->table('email_queue')
             ->whereIn(DB::raw('LOWER(to_email)'), $emails)
-            ->where('status', 'pending')->where('scheduled_at', '<', self::HELD)
+            // Только к отправке до конца сегодняшних суток: будущие слоты ветки «ящик на батч» (письма
+            // расписаны на дни вперёд) не должны съедать дневной кап получателя основной рассылки.
+            ->where('status', 'pending')->where('scheduled_at', '<=', Carbon::now('Europe/Moscow')->endOfDay()->utc())
             ->selectRaw('LOWER(to_email) r, COUNT(*) c')->groupBy(DB::raw('LOWER(to_email)'))->pluck('c', 'r');
         $caps = [];
         $rows = DB::connection(self::CONN)->table('recipient_mailboxes')->whereIn('email', $emails)

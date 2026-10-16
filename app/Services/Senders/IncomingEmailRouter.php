@@ -139,6 +139,80 @@ class IncomingEmailRouter
         return $queueId ? 'replied' : 'conversation';
     }
 
+    /**
+     * Ответ на ящик ветки «ящик на батч» (docs/alias-mailbox-design.md): меток в письме нет — ящик и есть
+     * метка ($senderId найден по X-Original-To/To в общем info@ домена). Внутри ящика: точное письмо по
+     * In-Reply-To/References → message-id отправленного, иначе по адресу отправителя ответа, иначе по его домену.
+     *
+     * @return string исход: duplicate | replied | conversation | unidentified | bounce | skipped
+     */
+    public function routeAlias(int $senderId, ParsedEmail $email): string
+    {
+        if ($email->messageId === '') {
+            return 'skipped';
+        }
+        if ($this->isDuplicate($email->messageId)) {
+            return 'duplicate';
+        }
+        if ($this->isBounce($email)) {
+            $reason = $this->classifyBounceReason($email);
+            $failed = $this->extractFailedRecipient($email);
+            $this->saveUnidentified($senderId, $email, 'bounce', $reason, $failed);
+            $this->recordBounceFailure($senderId, $email, $reason, $failed);
+            return 'bounce';
+        }
+
+        [$queueId, $supplierId, $batchId] = $this->matchAliasQueue($senderId, $email);
+        if (!$batchId) {
+            $this->saveUnidentified($senderId, $email, 'no_token');
+            return 'unidentified';
+        }
+        $supplierId ??= $this->findSupplierByEmail($email->fromEmail);
+        if (!$supplierId) {
+            $this->saveUnidentified($senderId, $email, 'no_supplier');
+            return 'unidentified';
+        }
+        $this->handleConversation($batchId, $supplierId, $queueId, $email);
+
+        return $queueId ? 'replied' : 'conversation';
+    }
+
+    /** @return array{0:?int,1:?int,2:?int} [queueId, supplierId, batchId] */
+    private function matchAliasQueue(int $senderId, ParsedEmail $email): array
+    {
+        $rows = DB::connection('reports')->table('email_queue')->where('sender_id', $senderId)
+            ->orderByDesc('id')->get(['id', 'batch_id', 'supplier_id', 'to_email', 'email_service_response']);
+        if ($rows->isEmpty()) {
+            return [null, null, null];
+        }
+        $hit = fn ($r) => [(int) $r->id, $r->supplier_id ? (int) $r->supplier_id : null, (int) $r->batch_id];
+
+        preg_match_all('/<[^<>\s]+>/', $email->inReplyTo . ' ' . $email->references, $m);
+        $refs = array_flip(array_map('mb_strtolower', $m[0]));
+        if ($refs !== []) {
+            foreach ($rows as $r) {
+                $mid = mb_strtolower((string) (json_decode((string) $r->email_service_response, true)['message_id'] ?? ''));
+                if ($mid !== '' && isset($refs[$mid])) {
+                    return $hit($r);
+                }
+            }
+        }
+        $from = mb_strtolower(trim($email->fromEmail));
+        foreach ($rows as $r) {
+            if ($from !== '' && mb_strtolower(trim((string) $r->to_email)) === $from) {
+                return $hit($r);
+            }
+        }
+        $dom = ltrim((string) strrchr($from, '@'), '@');
+        $byDomain = $dom === '' ? collect() : $rows->filter(fn ($r) => str_ends_with(mb_strtolower((string) $r->to_email), '@' . $dom));
+        if ($byDomain->count() === 1) {
+            return $hit($byDomain->first());
+        }
+
+        // Ящик знает свой батч, даже если поставщика не вычислили (найдём по адресу в suppliers).
+        return [null, null, (int) $rows->first()->batch_id];
+    }
+
     private function isDuplicate(string $messageId): bool
     {
         return DB::connection('reports')->table('email_messages')

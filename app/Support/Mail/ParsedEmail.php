@@ -25,6 +25,10 @@ class ParsedEmail
         public readonly string $references,
         public readonly ?\DateTimeInterface $date,
         public readonly array $attachments = [],
+        // Адрес, на который письмо пришло до пересылки (X-Original-To), и все To/Cc нижним
+        // регистром — по ним ветка «ящик на батч» опознаёт ящик, на который ответили.
+        public readonly string $originalTo = '',
+        public readonly array $recipients = [],
     ) {
     }
 

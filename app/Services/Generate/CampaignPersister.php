@@ -126,6 +126,10 @@ class CampaignPersister
                 } else {
                     $scheduledAt = now();
                 }
+                // Явный слот (ветка «ящик на батч»: письма ящика расписаны по рабочим часам с шагом паузы).
+                if (!empty($email['scheduled_at'])) {
+                    $scheduledAt = $email['scheduled_at'];
+                }
                 $emailQueueId = (int) DB::connection(self::CONN)->table('email_queue')->insertGetId([
                     'batch_id' => $batchId,
                     'token' => $token,

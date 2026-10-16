@@ -82,11 +82,16 @@ class CampaignEmailBuilder
         $subject = (string) ($template['subject_template'] ?? '');
         // В ТЕМЕ — только короткий БАЗОВЫЙ реф (естественно; per-supplier суффикс с телом
         // в Ref). matchBatch ловит базовый токен → батч, поставщик резолвится по e-mail/телу.
-        $subject = $this->replaceFirst($subject, '{{tracking_token}}', $baseToken);
-        $subject = $this->replaceFirst($subject, '{{request_number}}', (string) $requestNumber);
+        // Ветка «ящик на батч»: меток нет вовсе — ни реф, ни номер заявки (метка — сам адрес ящика).
+        $noTags = $batch->purpose === 'alias';
+        $subject = $this->replaceFirst($subject, '{{tracking_token}}', $noTags ? '' : $baseToken);
+        $subject = $this->replaceFirst($subject, '{{request_number}}', $noTags ? '' : (string) $requestNumber);
         $subject = $this->replaceFirst($subject, '{{item_name}}', (string) $firstItemName);
         // Схлопнуть возможные двойные разделители/пробелы, если item_name вышел пустым/коротким.
         $subject = trim((string) preg_replace('/\s{2,}/u', ' ', $subject));
+        if ($noTags) {
+            $subject = self::cleanTaglessSubject($subject);
+        }
 
         // ── HTML ────────────────────────────────────────────────────────────
         $emailHTML = "<!DOCTYPE html>\n<html>\n<head><meta charset=\"UTF-8\"></head>\n"
@@ -106,7 +111,7 @@ class CampaignEmailBuilder
                 'email' => $senderEmail,
             ],
             'organization' => $senderOrganization,
-            'token' => $token,
+            'token' => $noTags ? '' : $token,
             // found_hint (намёк со ссылкой на сайт поставщика) — РЕДКИЙ блок, рендерится
             // ТОЛЬКО если скелет шаблона содержит {"type":"found_hint"} (лишь у части
             // шаблонов = ящиков). Реальные закупщики почти не вставляют ссылки — поэтому
@@ -967,6 +972,21 @@ class CampaignEmailBuilder
         return $html;
     }
 
+    /**
+     * Тема без метки: шаблоны рассчитаны на «… ({{tracking_token}})», «№{{tracking_token}}», «Заявка {{tracking_token}} — …».
+     * Убираем осиротевшие скобки, «№», висящие разделители и слова «заявка/запрос» на краю.
+     */
+    public static function cleanTaglessSubject(string $s): string
+    {
+        $s = preg_replace('/\(\s*\)|№\s*(?=$|[,·—–:-])|№\s*$/u', '', $s) ?? $s;
+        $s = preg_replace('/^\s*[·—–:,-]+\s*/u', '', $s) ?? $s;
+        $s = preg_replace('/\s*[·—–:,-]+\s*(?:(?:заявка|запрос)\s*)?$/iu', '', $s) ?? $s;
+        $s = preg_replace('/^\s*заявка\s*[·—–:,-]\s*/iu', '', $s) ?? $s;
+        $s = preg_replace('/\s{2,}/u', ' ', $s) ?? $s;
+
+        return trim($s, " 	,·—–:-");
+    }
+
     // ── Рендер блоков ───────────────────────────────────────────────────────
 
     /**
@@ -1074,6 +1094,9 @@ class CampaignEmailBuilder
                 );
 
             case 'token':
+                if ((string) $token === '') {
+                    return '';
+                }
                 // Видимый номер запроса (не скрытый 1px-текст — спам-признак); формулировка своя у шаблона.
                 return VisibleTokenLine::render((string) $token, (array) $template, $block, $textStyles);
 

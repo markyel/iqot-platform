@@ -45,7 +45,8 @@ class QueuedEmailSender
             $fromName = trim(preg_replace('/["\'`\\\\]/', '', (string) ($sender->sender_full_name ?: $sender->sender_name ?: '')));
             $fromEmail = (string) ($email->from_email ?: $sender->email);
             $bodyHtml = (string) ($email->body_html ?? '');
-            $relayMailer->send([
+            $messageId = $this->generateMessageId($fromEmail);
+            $sentId = $relayMailer->send([
                 'smtp_server' => (string) $sender->smtp_server,
                 'smtp_port' => (int) ($sender->smtp_port ?: 465),
                 'smtp_user' => (string) $sender->smtp_user,
@@ -60,11 +61,12 @@ class QueuedEmailSender
                 'body_text' => $this->htmlToText($bodyHtml),
                 // Свой Message-ID (иначе письмо уходит вовсе без него → gmail reject,
                 // спам-очки у mail.ru/Яндекса). Формат <hex@домен-отправителя>.
-                'message_id' => $this->generateMessageId($fromEmail),
+                'message_id' => $messageId,
                 'reply_to' => $fromEmail,
                 'attachments' => $this->microserviceAttachments($email->batch_id),
                 'verify_cert' => ($encryption === 'ssl' && $isBeget),
             ], (int) $email->id, (int) ($email->retry_count ?? 0));
+            $this->rememberMessageId((int) $email->id, $sentId ?: $messageId);
 
             return;
         }
@@ -131,12 +133,28 @@ class QueuedEmailSender
             ->subject($this->sanitizeHeader((string) $email->subject))
             ->text($this->htmlToText((string) ($email->body_html ?? '')))
             ->html($email->body_html ?? '');
+        $messageId = $this->generateMessageId((string) $fromEmail);
+        $message->getHeaders()->addIdHeader('Message-ID', trim($messageId, '<>'));
 
         foreach ($this->attachmentsFor($email->batch_id) as $att) {
             $message->addPart(new DataPart($att['data'], $att['name'], $att['mime']));
         }
 
         $mailer->send($message);
+        $this->rememberMessageId((int) $email->id, $messageId);
+    }
+
+    /**
+     * Message-ID отправленного письма → email_queue.email_service_response: ответ без метки
+     * (ветка «ящик на батч») находится по In-Reply-To/References. Сбой записи не валит отправку.
+     */
+    private function rememberMessageId(int $queueId, string $messageId): void
+    {
+        try {
+            DB::connection('reports')->table('email_queue')->where('id', $queueId)
+                ->update(['email_service_response' => json_encode(['message_id' => $messageId])]);
+        } catch (\Throwable) {
+        }
     }
 
     /**

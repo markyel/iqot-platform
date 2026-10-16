@@ -43,6 +43,21 @@ class DispatchPendingReceives extends Command
             ->orderBy('id')
             ->pluck('id');
 
+        // Общие ящики доменов ветки «ящик на батч» (info@) — независимо от флага ветки: ответы на уже
+        // разосланные письма и на удалённые ящики (катч-олл) должны приниматься.
+        $aliasDomains = 0;
+        try {
+            foreach (DB::table('alias_domains')->whereNotNull('inbox_password')->pluck('id') as $domainId) {
+                \App\Jobs\ReceiveAliasInboxJob::dispatch((int) $domainId);
+                $aliasDomains++;
+            }
+        } catch (\Throwable) {
+            // таблицы нет — ветка не развёрнута
+        }
+        if ($aliasDomains > 0) {
+            $this->info("Dispatched alias inbox jobs: {$aliasDomains} domain(s).");
+        }
+
         if ($senders->isEmpty()) {
             $this->info('No active mailboxes with IMAP credentials.');
             return self::SUCCESS;

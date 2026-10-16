@@ -90,6 +90,11 @@ class BuildSendIntents extends Command
             if ($activeItems === []) {
                 continue;
             }
+            // Позиции ветки «ящик на батч» ведёт только она (иначе ветки не сравнить).
+            $activeItems = array_values(array_diff($activeItems, array_keys($aliasClaimed ??= \App\Services\AliasExp\AliasBranch::claimedItemIds())));
+            if ($activeItems === []) {
+                continue;
+            }
 
             // Кандидаты — профильные поставщики по АКТИВНЫМ позициям (grouper+selector).
             $items = $this->loadItems($rid, $activeItems);

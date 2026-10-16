@@ -139,7 +139,41 @@ class ImapMailboxReader
             references: $this->str($message->getReferences()),
             date: $date,
             attachments: $attachments,
+            originalTo: $this->originalTo($message),
+            recipients: $this->recipientList($message),
         );
+    }
+
+    private function originalTo(Message $message): string
+    {
+        try {
+            $raw = (string) ($message->getHeader()?->raw ?? '');
+        } catch (\Throwable) {
+            return '';
+        }
+        if (preg_match('/^X-Original-To:\s*<?([^\s<>]+@[^\s<>]+)>?/mi', $raw, $m)) {
+            return mb_strtolower(trim($m[1]));
+        }
+
+        return '';
+    }
+
+    /** @return string[] */
+    private function recipientList(Message $message): array
+    {
+        $out = [];
+        foreach ([$message->getTo(), $message->getCc()] as $attr) {
+            try {
+                foreach ($attr ? $attr->all() : [] as $a) {
+                    if (!empty($a->mail)) {
+                        $out[] = mb_strtolower(trim((string) $a->mail));
+                    }
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        return array_values(array_unique($out));
     }
 
     /**
