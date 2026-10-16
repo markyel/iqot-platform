@@ -76,6 +76,13 @@
   (будни 9–18 МСК, шаг 300 с + до 90 с), диспетчер дополнительно не шлёт ящикам `pool=alias` вне окна; `recipientCaps`
   плана считает только письма к отправке сегодня. Тест: `emails:plan-day --alias-only --alias-items=ID --hold --force`,
   затем `alias-exp release {batch}`. Название организации в подписи — без хвоста ExportBase (`OrgReserve::displayName`).
+- **Отправка ветки** (16.10.2026): слоты лишь делят письма ящика по дням — внутри дня ящику доступны все письма
+  на сегодня (диспетчер шлёт тем, кто уже созрел по пейсингу; иначе ящик простаивал, т.к. первые получатели слотов
+  недавно получили письма основной ветки). Лимиты на получателя для писем ветки мягче на 20%
+  (`ALIAS_EXP_RECIPIENT_BOOST=1.2`: дневной потолок ×1.2, интервал ÷1.2 не ниже пола); основная ветка свой потолок
+  не превышает. Одна деталь из разных заявок — не пара (`AliasBranch::sameProduct`). Админка — вкладка
+  «Эксперимент: ящик на батч» в «Ходе выполнения» (`/manage/emails/campaigns/alias`). Пробные батчи 16.10:
+  53278 (4305, makarov.k@, 115 писем) и 53279 (4304, artem_zakharov@, 98 писем).
 - **Ф4** — `ReceiveAliasInboxJob` (очередь `receive`, из `emails:receive-dispatch`, независимо от флага ветки): IMAP `info@`
   домена; ящик-метка по `X-Original-To`, иначе To/Cc (`ParsedEmail::originalTo/recipients`); `IncomingEmailRouter::routeAlias`:
   письмо по `In-Reply-To`/`References` → `email_queue.email_service_response.message_id` (теперь пишется для всех писем,
