@@ -1,6 +1,6 @@
 # Экспериментальный алгоритм «ящик на батч» (без меток)
 
-Статус: Ф1–Ф2 на проде (16.10.2026); ветка в плане дня (Ф3) — не начата. Работает **параллельно** основной рассылке (план дня v2), не заменяет её.
+Статус: Ф1–Ф4 на проде (16.10.2026), флаг `ALIAS_EXP_ENABLED` выключен; пробный батч 53278 (makarov.k@prosnabz.ru, 115 писем) удержан до решения владельца. Работает **параллельно** основной рассылке (план дня v2), не заменяет её.
 
 ## Идея (владелец, 16.10.2026)
 Метки (токен в теме, видимый/скрытый номер в теле) не нужны: **ящик и есть метка**. На каждый батч создаётся
@@ -67,8 +67,22 @@
   `CampaignSenderAssigner`, `SenderDailyCapacity::poolRemainingTotal`, проверочных письмах Гибрида, прогреве, возврате ящиков и
   опросе IMAP. Спам-гвард ящики ветки не исключает (защищает репутацию доменов). Без колонки `senders.pool` фильтр — no-op,
   а фабрика ящик не создаёт. Колонка `reports.senders.pool` (`main`/`alias`, индекс) — накачена 16.10.2026 (подтверждение владельца).
+- **Ф3** — `App\Services\AliasExp\AliasBranch` в `emails:plan-day` (шаг 2c, до аффинности): доля по `crc32("alias:".item_id)`, только
+  неименные и ещё никому не отправленные позиции; позиции из `alias_mailboxes.request_item_ids` основная ветка (plan-day,
+  build-intents, plan-render) больше не берёт; не влезшие в дневной бюджет ящиков (≤10/сутки МСК) — сегодня в основную.
+  Пары — один тип и область (однотипные первыми); получатели — объединение пулов, релевантные по Яндексу первыми.
+  Письмо без меток: `Batch::$purpose='alias'` → блок `token` пуст, `{{tracking_token}}`/`{{request_number}}` из темы убраны
+  (`CampaignEmailBuilder::cleanTaglessSubject`); внутренний реф батча в БД остаётся. Расписание — `AliasWindow::slots`
+  (будни 9–18 МСК, шаг 300 с + до 90 с), диспетчер дополнительно не шлёт ящикам `pool=alias` вне окна; `recipientCaps`
+  плана считает только письма к отправке сегодня. Тест: `emails:plan-day --alias-only --alias-items=ID --hold --force`,
+  затем `alias-exp release {batch}`. Название организации в подписи — без хвоста ExportBase (`OrgReserve::displayName`).
+- **Ф4** — `ReceiveAliasInboxJob` (очередь `receive`, из `emails:receive-dispatch`, независимо от флага ветки): IMAP `info@`
+  домена; ящик-метка по `X-Original-To`, иначе To/Cc (`ParsedEmail::originalTo/recipients`); `IncomingEmailRouter::routeAlias`:
+  письмо по `In-Reply-To`/`References` → `email_queue.email_service_response.message_id` (теперь пишется для всех писем,
+  `QueuedEmailSender::rememberMessageId`), иначе по адресу отправителя, иначе по домену, иначе батч ящика + поставщик по адресу.
+  Не адресованное ни одному ящику-метке (служебные Beget, письма на info@) — пропуск.
 - Команда `alias-exp status | api-check {домен} | domain-add {домен} [--inbox=info] [--inbox-password=] | mailbox-create
-  [--domain=] [--deadline=] | drop-expired [--dry-run]`; `drop-expired` — ежедневно 03:30 МСК.
+  [--domain=] [--deadline=] | mailbox-drop {email} | release {batch} | drop-expired [--dry-run] | reserve-filter`; `drop-expired` — ежедневно 03:30 МСК.
 - Конфиг `services.alias_exp` (`ALIAS_EXP_*`: доля 0.2, 2 позиции, пауза 300 с, лимит 120/сутки, ≤10 ящиков/сутки,
   окно 9–18 Europe/Moscow, срок +7 / 21 дн).
 
