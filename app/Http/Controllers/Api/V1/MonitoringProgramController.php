@@ -566,6 +566,9 @@ class MonitoringProgramController extends Controller
                 'price_per_item' => $limits['price'],
                 'kp_price_multiplier' => $limits['kp_multiplier'],
             ],
+            // Начисления за покрытые позиции (docs/monitoring-design.md §11a): списание раз в неделю.
+            'billing' => app(\App\Services\Monitoring\Billing\MonitoringBilling::class)->programSummary($p),
+            'paused_reason' => $p->paused_reason,
             'created_at' => $p->created_at?->toIso8601String(),
         ];
     }

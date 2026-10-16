@@ -238,6 +238,15 @@ Schedule::command('monitoring:hybrid sync')
     ->everyThirtyMinutes()
     ->withoutOverlapping();
 
+// Тарификация мониторинга (docs/monitoring-design.md §11a): начисление за сутки в конце дня (МСК),
+// списание накопленного — раз в 7 дней и в конце периода подписки (команда сама решает, пора ли).
+Schedule::command('monitoring:billing accrue')
+    ->dailyAt('23:50')->timezone('Europe/Moscow')
+    ->withoutOverlapping();
+Schedule::command('monitoring:billing charge')
+    ->dailyAt('00:20')->timezone('Europe/Moscow')
+    ->withoutOverlapping();
+
 // Публичный API: оркестратор Discovery поставщиков — каждые 10 минут (§7).
 Schedule::job(new \App\Jobs\Api\DiscoveryOrchestratorJob())->everyTenMinutes()->withoutOverlapping();
 

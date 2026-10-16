@@ -308,6 +308,12 @@ class ProgressDashboard
             'trust' => DB::table('mp_sites')->selectRaw('trust_level, COUNT(*) c')->groupBy('trust_level')->pluck('c', 'trust_level')->all(),
             'budget' => $budget, 'limits' => $limits, 'llm_usd_limit' => MonitoringSettings::get('llm_usd_per_day'),
             'per_product_per_day' => $perProductPerDay,
+            // Тарификация (§11a): последние сутки начисления, не списано, последнее списание, предупреждение.
+            'billing' => \App\Models\Monitoring\MonitoringProgram::query()->orderBy('id')->get()->map(fn ($mp) => [
+                'p' => $mp,
+                'day' => DB::table('mp_billing_days')->where('program_id', $mp->id)->orderByDesc('day')->first(),
+                'sum' => app(\App\Services\Monitoring\Billing\MonitoringBilling::class)->programSummary($mp),
+            ])->all(),
             'index' => DB::selectOne('SELECT COUNT(*) pages, SUM(fetched_at IS NOT NULL) done, COUNT(DISTINCT site_id) sites FROM mp_site_pages'),
             'sites_priced' => (int) DB::table('mp_listings')->where('bench', false)->where('status', 'active')->whereNotNull('price')->distinct()->count('site_id'),
         ];

@@ -343,6 +343,12 @@ curl -X POST https://iqot.ru/api/v1/submissions \
   "site_refresh_days": 14,
   "items": { "total": 1052, "active": 1052, "matched": 1051, "ambiguous": 1, "covered": 812 },
   "plan": { "items_max": 15000, "items_included": 500, "price_per_item": 20, "kp_price_multiplier": 3 },
+  "billing": {
+    "accrued_unbilled": 4180.27, "unbilled_days": 5,
+    "last_charge": { "amount": 5852.40, "period_from": "2026-10-15", "period_to": "2026-10-21", "charged_at": "2026-10-22T00:20:05+03:00" },
+    "warning": null
+  },
+  "paused_reason": null,
   "created_at": "2026-10-14T08:00:00+00:00"
 }
 ```
@@ -357,6 +363,10 @@ curl -X POST https://iqot.ru/api/v1/submissions \
 | `plan.items_included` | Позиций, входящих в абонентскую плату |
 | `plan.price_per_item` | ₽ в месяц за покрытую позицию сверх включённых |
 | `plan.kp_price_multiplier` | Множитель ставки для позиции со свежим КП (режим `hybrid`) |
+| `billing.accrued_unbilled` / `unbilled_days` | Начислено и ещё не списано, ₽ / за сколько суток |
+| `billing.last_charge` | Последнее списание: сумма и период |
+| `billing.warning` | Не хватает средств на списание: `due` — сумма, `pause_after` — когда программа встанет на паузу. Иначе `null` |
+| `paused_reason` | `billing` — программа на паузе из-за нехватки средств (снимется автоматически после пополнения и списания) |
 
 ### 10.4. `PATCH /monitoring/programs/{id}` — изменить программу
 
@@ -533,6 +543,9 @@ curl -X POST https://iqot.ru/api/v1/monitoring/programs/mon_01M4…/items \
 - `plan.items_included` позиций входят в абонентскую плату. Сверх них — `plan.price_per_item` ₽ в месяц за позицию.
 - **Позиция со свежим КП поставщика** (режим `hybrid`, признак `kp`) оплачивается по ставке × `plan.kp_price_multiplier` (3), даже если у неё есть и цены с сайтов. КП считается свежим 60 дней с момента получения.
 - Первичный поиск и сопоставление отдельно не оплачиваются.
+- **Начисление — ежедневно:** (позиции без свежего КП × `price_per_item` + позиции со свежим КП × `price_per_item` × `kp_price_multiplier`) / 30, за вычетом `items_included` (сначала в счёт позиций без КП). Включённые позиции общие для всех программ клиента. Свежее КП — полученное по запросу этой программы.
+- **Списание с баланса — раз в 7 дней** и в конце периода подписки, одной строкой на программу за период. Детализация — в `billing` программы.
+- **Не хватает средств:** в `billing.warning` появляется сумма и дата паузы; через 3 дня без пополнения программы клиента встают на паузу (`status: paused`, `paused_reason: billing`) — найденные цены сохраняются, перепроверка и письма останавливаются. После пополнения списание проходит при следующем расчёте, пауза снимается автоматически.
 
 ### 10.13. Сроки
 

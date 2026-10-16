@@ -42,6 +42,16 @@ return [
 
     // Ф3 «Гибрид»: проверочные КП к ценам сайтов. Отправка реальных писем поставщикам — только
     // при send_enabled (выбор позиций, сбор ответов и «бесплатные» сверки работают и без него).
+    // Тарификация покрытых позиций (docs/monitoring-design.md §11a): начисление за сутки, списание с баланса
+    // еженедельно и в конце периода подписки; при нехватке средств — предупреждение, через grace_days — пауза.
+    'billing' => [
+        'enabled' => (bool) env('MONITORING_BILLING_ENABLED', true),
+        'start_date' => env('MONITORING_BILLING_FROM', '2026-10-15'), // решение владельца 16.10.2026: «со вчерашней»
+        'charge_every_days' => (int) env('MONITORING_BILLING_EVERY_DAYS', 7),
+        'grace_days' => (int) env('MONITORING_BILLING_GRACE_DAYS', 3),
+        'timezone' => 'Europe/Moscow',
+    ],
+
     'hybrid' => [
         'send_enabled' => (bool) env('MONITORING_HYBRID_SEND', false),
         // Запросы КП профильному пулу (RfqPlanner::pool). Выключено 16.10.2026: подборщик отдавал

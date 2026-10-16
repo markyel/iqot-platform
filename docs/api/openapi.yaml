@@ -831,6 +831,27 @@ components:
             items_included: { type: integer, description: 'Включено в абонентскую плату' }
             price_per_item: { type: number, description: 'Цена покрытой позиции сверх включённых, ₽ в месяц' }
             kp_price_multiplier: { type: number, example: 3, description: 'Множитель ставки для позиции со свежим КП поставщика (режим hybrid)' }
+        billing:
+          type: object
+          description: 'Начисления за покрытые позиции; списание раз в 7 дней и в конце периода подписки'
+          properties:
+            accrued_unbilled: { type: number, description: 'Начислено и не списано, ₽' }
+            unbilled_days: { type: integer }
+            last_charge:
+              type: [object, 'null']
+              properties:
+                amount: { type: number }
+                period_from: { type: string, format: date }
+                period_to: { type: string, format: date }
+                charged_at: { type: string, format: date-time }
+            warning:
+              type: [object, 'null']
+              description: 'Не хватает средств на списание'
+              properties:
+                insufficient_balance: { type: boolean }
+                due: { type: number }
+                pause_after: { type: string, format: date-time }
+        paused_reason: { type: [string, 'null'], description: 'billing — пауза из-за нехватки средств' }
         created_at: { type: string, format: date-time }
 
     MonitoringItemInput:

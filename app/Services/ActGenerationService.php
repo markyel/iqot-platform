@@ -48,8 +48,12 @@ class ActGenerationService
             ->whereBetween('accessed_at', [$periodStart, $periodEnd])
             ->get();
 
+        // 4. Мониторинг цен по программам (mp_billing_charges — еженедельные списания за покрытые позиции).
+        $monitoringCharges = \Illuminate\Support\Facades\DB::table('mp_billing_charges')->where('user_id', $user->id)
+            ->whereBetween('charged_at', [$periodStart, $periodEnd])->where('amount', '>', 0)->get();
+
         // Если нет списаний - акт не формируем
-        if ($subscriptionCharges->isEmpty() && $balanceCharges->isEmpty() && $reportAccesses->isEmpty()) {
+        if ($subscriptionCharges->isEmpty() && $balanceCharges->isEmpty() && $reportAccesses->isEmpty() && $monitoringCharges->isEmpty()) {
             \Log::info("No charges found for user {$user->id} for period {$year}-{$month}");
             return null;
         }
@@ -101,6 +105,19 @@ class ActGenerationService
             ]);
         }
 
+        if ($monitoringCharges->isNotEmpty()) {
+            $periodName = Carbon::create($year, $month, 1)->locale('ru')->isoFormat('MMMM YYYY');
+            ActItem::create([
+                'act_id' => $act->id,
+                'type' => 'price_monitoring',
+                'sort_order' => $sortOrder++,
+                'name' => "Услуги мониторинга цен (программы мониторинга, покрытые позиции) информационного сервиса IQOT за {$periodName} согласно Договору-оферте, размещённому на сайте iqot.ru",
+                'unit' => 'шт',
+                'quantity' => 1,
+                'price' => round((float) $monitoringCharges->sum('amount'), 2),
+            ]);
+        }
+
         // Группируем report_accesses
         if ($reportAccesses->isNotEmpty()) {
             $totalAmount = $reportAccesses->sum('price');
@@ -140,7 +157,9 @@ class ActGenerationService
             $periodStart = Carbon::create($year, $month, 1)->startOfMonth();
             $periodEnd = Carbon::create($year, $month, 1)->endOfMonth();
             $query->whereBetween('charged_at', [$periodStart, $periodEnd]);
-        })->get();
+        })->orWhereIn('id', \Illuminate\Support\Facades\DB::table('mp_billing_charges')->where('amount', '>', 0)
+            ->whereBetween('charged_at', [Carbon::create($year, $month, 1)->startOfMonth(), Carbon::create($year, $month, 1)->endOfMonth()])->select('user_id'))
+        ->get();
 
         $generated = [];
         foreach ($users as $user) {

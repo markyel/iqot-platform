@@ -48,6 +48,37 @@
             </div>
         </div>
 
+        <div class="card" style="margin-bottom: var(--space-6);">
+            <div class="card-header"><h3 class="card-title">Тарификация — покрытые позиции</h3></div>
+            <div class="table-container">
+                <table class="table">
+                    <thead><tr><th>Программа</th><th>Последние сутки</th><th>Web / с КП / в плане</th><th>Начислено за сутки</th><th>Не списано</th><th>Последнее списание</th><th>Состояние</th></tr></thead>
+                    <tbody>
+                        @foreach ($v['billing'] ?? [] as $b)
+                            @php($d = $b['day']) @php($s = $b['sum'])
+                            <tr>
+                                <td><strong>{{ $b['p']->name }}</strong> <span style="color: var(--color-text-muted);">#{{ $b['p']->id }}</span></td>
+                                <td>{{ $d ? \Carbon\Carbon::parse($d->day)->format('d.m') : '—' }}</td>
+                                <td>{{ $d ? $fmt($d->covered_web) . ' / ' . $fmt($d->covered_kp) . ' / ' . $fmt($d->included_web + $d->included_kp) : '—' }}
+                                    @if ($d) <span style="font-size: var(--text-sm); color: var(--color-text-muted);">· {{ (float) $d->rate }} ₽, КП ×{{ (float) $d->kp_multiplier }}</span>@endif</td>
+                                <td>{{ $d ? number_format((float) $d->amount, 2, ',', ' ') . ' ₽' : '—' }}</td>
+                                <td>{{ number_format($s['accrued_unbilled'], 2, ',', ' ') }} ₽ <span style="font-size: var(--text-sm); color: var(--color-text-muted);">({{ $s['unbilled_days'] }} дн.)</span></td>
+                                <td>{{ $s['last_charge'] ? number_format($s['last_charge']['amount'], 2, ',', ' ') . ' ₽ · ' . \Carbon\Carbon::parse($s['last_charge']['charged_at'])->setTimezone('Europe/Moscow')->format('d.m') : '—' }}</td>
+                                <td>
+                                    @if ($b['p']->paused_reason === 'billing') <span class="badge badge-error">пауза: нет средств</span>
+                                    @elseif ($s['warning']) <span class="badge badge-warning">не хватает {{ number_format($s['warning']['due'], 0, ',', ' ') }} ₽, пауза после {{ \Carbon\Carbon::parse($s['warning']['pause_after'])->setTimezone('Europe/Moscow')->format('d.m') }}</span>
+                                    @else <span class="badge badge-success">в порядке</span> @endif
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+            <div style="padding: var(--space-3) var(--space-4); color: var(--color-text-muted); font-size: var(--text-sm);">
+                Начисление за сутки = (web × ставка + с КП × ставка × множитель) / 30 за вычетом позиций, включённых в план (сперва web). Списание — раз в 7 дней и в конце периода подписки; нет средств — предупреждение, через 3 дня — пауза.
+            </div>
+        </div>
+
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: var(--space-6); margin-bottom: var(--space-6);">
             <div class="card">
                 <div class="card-header"><h3 class="card-title">Расход сегодня</h3></div>
