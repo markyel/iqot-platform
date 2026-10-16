@@ -245,15 +245,31 @@ class ProgressDashboard
     {
         $db = DB::connection(self::R);
         $dayStart = now('Europe/Moscow')->startOfDay()->utc();
-        $senders = $db->select("SELECT SUBSTRING_INDEX(s.email, '@', -1) domain, s.smtp_server,
-                COUNT(*) total, SUM(s.is_active = 1) active, SUM(s.is_active = 1 AND s.blocked_until > NOW()) blocked_now,
-                SUM(s.is_active = 0) inactive, SUM(s.is_personal = 1) personal, SUM(s.daily_limit) daily_limit,
-                SUM(COALESCE(t.sent_today, 0)) sent_today, SUM(COALESCE(t.errors_24h, 0)) errors_24h
-            FROM senders s
-            LEFT JOIN (SELECT sender_id, SUM(status IN " . self::SENT . " AND sent_at >= ?) sent_today,
-                    SUM(status = 'error' AND updated_at >= NOW() - INTERVAL 24 HOUR) errors_24h
-                FROM email_queue WHERE sent_at >= ? OR updated_at >= NOW() - INTERVAL 24 HOUR GROUP BY sender_id) t ON t.sender_id = s.id
-            GROUP BY domain, s.smtp_server ORDER BY active DESC, total DESC", [$dayStart, $dayStart]);
+        // Отдельные запросы по индексам sent_at / status: OR по двум колонкам и сводка по всей
+        // email_queue давали полный скан (~5 с каждый).
+        $sentBySender = $db->table('email_queue')->where('sent_at', '>=', $dayStart)
+            ->whereRaw('status IN ' . self::SENT)->groupBy('sender_id')->selectRaw('sender_id, COUNT(*) c')->pluck('c', 'sender_id');
+        $errBySender = $db->table('email_queue')->where('status', 'error')->where('updated_at', '>=', now()->subDay())
+            ->groupBy('sender_id')->selectRaw('sender_id, COUNT(*) c')->pluck('c', 'sender_id');
+        $senderRows = $db->table('senders')->get(['id', 'email', 'smtp_server', 'is_active', 'is_personal', 'daily_limit', 'blocked_until']);
+        $groups = [];
+        foreach ($senderRows as $sr) {
+            $key = mb_strtolower(substr(strrchr((string) $sr->email, '@') ?: '@?', 1)) . '|' . $sr->smtp_server;
+            $g = $groups[$key] ?? ['domain' => explode('|', $key)[0], 'smtp_server' => $sr->smtp_server, 'total' => 0, 'active' => 0,
+                'blocked_now' => 0, 'inactive' => 0, 'personal' => 0, 'daily_limit' => 0, 'sent_today' => 0, 'errors_24h' => 0];
+            $g['total']++;
+            $active = (int) $sr->is_active === 1;
+            $g['active'] += $active ? 1 : 0;
+            $g['inactive'] += $active ? 0 : 1;
+            $g['blocked_now'] += $active && $sr->blocked_until && \Illuminate\Support\Carbon::parse($sr->blocked_until)->isFuture() ? 1 : 0;
+            $g['personal'] += (int) $sr->is_personal === 1 ? 1 : 0;
+            $g['daily_limit'] += (int) $sr->daily_limit;
+            $g['sent_today'] += (int) ($sentBySender[$sr->id] ?? 0);
+            $g['errors_24h'] += (int) ($errBySender[$sr->id] ?? 0);
+            $groups[$key] = $g;
+        }
+        usort($groups, fn ($a, $b) => [$b['active'], $b['total']] <=> [$a['active'], $a['total']]);
+        $senders = array_map(fn ($g) => (object) $g, $groups);
         $sTot = $db->selectOne("SELECT COUNT(*) total, SUM(is_active = 1) active, SUM(is_active = 1 AND blocked_until > NOW()) blocked_now,
                 SUM(is_active = 1 AND (blocked_until IS NULL OR blocked_until <= NOW())) ready,
                 COUNT(DISTINCT CASE WHEN is_active = 1 THEN SUBSTRING_INDEX(email, '@', -1) END) live_domains,
@@ -267,10 +283,13 @@ class ProgressDashboard
             $capacity = app(\App\Services\Generate\SenderDailyCapacity::class)->poolRemainingTotal();
         } catch (\Throwable) {
         }
-        $mail = $db->selectOne("SELECT SUM(status IN " . self::SENT . " AND sent_at >= ?) sent_today, SUM(status = 'pending' AND scheduled_at < ?) pending,
-                SUM(status = 'sending') sending, SUM(status = 'error' AND updated_at >= NOW() - INTERVAL 24 HOUR) errors_24h,
-                SUM(status = 'pending' AND scheduled_at < NOW() - INTERVAL 7 DAY) stale_pending
-            FROM email_queue", [$dayStart, self::HELD]);
+        $mail = (object) [
+            'sent_today' => array_sum($sentBySender->all()),
+            'pending' => $db->table('email_queue')->where('status', 'pending')->where('scheduled_at', '<', self::HELD)->count(),
+            'sending' => $db->table('email_queue')->where('status', 'sending')->count(),
+            'errors_24h' => array_sum($errBySender->all()),
+            'stale_pending' => $db->table('email_queue')->where('status', 'pending')->where('scheduled_at', '<', now()->subDays(7))->count(),
+        ];
 
         // Релеи: живая проба /health (3 с) + метка «down» предохранителя RelayHttpMailer.
         $relayMailer = app(RelayHttpMailer::class);
