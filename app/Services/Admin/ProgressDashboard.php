@@ -274,7 +274,7 @@ class ProgressDashboard
                 SUM(is_active = 1 AND (blocked_until IS NULL OR blocked_until <= NOW())) ready,
                 COUNT(DISTINCT CASE WHEN is_active = 1 THEN SUBSTRING_INDEX(email, '@', -1) END) live_domains,
                 COUNT(DISTINCT SUBSTRING_INDEX(email, '@', -1)) domains,
-                SUM(is_active = 0 AND updated_at >= NOW() - INTERVAL 7 DAY) deactivated_7d
+                SUM(is_active = 0 AND last_block_at >= NOW() - INTERVAL 7 DAY) deactivated_7d, SUM(is_active = 0) inactive_total
             FROM senders");
         $blockedList = $db->table('senders')->where('is_active', 1)->where('blocked_until', '>', now())
             ->orderByDesc('blocked_until')->limit(15)->get(['id', 'email', 'blocked_until', 'block_reason', 'block_count']);

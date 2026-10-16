@@ -22,7 +22,7 @@
             <x-stat-card value="{{ $fmt($s->live_domains) }} из {{ $fmt($s->domains) }}" label="Живых доменов рассылки" icon="globe" icon-type="primary" />
             <x-stat-card value="{{ $fmt($s->ready) }}" label="Ящиков готовы слать (из {{ $fmt($s->active) }} активных)" icon="mail" icon-type="success" />
             <x-stat-card value="{{ $fmt($s->blocked_now) }}" label="Временно заблокированы" icon="pause-circle" icon-type="{{ $s->blocked_now > 0 ? 'warning' : 'primary' }}" />
-            <x-stat-card value="{{ $fmt($s->deactivated_7d) }}" label="Отключено за 7 дней" icon="x-circle" icon-type="{{ $s->deactivated_7d > 0 ? 'error' : 'primary' }}" />
+            <x-stat-card value="{{ $fmt($s->deactivated_7d) }}" label="Отключено за 7 дней (всего отключено {{ $fmt($s->inactive_total) }})" icon="x-circle" icon-type="{{ $s->deactivated_7d > 0 ? 'error' : 'primary' }}" />
         </div>
         <div class="stats-grid" style="margin-bottom: var(--space-6);">
             <x-stat-card value="{{ $fmt($m->sent_today) }}" label="Писем отправлено сегодня" icon="send" icon-type="success" />
