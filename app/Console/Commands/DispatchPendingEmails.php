@@ -63,6 +63,12 @@ class DispatchPendingEmails extends Command
         // 2) Адаптивный пейсинг по получателю: какие to_email «созрели» на этот тик.
         $eligibleRecipients = $this->eligibleRecipients();
 
+        // Ветка «ящик на батч»: письма ящика расписаны по дням (AliasWindow::slots), но внутри дня ящику доступны
+        // все письма на сегодня — шлёт тем получателям, кто уже созрел; темп держат пауза ящика (300 с) и лимит дня.
+        $aliasIds = \App\Support\Senders\SenderPool::aliasIds();
+        $aliasUntil = Carbon::now('Europe/Moscow')->endOfDay()->utc()->toDateTimeString();
+        $aliasIdList = array_keys($aliasIds) ?: [0];
+
         // 3) Готовые ящики: активные, не заблокированные, у которых есть письма к отправке.
         $senders = DB::connection('reports')->table('senders as s')
             ->join('email_queue as eq', 'eq.sender_id', '=', 's.id')
@@ -75,13 +81,15 @@ class DispatchPendingEmails extends Command
             ->where(function ($q) {
                 $q->whereNull('s.blocked_until')->orWhereRaw('s.blocked_until <= NOW()');
             })
-            ->where(function ($q) {
+            ->where(function ($q) use ($aliasIdList, $aliasUntil) {
                 $q->where(function ($q) {
                     $q->where('eq.status', 'pending')->whereRaw('eq.scheduled_at <= NOW()');
                 })->orWhere(function ($q) {
                     $q->where('eq.status', 'error')
                         ->whereColumn('eq.retry_count', '<', 'eq.max_retries')
                         ->whereRaw('eq.scheduled_at <= NOW()');
+                })->orWhere(function ($q) use ($aliasIdList, $aliasUntil) {
+                    $q->where('eq.status', 'pending')->whereIn('eq.sender_id', $aliasIdList)->where('eq.scheduled_at', '<=', $aliasUntil);
                 });
             })
             // Заблокированные получатели (N ошибок подряд) — сразу пропускаем, не клеймим.
@@ -130,11 +138,10 @@ class DispatchPendingEmails extends Command
             ->pluck('n', 'sender_id');
         $dailyLimitHit = 0;
         // Ящики ветки «ящик на батч» шлют только в своё окно (будни 9–18 МСК), уже общего окна тика.
-        $aliasIds = \App\Support\Senders\SenderPool::aliasIds();
         $aliasClosed = !\App\Services\AliasExp\AliasWindow::isOpen() ? $aliasIds : [];
         // Свои (на 20% мягче) лимиты получателя для писем ветки; основная ветка свой потолок не превышает.
         $boost = (float) config('services.alias_exp.recipient_boost', 1.2);
-        $eligibleAlias = ($aliasIds !== [] && $boost > 1.0) ? $this->eligibleRecipients($boost) : $eligibleRecipients;
+        $eligibleAlias = ($aliasIds !== [] && $boost > 1.0) ? $this->eligibleRecipients($boost, $aliasUntil) : $eligibleRecipients;
         $eligibleAliasKeys = array_keys($eligibleAlias);
 
         foreach ($senders as $sender) {
@@ -178,9 +185,11 @@ class DispatchPendingEmails extends Command
 
             $rows = DB::connection('reports')->table('email_queue')
                 ->where('sender_id', $sender->id)
-                ->where(function ($q) {
-                    $q->where(function ($q) {
-                        $q->where('status', 'pending')->whereRaw('scheduled_at <= NOW()');
+                ->where(function ($q) use ($isAlias, $aliasUntil) {
+                    $q->where(function ($q) use ($isAlias, $aliasUntil) {
+                        $isAlias
+                            ? $q->where('status', 'pending')->where('scheduled_at', '<=', $aliasUntil)
+                            : $q->where('status', 'pending')->whereRaw('scheduled_at <= NOW()');
                     })->orWhere(function ($q) {
                         $q->where('status', 'error')
                             ->whereColumn('retry_count', '<', 'max_retries')
@@ -260,7 +269,7 @@ class DispatchPendingEmails extends Command
      *
      * @return array<string,bool> нормализованный to_email => true
      */
-    private function eligibleRecipients(float $boost = 1.0): array
+    private function eligibleRecipients(float $boost = 1.0, ?string $until = null): array
     {
         $minInterval = max(1, (int) config('services.email_dispatch.recipient_interval_min_seconds', 300));
         $maxInterval = max($minInterval, (int) config('services.email_dispatch.recipient_interval_max_seconds', 3600));
@@ -286,9 +295,12 @@ class DispatchPendingEmails extends Command
         // pending по нормализованному получателю.
         $counts = DB::connection('reports')->table('email_queue')
             ->selectRaw('LOWER(to_email) as r, COUNT(*) as n')
-            ->where(function ($q) {
-                $q->where(function ($q) {
-                    $q->where('status', 'pending')->whereRaw('scheduled_at <= NOW()');
+            ->where(function ($q) use ($until) {
+                $q->where(function ($q) use ($until) {
+                    // $until — горизонт ветки «ящик на батч» (письма на сегодня), иначе только наступившие.
+                    $until !== null
+                        ? $q->where('status', 'pending')->where('scheduled_at', '<=', $until)
+                        : $q->where('status', 'pending')->whereRaw('scheduled_at <= NOW()');
                 })->orWhere(function ($q) {
                     $q->where('status', 'error')
                         ->whereColumn('retry_count', '<', 'max_retries')
