@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Support\Senders\SenderPool;
 use App\Services\Senders\SenderBanContainment;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -48,7 +49,7 @@ class ProcessSenderWarmup extends Command
             ->selectRaw("SUBSTRING_INDEX(email,'@',-1) dom, MIN(created_at) c")
             ->groupBy('dom')->pluck('c', 'dom');
 
-        $senders = DB::connection(self::CONN)->table('senders')
+        $senders = SenderPool::onlyMain(DB::connection(self::CONN)->table('senders'))
             ->where('is_active', 1)->where('sending_disabled', 0)
             ->get(['id', 'email', 'daily_limit', 'warmup_updated_on', 'banned_once', 'last_block_at']);
 

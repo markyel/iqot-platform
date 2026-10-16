@@ -50,6 +50,7 @@ class Sender extends Model
         'emails_sent_today',
         'last_send_date',
         'last_send_at',
+        'pool',
     ];
 
     protected $casts = [

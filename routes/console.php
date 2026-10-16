@@ -64,6 +64,13 @@ Schedule::command('emails:process-load-deferred')
     ->everyFifteenMinutes()
     ->withoutOverlapping();
 
+// «Ящик на батч»: удаление ящиков с истёкшим сроком (дедлайн + 7 дн / 21 день) в Beget.
+// Не зависит от ALIAS_EXP_ENABLED — при выключенной ветке живые ящики всё равно доживают и удаляются.
+Schedule::command('alias-exp drop-expired')
+    ->dailyAt('03:30')
+    ->timezone('Europe/Moscow')
+    ->withoutOverlapping();
+
 // Пробационный возврат отсидевшихся спам-отключённых ящиков (дополняет спам-гвард,
 // чей авто-возврат мёртв из-за замкнутого круга). Раз в сутки рано утром по МСК,
 // ПЕРЕД прогревом. Флаг EMAILS_REVIVAL_ENABLED (команда сама проверяет).

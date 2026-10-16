@@ -684,4 +684,29 @@ return [
         'sla_hours' => (int) env('API_MODERATION_SLA_HOURS', 24),
     ],
 
+    // Экспериментальный алгоритм «ящик на батч» (docs/alias-mailbox-design.md): свой ящик на батч
+    // из 1–2 позиций, без меток — ответ опознаётся по адресу «Кому» в общем info@ домена.
+    'alias_exp' => [
+        'enabled' => (bool) env('ALIAS_EXP_ENABLED', false),
+        'share' => (float) env('ALIAS_EXP_SHARE', 0.2),                    // доля позиций в ветке
+        'items_per_batch' => (int) env('ALIAS_EXP_ITEMS_PER_BATCH', 2),
+        'send_delay_seconds' => (int) env('ALIAS_EXP_SEND_DELAY', 300),     // 1 письмо в 5 мин
+        'daily_limit' => (int) env('ALIAS_EXP_DAILY_LIMIT', 120),
+        'mailboxes_per_day' => (int) env('ALIAS_EXP_MAILBOXES_PER_DAY', 10),
+        'window_start_hour' => (int) env('ALIAS_EXP_WINDOW_START', 9),      // рабочие часы ветки (решение 16.10)
+        'window_end_hour' => (int) env('ALIAS_EXP_WINDOW_END', 18),
+        'window_timezone' => env('ALIAS_EXP_WINDOW_TZ', 'Europe/Moscow'),
+        'lifetime_after_deadline_days' => (int) env('ALIAS_EXP_LIFETIME_AFTER_DEADLINE', 7),
+        'lifetime_default_days' => (int) env('ALIAS_EXP_LIFETIME_DEFAULT', 21),
+        'smtp' => env('ALIAS_EXP_SMTP', 'smtp.beget.com:465'),
+        'imap' => env('ALIAS_EXP_IMAP', 'imap.beget.com:993'),
+    ],
+
+    'beget_api' => [
+        'login' => env('BEGET_API_LOGIN'),
+        'password' => env('BEGET_API_PASSWORD'),
+        'url' => env('BEGET_API_URL', 'https://api.beget.com/api'),
+        'timeout' => (int) env('BEGET_API_TIMEOUT', 30),
+    ],
+
 ];

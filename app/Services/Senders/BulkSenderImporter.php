@@ -203,7 +203,7 @@ class BulkSenderImporter
             $phone = $this->firstCleanPhone($fields['phone'] ?? $fields['company_phone'] ?? null);
 
             $sender = DB::connection('reports')->transaction(function () use ($fields, $email, $phone, $smtpServer, $smtpPort, $imapServer, $imapPort, $org, $ai) {
-                return Sender::create([
+                return Sender::create(array_merge([
                     'sender_name' => $fields['name'] ?? ($ai['sender_name'] ?? 'Отдел закупок'),
                     'sender_full_name' => $fields['fullname'] ?? ($ai['sender_full_name'] ?? 'Не указано'),
                     'phone' => $phone,
@@ -228,7 +228,9 @@ class BulkSenderImporter
                     'email_style' => $this->normalizeEmailStyle($ai['email_style'] ?? null),
                     'email_greeting' => $ai['email_greeting'] ?? 'Здравствуйте',
                     'token_style' => 'technical',
-                ]);
+                    // Поля, которые задаёт вызывающий код (фабрика «ящик на батч»: пул, пауза, лимит) —
+                    // в той же вставке, чтобы ящик ни мгновения не числился в основной рассылке.
+                ], (array) ($fields['sender_overrides'] ?? [])));
             });
 
             return [

@@ -2,6 +2,7 @@
 
 namespace App\Services\Generate;
 
+use App\Support\Senders\SenderPool;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -109,8 +110,9 @@ class CampaignSenderAssigner
      */
     private function loadSenderPool(): array
     {
+        $poolSql = SenderPool::mainSql('s.pool');
         $rows = DB::connection(self::CONN)->select(
-            <<<'SQL'
+            <<<SQL
 SELECT
   s.id,
   s.sender_name,
@@ -129,7 +131,7 @@ LEFT JOIN (
   WHERE id >= (SELECT COALESCE(MAX(id), 0) - 20 FROM email_batches)
   GROUP BY sender_id
 ) recent ON s.id = recent.sender_id
-WHERE s.is_active = 1 AND s.sending_disabled = 0
+WHERE s.is_active = 1 AND s.sending_disabled = 0{$poolSql}
 ORDER BY
   COALESCE(recent.last_batch_id, 0) ASC,
   COALESCE(recent.usage_count, 0) ASC,

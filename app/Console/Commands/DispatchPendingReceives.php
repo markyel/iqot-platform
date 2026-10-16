@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Support\Senders\SenderPool;
 use App\Jobs\ReceiveSenderEmailsJob;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -30,7 +31,8 @@ class DispatchPendingReceives extends Command
             return self::SUCCESS;
         }
 
-        $senders = DB::connection('reports')->table('senders')
+        // Ящики «ящик на батч» пересылают почту в общий info@ домена и сами её не хранят.
+        $senders = SenderPool::onlyMain(DB::connection('reports')->table('senders'))
             ->where('is_active', 1)
             ->whereNotNull('imap_server')
             ->where('imap_server', '!=', '')

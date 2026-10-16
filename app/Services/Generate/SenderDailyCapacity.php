@@ -2,6 +2,7 @@
 
 namespace App\Services\Generate;
 
+use App\Support\Senders\SenderPool;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -71,7 +72,7 @@ class SenderDailyCapacity
      */
     public function poolRemainingTotal(): int
     {
-        $ids = DB::connection(self::CONN)->table('senders')
+        $ids = SenderPool::onlyMain(DB::connection(self::CONN)->table('senders'))
             ->where('is_active', 1)->where('sending_disabled', 0)
             ->pluck('id')->map(fn ($v) => (int) $v)->all();
 

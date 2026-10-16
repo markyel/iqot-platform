@@ -121,6 +121,21 @@ class SenderAddressGenerator
     }
 
     /**
+     * Один свободный адрес на домене для организации (логин по тем же шаблонам) + пароль —
+     * для фабрики ящиков «ящик на батч». $taken — уже занятые на стороне почты (нижним регистром).
+     *
+     * @param array<string,string|null> $org
+     * @param array<string,bool> $taken
+     * @return array{email:string,password:string}
+     */
+    public function addressFor(array $org, string $domain, array $taken = []): array
+    {
+        $email = $this->uniqueEmail($org, $domain, $this->existingEmails() + $taken);
+
+        return ['email' => $email, 'password' => $this->password()];
+    }
+
+    /**
      * Разобрать строки textarea доменов в упорядоченный уникальный список записей.
      *
      * Поддерживается два формата строки:

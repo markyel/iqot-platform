@@ -2,6 +2,7 @@
 
 namespace App\Services\Monitoring\Hybrid;
 
+use App\Support\Senders\SenderPool;
 use App\Models\Monitoring\MpAsk;
 use App\Models\Monitoring\MpProduct;
 use App\Services\Api\OpenAIClassifierClient;
@@ -363,7 +364,7 @@ class VerificationMailer
     /** @return array<int,int> sender_id => остаток на сегодня (не персональные, рабочие) */
     private function senders(): array
     {
-        $ids = DB::connection(self::CONN)->table('senders')->where('is_active', 1)
+        $ids = SenderPool::onlyMain(DB::connection(self::CONN)->table('senders'))->where('is_active', 1)
             ->where(fn ($q) => $q->whereNull('sending_disabled')->orWhere('sending_disabled', 0))
             ->where(fn ($q) => $q->whereNull('blocked_until')->orWhere('blocked_until', '<=', now()))
             ->where('daily_limit', '>', 0)

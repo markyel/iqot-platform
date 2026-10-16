@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Support\Senders\SenderPool;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -58,7 +59,7 @@ class ReviveSenders extends Command
             $lastMass[(int) $r->sender_id] = (string) $r->mx;
         }
 
-        $cands = DB::connection(self::CONN)->table('senders')
+        $cands = SenderPool::onlyMain(DB::connection(self::CONN)->table('senders'))
             ->where('is_active', 1)
             ->where('sending_disabled', 1)
             ->where('revival_attempts', '<', $maxAttempts)

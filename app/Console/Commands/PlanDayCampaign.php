@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Support\Senders\SenderPool;
 use App\Jobs\DiscoverFromCampaignJob;
 use App\Services\Api\OpenAIClassifierClient;
 use App\Services\Generate\Batch;
@@ -590,7 +591,7 @@ class PlanDayCampaign extends Command
         $inFlight = DB::connection(self::CONN)->table('email_queue')->where('status', 'sending')
             ->selectRaw('sender_id, COUNT(*) n')->groupBy('sender_id')->pluck('n', 'sender_id');
         $caps = [];
-        foreach (DB::connection(self::CONN)->table('senders')
+        foreach (SenderPool::onlyMain(DB::connection(self::CONN)->table('senders'))
             ->where('is_active', 1)->where(function ($q) {
                 $q->whereNull('sending_disabled')->orWhere('sending_disabled', 0);
             })->where(function ($q) {
