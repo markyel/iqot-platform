@@ -239,6 +239,9 @@ class EmailCampaignStatsController extends Controller
             $batchesByReq[$rid][$bid]['total'] += $cnt;
         }
 
+        // Позиции с ≥1 и ≥3 ценами (минимум отчёта) — главный показатель результата заявки.
+        $priced = app(\App\Services\Admin\ProgressDashboard::class)->pricedByRequest($reqIds);
+
         $out = [];
         foreach ($requests as $r) {
             $a = $agg->get($r->id);
@@ -270,6 +273,8 @@ class EmailCampaignStatsController extends Controller
                 'state' => $state,
                 'items' => (int) $r->total_items,
                 'items_with_offers' => (int) $r->items_with_offers,
+                'priced1' => $priced[(int) $r->id]['p1'] ?? 0,
+                'priced3' => $priced[(int) $r->id]['p3'] ?? 0,
                 'suppliers' => (int) ($a->suppliers ?? 0),
                 'offers' => $offers,
                 'sent' => $sent,

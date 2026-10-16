@@ -249,6 +249,12 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
 
     // Ход выполнения заявок: активные заявки, волны рассылки, ответы/отказы
     Route::get('/emails/campaigns', [\App\Http\Controllers\Admin\EmailCampaignStatsController::class, 'index'])->name('emails.campaigns');
+    // Вкладки «Ход выполнения»: карточка заявки, API, мониторинг, охват поставщиков, ресурсы системы.
+    Route::get('/emails/campaigns/request/{id}', [\App\Http\Controllers\Admin\ProgressController::class, 'request'])->whereNumber('id')->name('progress.request');
+    Route::get('/emails/campaigns/api', [\App\Http\Controllers\Admin\ProgressController::class, 'api'])->name('progress.api');
+    Route::get('/emails/campaigns/monitoring', [\App\Http\Controllers\Admin\ProgressController::class, 'monitoring'])->name('progress.monitoring');
+    Route::get('/emails/campaigns/coverage', [\App\Http\Controllers\Admin\ProgressController::class, 'coverage'])->name('progress.coverage');
+    Route::get('/emails/campaigns/resources', [\App\Http\Controllers\Admin\ProgressController::class, 'resources'])->name('progress.resources');
 
     // Диагностика
     Route::get('/tools/headless', [\App\Http\Controllers\Admin\HeadlessTestController::class, 'index'])->name('tools.headless.index');

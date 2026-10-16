@@ -468,7 +468,7 @@
                             <span class="sidebar-item-tooltip">Отправители</span>
                         </a>
 
-                        <a href="{{ route('admin.emails.campaigns') }}" class="sidebar-item {{ request()->routeIs('admin.emails.campaigns') ? 'active' : '' }}">
+                        <a href="{{ route('admin.emails.campaigns') }}" class="sidebar-item {{ request()->routeIs('admin.emails.campaigns', 'admin.progress.*') ? 'active' : '' }}">
                             <i data-lucide="clipboard-list" class="sidebar-item-icon"></i>
                             <span class="sidebar-item-text">Ход заявок</span>
                             <span class="sidebar-item-tooltip">Ход выполнения заявок</span>

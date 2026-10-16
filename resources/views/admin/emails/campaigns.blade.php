@@ -7,6 +7,7 @@
         title="Ход выполнения заявок"
         description="Активные заявки, волны рассылки и статистика ответов/отказов поставщиков"
     />
+    @include('admin.progress._nav')
 
     @if (! ($data['ok'] ?? false))
         <div class="card">
@@ -91,9 +92,9 @@
                     @forelse ($data['requests'] as $r)
                         <details style="border-bottom: 1px solid var(--color-border); padding: var(--space-3) 0;">
                             <summary style="cursor: pointer; display: flex; gap: var(--space-4); align-items: center; flex-wrap: wrap;">
-                                <strong style="min-width: 200px;">{{ $r['number'] }}</strong>
+                                <a href="{{ route('admin.progress.request', $r['id']) }}" onclick="event.stopPropagation()" style="min-width: 200px; font-weight: 600;">{{ $r['number'] }}</a>
                                 <span class="badge {{ $r['state']['class'] }}">{{ $r['state']['label'] }}</span>
-                                <span style="color: var(--color-text-muted); font-size: var(--text-sm);">{{ $r['items'] }} поз · {{ $r['items_with_offers'] }} с КП</span>
+                                <span style="color: var(--color-text-muted); font-size: var(--text-sm);" title="позиций · с ≥1 ценой · с ≥3 ценами · опрошено поставщиков">{{ $r['items'] }} поз · ≥1 цена: {{ $r['priced1'] ?? 0 }} · ≥3: {{ $r['priced3'] ?? 0 }} · {{ $r['suppliers'] }} пост.</span>
                                 <span style="font-size: var(--text-sm);" title="отправлено / в очереди / придержано (резерв волн)">
                                     ✉ <span style="color: var(--color-success);">{{ number_format($r['sent'], 0, '.', ' ') }}</span>
                                     отпр · {{ number_format($r['pending'], 0, '.', ' ') }} в очер@if ($r['held'] > 0) · <span style="color: var(--color-text-muted);">{{ number_format($r['held'], 0, '.', ' ') }} резерв</span>@endif
