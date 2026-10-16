@@ -718,9 +718,9 @@ class CampaignEmailBuilder
         }
 
         if ($separator === '\\n' || $separator === "\n") {
-            $text = $prefix . implode('<br>', $parts) . $suffix;
+            $text = self::withSuffix($prefix . implode('<br>', $parts), (string) $suffix);
         } else {
-            $text = $prefix . implode((string) $separator, $parts) . $suffix;
+            $text = self::withSuffix($prefix . implode((string) $separator, $parts), (string) $suffix);
         }
 
         return "<div style=\"margin:20px 0;color:{$textColor};font-size:{$fontSize};line-height:1.8;\">{$text}</div>";
@@ -776,7 +776,7 @@ class CampaignEmailBuilder
             $text .= implode((string) $separator, array_slice($parts, 0, -1)) . $lastSeparator . $parts[$count - 1];
         }
 
-        $text .= $suffix;
+        $text = self::withSuffix($text, (string) $suffix);
 
         return "<p style=\"margin:20px 0;color:{$textColor};font-size:{$fontSize};line-height:1.8;\">{$text}</p>";
     }
@@ -970,6 +970,16 @@ class CampaignEmailBuilder
         $html .= $contacts;
         $html .= '</div>';
         return $html;
+    }
+
+    /** Завершающая точка шаблона не дублирует точку текста («1 шт.» + «.» = «1 шт..»). */
+    public static function withSuffix(string $text, string $suffix): string
+    {
+        if ($suffix !== '' && $suffix[0] === '.' && str_ends_with(rtrim(strip_tags($text)), '.')) {
+            $suffix = substr($suffix, 1);
+        }
+
+        return $text . $suffix;
     }
 
     /**

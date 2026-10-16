@@ -63,6 +63,14 @@ class AliasBranchTest extends TestCase
         $this->assertSame([[1], [2], [3]], AliasBranch::group([1, 2, 3], $rows, 1));
     }
 
+    public function test_no_double_period(): void
+    {
+        $this->assertSame('Ролик — 1 шт.', CampaignEmailBuilder::withSuffix('Ролик — 1 шт.', '.'));
+        $this->assertSame('Ролик — <strong>1 шт.</strong>', CampaignEmailBuilder::withSuffix('Ролик — <strong>1 шт.</strong>', '.'));
+        $this->assertSame('Ролик — 1 м.', CampaignEmailBuilder::withSuffix('Ролик — 1 м', '.'));
+        $this->assertSame('Ролик — 1 шт.!', CampaignEmailBuilder::withSuffix('Ролик — 1 шт.', '!'));
+    }
+
     public function test_tagless_subject(): void
     {
         $this->assertSame('Запрос: Ролик', CampaignEmailBuilder::cleanTaglessSubject('Запрос: Ролик ()'));
