@@ -62,4 +62,15 @@ class PersonaAndReserveTest extends TestCase
         }
         $this->assertTrue(OrgReserve::isPublicSector('Водоканал', 'Муниципальное унитарное предприятие Водоканал'));
     }
+
+    public function test_display_name_drops_activity_tail(): void
+    {
+        $this->assertSame('К-электро', OrgReserve::displayName('К-электро, Компания'));
+        $this->assertSame('Аскон', OrgReserve::displayName('Аскон, IT-компания'));
+        $this->assertSame('Дон', OrgReserve::displayName('Дон, группа строительных компаний'));
+        $this->assertSame('Компания Вектор-РК', OrgReserve::displayName('Компания Вектор-РК, компания по строительству и ремонту зданий'));
+        $this->assertSame('Смартпорт', OrgReserve::displayName('Смартпорт, официальный дистрибьютор Loxone в России'));
+        $this->assertSame('Умный дом — Globex', OrgReserve::displayName('Умный дом — Globex'));
+        $this->assertSame('Монтаж Автоматики', OrgReserve::displayName('Монтаж Автоматики'));
+    }
 }

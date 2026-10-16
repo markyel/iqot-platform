@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\DB;
  *                                           — ручной ящик под батч (в Ф3 их создаёт план дня)
  *   drop-expired [--dry-run]                — удалить ящики с истёкшим сроком
  *   mailbox-drop {email}                    — досрочно удалить ящик
+ *   release {batch_id}                      — отпустить удержанные (--hold) письма батча по рабочим слотам
  *   reserve-filter                          — выключить госсектор среди загруженных организаций
  */
 class AliasExpCommand extends Command
@@ -39,6 +40,7 @@ class AliasExpCommand extends Command
             'drop-expired' => $this->dropExpired($factory),
             'reserve-filter' => $this->reserveFilter($reserve),
             'mailbox-drop' => $this->mailboxDrop($factory),
+            'release' => $this->release(),
             default => $this->unknown(),
         };
     }
@@ -168,9 +170,35 @@ class AliasExpCommand extends Command
         return self::SUCCESS;
     }
 
+    /** Удержанные письма батча ветки (scheduled_at = 2037, plan-day --hold) → слоты рабочих часов с текущего момента. */
+    private function release(): int
+    {
+        $batchId = (int) $this->argument('domain');
+        $senderId = (int) DB::connection('reports')->table('email_batches')->where('id', $batchId)->value('sender_id');
+        if (!$senderId || !isset(SenderPool::aliasIds()[$senderId])) {
+            $this->error('Батч не найден или не из ветки «ящик на батч»: alias-exp release {batch_id}');
+
+            return self::FAILURE;
+        }
+        $ids = DB::connection('reports')->table('email_queue')->where('batch_id', $batchId)->where('status', 'pending')
+            ->where('scheduled_at', '>=', '2037-01-01')->orderBy('id')->pluck('id')->all();
+        $slots = \App\Services\AliasExp\AliasWindow::slots(count($ids));
+        foreach ($ids as $i => $id) {
+            DB::connection('reports')->table('email_queue')->where('id', $id)->update(['scheduled_at' => $slots[$i]->toDateTimeString()]);
+        }
+        if ($ids !== []) {
+            $this->info(sprintf('Отпущено %d писем: с %s по %s МСК', count($ids),
+                $slots[0]->setTimezone('Europe/Moscow')->format('d.m H:i'), end($slots)->setTimezone('Europe/Moscow')->format('d.m H:i')));
+        } else {
+            $this->line('Удержанных писем нет.');
+        }
+
+        return self::SUCCESS;
+    }
+
     private function unknown(): int
     {
-        $this->error('Действия: status | api-check {домен} | domain-add {домен} | mailbox-create | mailbox-drop {email} | drop-expired | reserve-filter');
+        $this->error('Действия: status | api-check {домен} | domain-add {домен} | mailbox-create | mailbox-drop {email} | release {batch_id} | drop-expired | reserve-filter');
 
         return self::FAILURE;
     }

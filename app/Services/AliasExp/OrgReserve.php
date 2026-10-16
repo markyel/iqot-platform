@@ -86,6 +86,21 @@ class OrgReserve
         return $stats;
     }
 
+    /**
+     * Название для подписи: ExportBase дописывает вид деятельности через запятую («К-электро, Компания»,
+     * «Аскон, IT-компания», «Дон, группа строительных компаний») — в подписи живого закупщика так не пишут.
+     */
+    public static function displayName(string $name): string
+    {
+        $name = trim($name);
+        if (preg_match('/^(.+?),\s*(.+)$/u', $name, $m)
+            && preg_match('/(компани|холдинг|групп|дистрибьютор|центр|производств|фирм|завод|магазин|студи|сервис|предприяти|организаци)/iu', $m[2])) {
+            return trim($m[1]);
+        }
+
+        return $name;
+    }
+
     /** Выключить госсектор среди уже загруженных. @return int выключено */
     public function excludePublicSector(): int
     {

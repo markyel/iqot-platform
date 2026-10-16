@@ -77,7 +77,7 @@ class AliasMailboxFactory
                 'email' => $email, 'password' => $password, 'user' => $email,
                 'smtp' => $cfg['smtp'], 'imap' => $cfg['imap'],
                 'name' => $persona['display_name'], 'fullname' => $persona['full_name'], 'phone' => $phone,
-                'company' => $org->name, 'inn' => $org->inn, 'kpp' => $org->kpp, 'ogrn' => $org->ogrn,
+                'company' => OrgReserve::displayName((string) $org->name), 'inn' => $org->inn, 'kpp' => $org->kpp, 'ogrn' => $org->ogrn,
                 'address' => $org->legal_address, 'company_phone' => $phone, 'director' => $org->director_name,
                 'sender_overrides' => [
                     'pool' => SenderPool::ALIAS,
