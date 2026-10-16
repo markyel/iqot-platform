@@ -23,6 +23,115 @@ class ProgressDashboard
 
     private const HELD = '2037-01-01 00:00:00';
 
+    // ─────────────────────── Эксперимент «ящик на батч» ───────────────────────
+
+    /**
+     * Ветка «ящик на батч» (docs/alias-mailbox-design.md): настройки, резерв, домены, ход каждого батча
+     * и сравнение с основной рассылкой за тот же период (письма, отправленные с начала эксперимента).
+     *
+     * @return array<string,mixed>
+     */
+    public function aliasExp(): array
+    {
+        $db = DB::connection(self::R);
+        $cfg = config('services.alias_exp');
+        $mailboxes = DB::table('alias_mailboxes as m')->join('alias_domains as d', 'd.id', '=', 'm.domain_id')
+            ->orderByDesc('m.id')->get(['m.*', 'd.domain']);
+
+        $batchIds = [];
+        foreach ($mailboxes as $mb) {
+            foreach ((array) json_decode((string) $mb->batch_ids, true) as $b) {
+                $batchIds[(int) $b] = true;
+            }
+        }
+        $stats = [];
+        $start = null;
+        if ($batchIds !== []) {
+            $in = implode(',', array_keys($batchIds));
+            foreach ($db->select("SELECT batch_id, COUNT(*) total, SUM(status IN " . self::SENT . ") sent, SUM(status='pending') pending,
+                    SUM(status='error') err, SUM(status='error' AND error_message LIKE '%spam%') spam,
+                    MIN(sent_at) first_sent, MAX(sent_at) last_sent, MIN(CASE WHEN status='pending' THEN scheduled_at END) next_at
+                FROM email_queue WHERE batch_id IN ($in) GROUP BY batch_id") as $r) {
+                $stats[(int) $r->batch_id] = (array) $r;
+                if ($r->first_sent && ($start === null || $r->first_sent < $start)) {
+                    $start = $r->first_sent;
+                }
+            }
+            foreach ($db->select("SELECT ec.batch_id, COUNT(DISTINCT ec.supplier_id) replied FROM email_conversations ec
+                    WHERE ec.batch_id IN ($in) AND EXISTS (SELECT 1 FROM email_messages m WHERE m.conversation_id = ec.id AND m.direction = 'incoming')
+                    GROUP BY ec.batch_id") as $r) {
+                $stats[(int) $r->batch_id]['replied'] = (int) $r->replied;
+            }
+            foreach ($db->select("SELECT batch_id, COUNT(DISTINCT supplier_id) kp FROM request_item_responses
+                    WHERE batch_id IN ($in) AND (price_per_unit IS NOT NULL OR total_price IS NOT NULL) GROUP BY batch_id") as $r) {
+                $stats[(int) $r->batch_id]['kp'] = (int) $r->kp;
+            }
+        }
+        $senderIds = $mailboxes->pluck('sender_id')->filter()->all();
+        $senders = $senderIds === [] ? collect() : $db->table('senders as s')->leftJoin('client_organizations as o', 'o.id', '=', 's.client_organization_id')
+            ->whereIn('s.id', $senderIds)->get(['s.id', 's.sender_full_name', 's.is_active', 's.sending_disabled', 's.block_reason', 's.blocked_until', 'o.name as org'])->keyBy('id');
+        $bounces = $senderIds === [] ? collect() : $db->table('unidentified_emails')->whereIn('sender_id', $senderIds)->where('reason', 'bounce')
+            ->selectRaw("sender_id, COUNT(*) n, SUM(bounce_reason = 'spam') spam")->groupBy('sender_id')->get()->keyBy('sender_id');
+        $itemIds = [];
+        foreach ($mailboxes as $mb) {
+            $itemIds = array_merge($itemIds, (array) json_decode((string) $mb->request_item_ids, true));
+        }
+        $items = $itemIds === [] ? collect() : $db->table('request_items as ri')->join('requests as r', 'r.id', '=', 'ri.request_id')
+            ->whereIn('ri.id', $itemIds)->get(['ri.id', 'ri.name', 'ri.article', 'r.id as request_id', 'r.request_number'])->keyBy('id');
+
+        $rows = [];
+        foreach ($mailboxes as $mb) {
+            $bs = array_map('intval', (array) json_decode((string) $mb->batch_ids, true));
+            $agg = ['total' => 0, 'sent' => 0, 'pending' => 0, 'err' => 0, 'spam' => 0, 'replied' => 0, 'kp' => 0, 'last_sent' => null, 'next_at' => null];
+            foreach ($bs as $b) {
+                foreach (['total', 'sent', 'pending', 'err', 'spam', 'replied', 'kp'] as $k) {
+                    $agg[$k] += (int) ($stats[$b][$k] ?? 0);
+                }
+                $agg['last_sent'] = max($agg['last_sent'], $stats[$b]['last_sent'] ?? null);
+                $agg['next_at'] = $stats[$b]['next_at'] ?? $agg['next_at'];
+            }
+            $s = $senders[$mb->sender_id] ?? null;
+            $bn = $bounces[$mb->sender_id] ?? null;
+            $rows[] = $agg + [
+                'mailbox' => $mb, 'batch_ids' => $bs, 'persona' => $s->sender_full_name ?? null, 'org' => $s->org ?? null,
+                'state' => !$s ? '—' : ($mb->status !== 'active' ? 'удалён' : ($s->sending_disabled ? 'отключён: ' . $s->block_reason
+                    : ($s->blocked_until && $s->blocked_until > now() ? 'блок до ' . $s->blocked_until : 'в работе'))),
+                'bounces' => (int) ($bn->n ?? 0), 'bounce_spam' => (int) ($bn->spam ?? 0),
+                'items' => array_values(array_filter(array_map(fn ($id) => $items[(int) $id] ?? null, (array) json_decode((string) $mb->request_item_ids, true)))),
+            ];
+        }
+
+        // Сравнение веток: письма, отправленные с первого письма эксперимента. Ответ — входящее в беседе
+        // (батч, поставщик), КП — цена в request_item_responses по той же паре. Отказ «спам» — ошибка отправки с 554.
+        $cmp = null;
+        if ($start !== null) {
+            $branch = fn (string $poolCond) => $db->selectOne("SELECT COUNT(*) letters,
+                    SUM(EXISTS (SELECT 1 FROM email_conversations ec JOIN email_messages m ON m.conversation_id = ec.id AND m.direction = 'incoming'
+                        WHERE ec.batch_id = eq.batch_id AND ec.supplier_id = eq.supplier_id)) replied,
+                    SUM(EXISTS (SELECT 1 FROM request_item_responses rir WHERE rir.batch_id = eq.batch_id AND rir.supplier_id = eq.supplier_id
+                        AND (rir.price_per_unit IS NOT NULL OR rir.total_price IS NOT NULL))) kp
+                FROM email_queue eq JOIN senders s ON s.id = eq.sender_id
+                WHERE eq.sent_at >= ? AND eq.status IN " . self::SENT . " AND {$poolCond}", [$start]);
+            $spam = fn (string $poolCond) => (int) $db->selectOne("SELECT COUNT(*) n FROM email_queue eq JOIN senders s ON s.id = eq.sender_id
+                WHERE eq.status = 'error' AND eq.error_message LIKE '%spam%' AND eq.updated_at >= ? AND {$poolCond}", [$start])->n;
+            $cmp = [
+                'since' => $start,
+                'alias' => $branch("s.pool = 'alias'"), 'alias_spam' => $spam("s.pool = 'alias'"),
+                'main' => $branch("(s.pool IS NULL OR s.pool = 'main')"), 'main_spam' => $spam("(s.pool IS NULL OR s.pool = 'main')"),
+            ];
+        }
+
+        return [
+            'enabled' => (bool) $cfg['enabled'], 'share' => (float) $cfg['share'], 'per_batch' => (int) $cfg['items_per_batch'],
+            'window' => sprintf('будни %d:00–%d:00 МСК', $cfg['window_start_hour'], $cfg['window_end_hour']),
+            'window_open' => \App\Services\AliasExp\AliasWindow::isOpen(), 'delay' => (int) $cfg['send_delay_seconds'],
+            'budget_left' => \App\Services\AliasExp\AliasBranch::budgetToday(), 'budget' => (int) $cfg['mailboxes_per_day'],
+            'reserve' => app(\App\Services\AliasExp\OrgReserve::class)->stats(),
+            'domains' => DB::table('alias_domains')->orderBy('domain')->get(),
+            'rows' => $rows, 'cmp' => $cmp,
+        ];
+    }
+
     // ─────────────────────────── Карточка заявки ───────────────────────────
 
     /** @return array<string,mixed>|null */

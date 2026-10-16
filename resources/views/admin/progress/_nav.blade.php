@@ -4,4 +4,5 @@
     <a href="{{ route('admin.progress.monitoring') }}" class="btn btn-sm {{ request()->routeIs('admin.progress.monitoring') ? 'btn-primary' : '' }}">Мониторинг цен</a>
     <a href="{{ route('admin.progress.coverage') }}" class="btn btn-sm {{ request()->routeIs('admin.progress.coverage') ? 'btn-primary' : '' }}">Охват поставщиков</a>
     <a href="{{ route('admin.progress.resources') }}" class="btn btn-sm {{ request()->routeIs('admin.progress.resources') ? 'btn-primary' : '' }}">Ресурсы системы</a>
+    <a href="{{ route('admin.progress.alias') }}" class="btn btn-sm {{ request()->routeIs('admin.progress.alias') ? 'btn-primary' : '' }}">Эксперимент: ящик на батч</a>
 </div>

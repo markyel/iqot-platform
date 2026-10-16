@@ -48,6 +48,11 @@ class ProgressController extends Controller
         return view('admin.progress.resources', ['data' => $this->safe(fn () => Cache::remember('admin:progress:resources', 30, fn () => $this->dash->resources()))]);
     }
 
+    public function alias(): View
+    {
+        return view('admin.progress.alias', ['data' => $this->safe(fn () => Cache::remember('admin:progress:alias', 60, fn () => $this->dash->aliasExp()))]);
+    }
+
     /** @return array{ok: bool, value?: mixed, error?: string} */
     private function safe(callable $fn): array
     {

@@ -256,6 +256,7 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
     Route::get('/emails/campaigns/monitoring', [\App\Http\Controllers\Admin\ProgressController::class, 'monitoring'])->name('progress.monitoring');
     Route::get('/emails/campaigns/coverage', [\App\Http\Controllers\Admin\ProgressController::class, 'coverage'])->name('progress.coverage');
     Route::get('/emails/campaigns/resources', [\App\Http\Controllers\Admin\ProgressController::class, 'resources'])->name('progress.resources');
+    Route::get('/emails/campaigns/alias', [\App\Http\Controllers\Admin\ProgressController::class, 'alias'])->name('progress.alias');
 
     // Диагностика
     Route::get('/tools/headless', [\App\Http\Controllers\Admin\HeadlessTestController::class, 'index'])->name('tools.headless.index');
