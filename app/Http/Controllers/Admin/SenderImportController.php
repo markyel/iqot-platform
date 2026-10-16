@@ -30,6 +30,33 @@ class SenderImportController extends Controller
         ]);
     }
 
+    /**
+     * Резерв организаций алгоритма «ящик на батч» (docs/alias-mailbox-design.md): Excel ExportBase
+     * просто складывается в базу (upsert по ИНН); ящики создаются позже, по одному на батч.
+     */
+    public function reserveStore(Request $request, \App\Services\AliasExp\OrgReserve $reserve): View
+    {
+        $request->validate([
+            'excel' => 'required|file|mimes:xlsx|max:20480',
+        ], [
+            'excel.required' => 'Загрузите выгрузку организаций (.xlsx).',
+            'excel.mimes' => 'Файл должен быть в формате .xlsx.',
+        ]);
+        $file = $request->file('excel');
+        try {
+            $result = $reserve->import($file->getRealPath(), $file->getClientOriginalName());
+        } catch (\Throwable $e) {
+            report($e);
+            $result = ['error' => $e->getMessage()];
+        }
+
+        return view('admin.senders.create', [
+            'totalSenders' => $this->safeCount(),
+            'reserveResult' => $result,
+            'activeTab' => 'reserve',
+        ]);
+    }
+
     public function store(Request $request, BulkSenderImporter $importer): View
     {
         $validated = $request->validate([

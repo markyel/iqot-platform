@@ -91,6 +91,61 @@
             style="padding: 0.6rem 1rem; border: none; background: none; cursor: pointer; font-weight: 600; border-bottom: 2px solid transparent; color: var(--text-secondary);">
             <i data-lucide="keyboard" class="icon-sm" style="vertical-align: -2px;"></i> Вручную
         </button>
+        <button type="button" class="senders-tab-btn" data-tab="reserve"
+            style="padding: 0.6rem 1rem; border: none; background: none; cursor: pointer; font-weight: 600; border-bottom: 2px solid transparent; color: var(--text-secondary);">
+            <i data-lucide="building-2" class="icon-sm" style="vertical-align: -2px;"></i> Резерв организаций
+        </button>
+    </div>
+
+    {{-- ───────── Резерв организаций (алгоритм «ящик на батч», docs/alias-mailbox-design.md) ───────── --}}
+    @php
+        try { $rs = app(\App\Services\AliasExp\OrgReserve::class)->stats(); } catch (\Throwable $e) { $rs = null; }
+    @endphp
+    <div class="senders-tab-pane" data-pane="reserve" style="{{ ($activeTab ?? '') === 'reserve' ? '' : 'display: none;' }}">
+        <div class="alert alert-info" style="margin-bottom: var(--space-6);">
+            <div style="display: flex; align-items: start; gap: var(--space-3);">
+                <i data-lucide="info" class="icon-md"></i>
+                <div>
+                    <strong>Экспериментальный алгоритм «ящик на батч».</strong>
+                    Здесь просто пополняется резерв организаций — ящики не создаются. Для каждой новой рассылки
+                    система сама создаст ящик на домене эксперимента от имени персоны одной из этих компаний
+                    (самой давно использованной). Повторная загрузка той же компании обновляет реквизиты.
+                    Формат файла — выгрузка ExportBase (.xlsx), как во вкладке «Генератор».
+                </div>
+            </div>
+        </div>
+
+        @if (!empty($reserveResult))
+            @if (!empty($reserveResult['error']))
+                <div class="alert alert-error" style="margin-bottom: var(--space-4);">Не удалось загрузить: {{ $reserveResult['error'] }}</div>
+            @else
+                <div class="alert alert-success" style="margin-bottom: var(--space-4);">
+                    Строк в файле: {{ $reserveResult['rows'] }} · добавлено: <strong>{{ $reserveResult['added'] }}</strong> ·
+                    обновлено: {{ $reserveResult['updated'] }} · пропущено (нет ИНН/названия, дубль): {{ $reserveResult['skipped'] }}
+                </div>
+            @endif
+        @endif
+
+        <div class="stats-grid" style="margin-bottom: var(--space-6);">
+            <x-stat-card value="{{ $rs ? number_format($rs['active'], 0, '.', ' ') : '—' }}" label="Организаций в резерве (активных)" icon="building-2" icon-type="primary" />
+            <x-stat-card value="{{ $rs ? number_format($rs['never_used'], 0, '.', ' ') : '—' }}" label="Ещё ни разу не использованы" icon="sparkles" icon-type="success" />
+            <x-stat-card value="{{ $rs ? number_format($rs['live'], 0, '.', ' ') : '—' }}" label="Сейчас с живым ящиком" icon="mail" icon-type="primary" />
+            <x-stat-card value="{{ $rs && $rs['last_import'] ? \Illuminate\Support\Carbon::parse($rs['last_import'])->timezone('Europe/Moscow')->format('d.m.Y H:i') : '—' }}" label="Последняя загрузка" icon="clock" icon-type="primary" />
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <form method="POST" action="{{ route('admin.senders.import.reserve') }}" enctype="multipart/form-data">
+                    @csrf
+                    <div class="form-group" style="margin-bottom: var(--space-4);">
+                        <label for="excel_reserve" class="label">Выгрузка организаций (ExportBase, .xlsx)</label>
+                        <input type="file" id="excel_reserve" name="excel" accept=".xlsx" class="input" required>
+                        @error('excel')<div style="color: var(--color-error); font-size: var(--text-sm);">{{ $message }}</div>@enderror
+                    </div>
+                    <button type="submit" class="btn btn-primary"><i data-lucide="upload" class="icon-sm"></i> Загрузить в резерв</button>
+                </form>
+            </div>
+        </div>
     </div>
 
     {{-- ───────── Режим «Помощник» ───────── --}}

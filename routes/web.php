@@ -228,6 +228,7 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('manage')->name('admin.
     Route::post('/senders/import/generate', [\App\Http\Controllers\Admin\SenderImportController::class, 'generate'])->name('senders.import.generate');
     Route::post('/senders/import/generate/add', [\App\Http\Controllers\Admin\SenderImportController::class, 'generateStore'])->name('senders.import.generate.add');
     Route::get('/senders/import/generate/status', [\App\Http\Controllers\Admin\SenderImportController::class, 'generateStatus'])->name('senders.import.generate.status');
+    Route::post('/senders/import/reserve', [\App\Http\Controllers\Admin\SenderImportController::class, 'reserveStore'])->name('senders.import.reserve');
     Route::post('/senders/import/check-connectivity', [\App\Http\Controllers\Admin\SenderImportController::class, 'checkConnectivity'])->name('senders.import.check-connectivity');
 
     // Стоп-лист рассылки (домены/ящики, исключённые из рассылки)
