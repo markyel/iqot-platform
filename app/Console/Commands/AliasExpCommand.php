@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\DB;
  *                                           — ручной ящик под батч (в Ф3 их создаёт план дня)
  *   drop-expired [--dry-run]                — удалить ящики с истёкшим сроком
  *   mailbox-drop {email}                    — досрочно удалить ящик
+ *   watch [batch_id]                        — ход рассылки батчей ветки: отправлено, отказы, ответы
  *   release {batch_id}                      — отпустить удержанные (--hold) письма батча по рабочим слотам
  *   reserve-filter                          — выключить госсектор среди загруженных организаций
  */
@@ -41,6 +42,7 @@ class AliasExpCommand extends Command
             'reserve-filter' => $this->reserveFilter($reserve),
             'mailbox-drop' => $this->mailboxDrop($factory),
             'release' => $this->release(),
+            'watch' => $this->watch(),
             default => $this->unknown(),
         };
     }
@@ -191,6 +193,42 @@ class AliasExpCommand extends Command
                 $slots[0]->setTimezone('Europe/Moscow')->format('d.m H:i'), end($slots)->setTimezone('Europe/Moscow')->format('d.m H:i')));
         } else {
             $this->line('Удержанных писем нет.');
+        }
+
+        return self::SUCCESS;
+    }
+
+    /** Ход батчей ветки (все живые ящики или один батч). */
+    private function watch(): int
+    {
+        $r = DB::connection('reports');
+        $q = DB::table('alias_mailboxes')->whereNotNull('batch_ids');
+        if ($this->argument('domain')) {
+            $q->where('batch_ids', 'like', '%' . (int) $this->argument('domain') . '%');
+        } else {
+            $q->where('status', 'active');
+        }
+        foreach ($q->get() as $mb) {
+            foreach ((array) json_decode((string) $mb->batch_ids, true) as $b) {
+                $x = $r->selectOne("SELECT COUNT(*) total, SUM(status IN ('sent','opened','replied','reply_processed','in_conversation','completed')) sent,
+                    SUM(status='pending') pending, SUM(status='sending') sending, SUM(status='error') err, SUM(status='cancelled') cancelled,
+                    SUM(status='replied') replied, MAX(sent_at) last_sent, MIN(CASE WHEN status='pending' THEN scheduled_at END) next_at
+                    FROM email_queue WHERE batch_id = ?", [$b]);
+                $s = $r->table('senders')->find($mb->sender_id);
+                $conv = $r->selectOne("SELECT COUNT(DISTINCT ec.id) conv, COUNT(m.id) msgs, SUM(m.ai_processed=1) analyzed
+                    FROM email_conversations ec LEFT JOIN email_messages m ON m.conversation_id = ec.id AND m.direction = 'incoming' WHERE ec.batch_id = ?", [$b]);
+                $bounce = $r->selectOne("SELECT COUNT(*) n, SUM(bounce_reason LIKE '%spam%') spam FROM unidentified_emails WHERE reason = 'bounce' AND sender_id = ?", [$mb->sender_id]);
+                $unident = $r->table('unidentified_emails')->where('sender_id', $mb->sender_id)->where('reason', '!=', 'bounce')->count();
+                $prices = $r->table('request_item_responses')->where('batch_id', $b)->where(fn ($w) => $w->whereNotNull('price_per_unit')->orWhereNotNull('total_price'))->count();
+                $tz = fn ($t) => $t ? \Carbon\Carbon::parse($t, 'UTC')->setTimezone('Europe/Moscow')->format('d.m H:i') : '—';
+                $this->line(sprintf('batch %d · %s · ящик %s%s', $b, $mb->email,
+                    $s && $s->sending_disabled ? 'ОТКЛЮЧЁН (' . $s->block_reason . ')' : ($s && $s->blocked_until && $s->blocked_until > now() ? 'блок до ' . $s->blocked_until : 'в работе'),
+                    $s ? ", отправлено сегодня {$s->emails_sent_today}" : ''));
+                $this->line(sprintf('  писем %d: отправлено %d, ждут %d, в полёте %d, ошибок %d, отменено %d · последнее %s МСК, следующее %s МСК',
+                    $x->total, $x->sent, $x->pending, $x->sending, $x->err, $x->cancelled, $tz($x->last_sent), $tz($x->next_at)));
+                $this->line(sprintf('  ответы: бесед %d, входящих %d (разобрано ИИ %d), replied %d, цен %d · отбойников %d (спам %d), неопознанных %d',
+                    $conv->conv, $conv->msgs, (int) $conv->analyzed, $x->replied, $prices, $bounce->n, (int) $bounce->spam, $unident));
+            }
         }
 
         return self::SUCCESS;
