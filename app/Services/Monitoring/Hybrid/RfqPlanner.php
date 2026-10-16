@@ -35,7 +35,9 @@ class RfqPlanner
         foreach (DB::table('monitoring_programs')->where('status', 'active')->where('price_mode', 'hybrid')->get() as $program) {
             $refresh = max(14, (int) ($program->email_refresh_days ?: 60));
             $stats['on_request'] += $this->onRequest($program, $refresh, $dryRun);
-            $stats['pool'] += $this->pool($program, $refresh, $dryRun);
+            if (config('monitoring.hybrid.pool_enabled')) {
+                $stats['pool'] += $this->pool($program, $refresh, $dryRun);
+            }
         }
 
         return $stats;

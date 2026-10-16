@@ -44,6 +44,10 @@ return [
     // при send_enabled (выбор позиций, сбор ответов и «бесплатные» сверки работают и без него).
     'hybrid' => [
         'send_enabled' => (bool) env('MONITORING_HYBRID_SEND', false),
+        // Запросы КП профильному пулу (RfqPlanner::pool). Выключено 16.10.2026: подборщик отдавал
+        // одних и тех же 8–9 «универсалов» по возрастанию id (в т.ч. наш liftway.ru) на все товары —
+        // 3 783 запроса. Включать после исправления выбора пула.
+        'pool_enabled' => (bool) env('MONITORING_HYBRID_POOL', false),
     ],
 
     // Суточные квоты (MonitoringGovernor). Общие на все программы.
