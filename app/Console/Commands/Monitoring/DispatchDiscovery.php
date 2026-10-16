@@ -38,49 +38,62 @@ class DispatchDiscovery extends Command
         $programs = MonitoringProgram::query()->where('status', MonitoringProgram::STATUS_ACTIVE)
             ->when($this->option('program'), fn ($q, $p) => $q->where('id', (int) $p))
             ->get();
-        $total = 0;
         $global = $this->globalBudget();
+        if ($this->option('limit')) {
+            $global = min($global, (int) $this->option('limit'));
+        }
+        // Остаток суточного потолка каждой программы (discovery_rate = 0 — без потолка: скорость задаёт
+        // только агрессивность, решение владельца 15.10.2026).
+        $programBudget = [];
         foreach ($programs as $program) {
-            if ($global <= 0) {
-                break;
-            }
-            // Сколько товаров программы уже искали сегодня — суточный лимит discovery_rate.
-            $today = (int) DB::table('program_items as pi')->join('mp_products as p', 'p.id', '=', 'pi.product_id')
-                ->where('pi.program_id', $program->id)->where('p.last_search_at', '>=', now()->startOfDay())->count();
-            // discovery_rate = 0 — без собственного потолка программы: скорость задаёт только
-            // агрессивность (решение владельца 15.10.2026; раньше дефолт 500/сутки резал 30 тыс.
-            // позиций до 60 дней независимо от настроек).
             $rate = (int) $program->discovery_rate;
-            $budget = $rate > 0 ? min($global, max(0, $rate - $today)) : $global;
-            if ($this->option('limit')) {
-                $budget = min($budget, (int) $this->option('limit'));
-            }
-            if ($budget <= 0) {
+            if ($rate <= 0) {
+                $programBudget[$program->id] = PHP_INT_MAX;
                 continue;
             }
-
-            $ids = DB::table('program_items as pi')->join('mp_products as p', 'p.id', '=', 'pi.product_id')
-                ->where('pi.program_id', $program->id)->where('pi.active', true)->where('pi.match_status', 'matched')
-                ->where(function ($q) {
-                    $q->where('p.search_state', 'new')
-                        ->orWhere(function ($q) {
-                            $q->whereIn('p.search_state', ['found', 'not_found'])->whereNotNull('p.next_search_at')->where('p.next_search_at', '<=', now());
-                        });
-                })
-                ->groupBy('p.id')
-                ->orderByRaw("MAX(p.search_state = 'new') DESC, MAX(pi.priority) DESC, MIN(pi.id) ASC")
-                ->limit($budget)->pluck('p.id');
-
-            if ($ids->isNotEmpty()) {
-                // Отметка «в поиске», чтобы следующий тик не продублировал.
-                MpProduct::query()->whereIn('id', $ids)->update(['search_state' => 'queued', 'last_search_at' => now()]);
-            }
-            foreach ($ids as $id) {
-                DiscoverProductJob::dispatch((int) $id);
-            }
-            $total += $ids->count();
-            $global -= $ids->count();
+            $today = (int) DB::table('program_items as pi')->join('mp_products as p', 'p.id', '=', 'pi.product_id')
+                ->where('pi.program_id', $program->id)->where('p.last_search_at', '>=', now()->startOfDay())->count();
+            $programBudget[$program->id] = max(0, $rate - $today);
         }
+        $programBudget = array_filter($programBudget);
+
+        // Один общий список по всем программам. Раньше программы обходились по порядку id, и первая
+        // забирала весь бюджет тика: 16.10.2026 пилот гонял в поиск товары, у которых цены уже есть
+        // (из индекса каталогов), а 617 позиций mzCorp без единой цены за ночь сдвинулись на 6.
+        // Порядок: позиции без цен → ни разу не искавшиеся → приоритет позиции → порядок загрузки.
+        $cands = $global <= 0 || $programBudget === [] ? collect() : DB::table('program_items as pi')->join('mp_products as p', 'p.id', '=', 'pi.product_id')
+            ->whereIn('pi.program_id', array_keys($programBudget))->where('pi.active', true)->where('pi.match_status', 'matched')
+            ->where(function ($q) {
+                $q->where('p.search_state', 'new')
+                    ->orWhere(function ($q) {
+                        $q->whereIn('p.search_state', ['found', 'not_found'])->whereNotNull('p.next_search_at')->where('p.next_search_at', '<=', now());
+                    });
+            })
+            ->groupBy('p.id')
+            ->orderByRaw("MAX(p.listings_priced = 0) DESC, MAX(p.last_search_at IS NULL) DESC, MAX(p.search_state = 'new') DESC, MAX(pi.priority) DESC, MIN(pi.id) ASC")
+            ->limit(max(0, $global) * 3)
+            ->selectRaw('p.id, MIN(pi.program_id) program_id')->get();
+
+        $ids = [];
+        foreach ($cands as $c) {
+            if (count($ids) >= $global) {
+                break;
+            }
+            if (($programBudget[$c->program_id] ?? 0) <= 0) {
+                continue;
+            }
+            $ids[] = (int) $c->id;
+            $programBudget[$c->program_id]--;
+        }
+        if ($ids !== []) {
+            // Отметка «в поиске», чтобы следующий тик не продублировал.
+            MpProduct::query()->whereIn('id', $ids)->update(['search_state' => 'queued', 'last_search_at' => now()]);
+        }
+        foreach ($ids as $id) {
+            DiscoverProductJob::dispatch($id);
+        }
+        $total = count($ids);
+        $global -= $total;
 
         $this->info("Dispatched discovery: {$total} (global budget left this tick: {$global})");
 
