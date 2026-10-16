@@ -61,14 +61,13 @@
   после создания), `App\Support\Senders\SenderPool` — фильтр «только основная рассылка» в плане дня (`senderCaps`),
   `CampaignSenderAssigner`, `SenderDailyCapacity::poolRemainingTotal`, проверочных письмах Гибрида, прогреве, возврате ящиков и
   опросе IMAP. Спам-гвард ящики ветки не исключает (защищает репутацию доменов). Без колонки `senders.pool` фильтр — no-op,
-  а фабрика ящик не создаёт.
+  а фабрика ящик не создаёт. Колонка `reports.senders.pool` (`main`/`alias`, индекс) — накачена 16.10.2026 (подтверждение владельца).
 - Команда `alias-exp status | api-check {домен} | domain-add {домен} [--inbox=info] [--inbox-password=] | mailbox-create
   [--domain=] [--deadline=] | drop-expired [--dry-run]`; `drop-expired` — ежедневно 03:30 МСК.
 - Конфиг `services.alias_exp` (`ALIAS_EXP_*`: доля 0.2, 2 позиции, пауза 300 с, лимит 120/сутки, ≤10 ящиков/сутки,
   окно 9–18 Europe/Moscow, срок +7 / 21 дн).
 
 ## Открыто
-- Миграция `reports.senders.pool` (`main`/`alias`) — ждёт подтверждения владельца (прод-БД Beget); файл не в репозитории.
 - Новые домены — владелец заведёт и пришлёт. Подключение: `alias-exp domain-add <домен>`.
 - `setDomainMail` (катч-олл) через API ещё не проверен вживую — проверить на первом новом домене.
 - Тестовый ящик `ivan.petrov@stroy-lift.ru` — оставлен (решение владельца).
