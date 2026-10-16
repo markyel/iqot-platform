@@ -85,10 +85,10 @@ class BegetMailApi
         )));
     }
 
-    /** Catch-all: письма на несуществующие адреса домена (в т.ч. удалённые ящики) — в $mailbox. */
+    /** Catch-all: письма на несуществующие адреса домена (в т.ч. удалённые ящики) — в $mailbox@$domain (Beget ждёт полный адрес). */
     public function setCatchAll(string $domain, string $mailbox): void
     {
-        $this->call('setDomainMail', ['domain' => $domain, 'domain_mailbox' => $mailbox]);
+        $this->call('setDomainMail', ['domain' => $domain, 'domain_mailbox' => $mailbox . '@' . $domain]);
     }
 
     private function call(string $method, array $input): mixed
