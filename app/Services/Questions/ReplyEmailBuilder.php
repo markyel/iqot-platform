@@ -40,6 +40,7 @@ class ReplyEmailBuilder
             ],
             'organization' => $context['organization_name'] ?? null,
             'token' => $context['tracking_token'] ?? null,
+            'template' => ['id' => $template->id ?? null, 'name' => $template->name ?? null],
             'answerText' => (string) ($context['answer_text'] ?? ''),
             'greeting' => (string) ($context['sender_greeting'] ?? 'Здравствуйте'),
         ];
@@ -163,8 +164,8 @@ class ReplyEmailBuilder
                 );
 
             case 'token':
-                $token = htmlspecialchars((string) ($answerContext['token'] ?? ''), ENT_QUOTES, 'UTF-8');
-                return "<div style=\"margin-top:20px;\"><p style=\"margin:0;color:#ffffff;font-size:1px;line-height:1px;mso-hide:all;\">Ref: {$token}</p></div>";
+                // Видимый номер запроса (не скрытый 1px-текст — спам-признак); формулировка своя у шаблона.
+                return \App\Services\Generate\VisibleTokenLine::render((string) ($answerContext['token'] ?? ''), (array) ($answerContext['template'] ?? []), (array) $block);
 
             default:
                 return '';

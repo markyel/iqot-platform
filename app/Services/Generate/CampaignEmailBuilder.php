@@ -1074,7 +1074,8 @@ class CampaignEmailBuilder
                 );
 
             case 'token':
-                return "<div style=\"margin-top:20px;\"><p style=\"margin:0;color:#ffffff;font-size:1px;line-height:1px;mso-hide:all;\">Ref: {$token}</p></div>";
+                // Видимый номер запроса (не скрытый 1px-текст — спам-признак); формулировка своя у шаблона.
+                return VisibleTokenLine::render((string) $token, (array) $template, $block, $textStyles);
 
             default:
                 return '';
