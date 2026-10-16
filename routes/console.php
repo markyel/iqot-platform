@@ -64,6 +64,15 @@ Schedule::command('emails:process-load-deferred')
     ->everyFifteenMinutes()
     ->withoutOverlapping();
 
+// Пробационный возврат отсидевшихся спам-отключённых ящиков (дополняет спам-гвард,
+// чей авто-возврат мёртв из-за замкнутого круга). Раз в сутки рано утром по МСК,
+// ПЕРЕД прогревом. Флаг EMAILS_REVIVAL_ENABLED (команда сама проверяет).
+// Восстановлено 16.10.2026 (случайно удалено 09.07 в 904004e).
+Schedule::command('emails:revive-senders')
+    ->dailyAt('04:00')
+    ->timezone('Europe/Moscow')
+    ->withoutOverlapping();
+
 // Прогрев отправителей (Phase 3): суточный пересчёт senders.daily_limit — рампа за
 // успешный день / сброс+блок при бане. Флаг EMAILS_WARMUP_ENABLED (команда сама
 // проверяет). Раз в сутки рано утром по МСК (до рабочего окна рассылки).
