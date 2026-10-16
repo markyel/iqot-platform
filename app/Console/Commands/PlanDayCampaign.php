@@ -251,7 +251,20 @@ class PlanDayCampaign extends Command
         $assignStats = [];
         $densify = (bool) config('services.email_planner.dayplan_densify', false);
         $adaptiveK = (bool) config('services.email_planner.dayplan_adaptive_per_email', false);
-        $plan = (new DayPlanAssigner())->plan($positions, $poolMap, $relevantMap, $affinity, $supplierEmail, $senderCaps, $recipientCaps, $senderRecent, $maxPerEmail, $dropped, $assignStats, $densify, $adaptiveK);
+        // Однотипные позиции (тип + бренд + название без цифр: кнопки 1–6 этажей) — в одно письмо
+        // до dayplan_max_homogeneous, даже при письме на одну позицию (решение владельца 16.10.2026).
+        $maxHomogeneous = (int) config('services.email_planner.dayplan_max_homogeneous', 6);
+        $homogeneous = [];
+        foreach ($itemRows as $id => $it) {
+            $key = \App\Services\Generate\HomogeneousKey::of((int) ($it['product_type_id'] ?? 0) ?: null, $it['brand'] ?? null, $it['name'] ?? null);
+            if ($key !== null) {
+                $homogeneous[(int) $id] = $key;
+            }
+        }
+        $plan = (new DayPlanAssigner())->plan($positions, $poolMap, $relevantMap, $affinity, $supplierEmail, $senderCaps, $recipientCaps, $senderRecent, $maxPerEmail, $dropped, $assignStats, $densify, $adaptiveK, $homogeneous, $maxHomogeneous);
+        $groupSizes = array_count_values($homogeneous);
+        $this->line(sprintf('  [ДИАГ] однотипные группы: %d позиций в %d группах по 2+ (потолок %d в письме)',
+            array_sum(array_filter($groupSizes, fn ($n) => $n > 1)), count(array_filter($groupSizes, fn ($n) => $n > 1)), $maxHomogeneous));
 
         // 8. Отчёт по плану (и в dry-run, и перед рендером).
         $this->reportPlan($plan, $positions, $priced, $yandexOn, $yandexQueried, $yandexCached, count($senderCaps), $assignStats);

@@ -472,6 +472,9 @@ return [
         // v2 дневной планировщик (emails:plan-day): за флагом, параллельно v1 top-up.
         'dayplan_enabled' => (bool) env('EMAILS_DAYPLAN_ENABLED', false),
         'dayplan_max_per_email' => (int) env('EMAILS_DAYPLAN_MAX_PER_EMAIL', 4),  // позиций в письме (потолок)
+        // Однотипные позиции (тип + бренд + название без цифр, HomogeneousKey) — до N в письме даже при
+        // max_per_email=1 (кнопки 1–6 этажей одной серии). 0/1 — не объединять.
+        'dayplan_max_homogeneous' => (int) env('EMAILS_DAYPLAN_MAX_HOMOGENEOUS', 6),
         // Адаптивный размер письма ПО ПОСТАВЩИКУ: K = clamp(ceil(спрос_поставщика / его кап), 1, max_per_email),
         // где спрос = сколько позиций дня имеют его в пуле. Поставщику с малым спросом — по одной
         // позиции в письме (отклик у коротких писем/первых писем дня в 2 раза выше), «универсалу»

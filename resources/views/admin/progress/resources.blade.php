@@ -19,8 +19,8 @@
     @else
         @php($s = $v['s_tot']) @php($m = $v['mail'])
         <div class="stats-grid" style="margin-bottom: var(--space-6);">
-            <x-stat-card value="{{ $fmt($s->live_domains) }} из {{ $fmt($s->domains) }}" label="Живых доменов рассылки" icon="globe" icon-type="primary" />
-            <x-stat-card value="{{ $fmt($s->ready) }}" label="Ящиков готовы слать (из {{ $fmt($s->active) }} активных)" icon="mail" icon-type="success" />
+            <x-stat-card value="{{ $fmt($s->live_domains) }} из {{ $fmt($s->domains) }}" label="Живых доменов (есть годные ящики)" icon="globe" icon-type="primary" />
+            <x-stat-card value="{{ $fmt($s->ready) }}" label="Ящиков готовы слать (годных {{ $fmt($s->usable) }}; отправка отключена у {{ $fmt($s->disabled) }})" icon="mail" icon-type="success" />
             <x-stat-card value="{{ $fmt($s->blocked_now) }}" label="Временно заблокированы" icon="pause-circle" icon-type="{{ $s->blocked_now > 0 ? 'warning' : 'primary' }}" />
             <x-stat-card value="{{ $fmt($s->deactivated_7d) }}" label="Отключено за 7 дней (всего отключено {{ $fmt($s->inactive_total) }})" icon="x-circle" icon-type="{{ $s->deactivated_7d > 0 ? 'error' : 'primary' }}" />
         </div>
@@ -113,14 +113,15 @@
             <div class="card-header"><h3 class="card-title">Домены и ящики рассылки</h3></div>
             <div class="table-container">
                 <table class="table">
-                    <thead><tr><th>Домен</th><th>SMTP</th><th>Ящиков</th><th>Активных</th><th>Заблок. сейчас</th><th>Отключено</th><th>Лимит/сутки</th><th>Отправлено сегодня</th><th>Ошибок 24 ч</th></tr></thead>
+                    <thead><tr><th>Домен</th><th>SMTP</th><th>Ящиков</th><th>Годных</th><th>Отправка отключена</th><th>Заблок. сейчас</th><th>Неактивны</th><th>Лимит/сутки</th><th>Отправлено сегодня</th><th>Ошибок 24 ч</th></tr></thead>
                     <tbody>
                         @foreach ($v['senders'] as $d)
-                            <tr style="{{ (int) $d->active === 0 ? 'color: var(--color-text-muted);' : '' }}">
+                            <tr style="{{ (int) $d->usable === 0 ? 'color: var(--color-text-muted);' : '' }}">
                                 <td><strong>{{ $d->domain }}</strong></td>
                                 <td style="font-size: var(--text-sm);">{{ $d->smtp_server }}</td>
                                 <td>{{ $d->total }}</td>
-                                <td>{{ $d->active }}</td>
+                                <td><strong>{{ $d->usable }}</strong></td>
+                                <td style="{{ $d->disabled > 0 ? 'color: var(--color-error);' : '' }}">{{ $d->disabled }}</td>
                                 <td style="{{ $d->blocked_now > 0 ? 'color: var(--color-warning);' : '' }}">{{ $d->blocked_now }}</td>
                                 <td>{{ $d->inactive }}</td>
                                 <td>{{ $fmt($d->daily_limit) }}</td>

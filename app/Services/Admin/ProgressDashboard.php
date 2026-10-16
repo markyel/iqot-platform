@@ -251,32 +251,40 @@ class ProgressDashboard
             ->whereRaw('status IN ' . self::SENT)->groupBy('sender_id')->selectRaw('sender_id, COUNT(*) c')->pluck('c', 'sender_id');
         $errBySender = $db->table('email_queue')->where('status', 'error')->where('updated_at', '>=', now()->subDay())
             ->groupBy('sender_id')->selectRaw('sender_id, COUNT(*) c')->pluck('c', 'sender_id');
-        $senderRows = $db->table('senders')->get(['id', 'email', 'smtp_server', 'is_active', 'is_personal', 'daily_limit', 'blocked_until']);
+        $senderRows = $db->table('senders')->get(['id', 'email', 'smtp_server', 'is_active', 'sending_disabled', 'is_personal', 'daily_limit', 'blocked_until']);
         $groups = [];
         foreach ($senderRows as $sr) {
             $key = mb_strtolower(substr(strrchr((string) $sr->email, '@') ?: '@?', 1)) . '|' . $sr->smtp_server;
-            $g = $groups[$key] ?? ['domain' => explode('|', $key)[0], 'smtp_server' => $sr->smtp_server, 'total' => 0, 'active' => 0,
+            $g = $groups[$key] ?? ['domain' => explode('|', $key)[0], 'smtp_server' => $sr->smtp_server, 'total' => 0, 'active' => 0, 'usable' => 0, 'disabled' => 0,
                 'blocked_now' => 0, 'inactive' => 0, 'personal' => 0, 'daily_limit' => 0, 'sent_today' => 0, 'errors_24h' => 0];
             $g['total']++;
+            // Годный ящик: активен И отправка не отключена (sending_disabled — отключение провайдером/вручную;
+            // 15.10.2026 так выключены целиком postserve.ru, mailnex.ru, fastmailr.ru и др. при is_active=1).
             $active = (int) $sr->is_active === 1;
+            $disabled = $active && (int) $sr->sending_disabled === 1;
             $g['active'] += $active ? 1 : 0;
+            $g['disabled'] += $disabled ? 1 : 0;
+            $g['usable'] += $active && !$disabled ? 1 : 0;
             $g['inactive'] += $active ? 0 : 1;
-            $g['blocked_now'] += $active && $sr->blocked_until && \Illuminate\Support\Carbon::parse($sr->blocked_until)->isFuture() ? 1 : 0;
+            $g['blocked_now'] += $active && !$disabled && $sr->blocked_until && \Illuminate\Support\Carbon::parse($sr->blocked_until)->isFuture() ? 1 : 0;
             $g['personal'] += (int) $sr->is_personal === 1 ? 1 : 0;
             $g['daily_limit'] += (int) $sr->daily_limit;
             $g['sent_today'] += (int) ($sentBySender[$sr->id] ?? 0);
             $g['errors_24h'] += (int) ($errBySender[$sr->id] ?? 0);
             $groups[$key] = $g;
         }
-        usort($groups, fn ($a, $b) => [$b['active'], $b['total']] <=> [$a['active'], $a['total']]);
+        usort($groups, fn ($a, $b) => [$b['usable'], $b['total']] <=> [$a['usable'], $a['total']]);
         $senders = array_map(fn ($g) => (object) $g, $groups);
-        $sTot = $db->selectOne("SELECT COUNT(*) total, SUM(is_active = 1) active, SUM(is_active = 1 AND blocked_until > NOW()) blocked_now,
-                SUM(is_active = 1 AND (blocked_until IS NULL OR blocked_until <= NOW())) ready,
-                COUNT(DISTINCT CASE WHEN is_active = 1 THEN SUBSTRING_INDEX(email, '@', -1) END) live_domains,
+        $sTot = $db->selectOne("SELECT COUNT(*) total, SUM(is_active = 1) active,
+                SUM(is_active = 1 AND COALESCE(sending_disabled, 0) = 0) usable,
+                SUM(is_active = 1 AND sending_disabled = 1) disabled,
+                SUM(is_active = 1 AND COALESCE(sending_disabled, 0) = 0 AND blocked_until > NOW()) blocked_now,
+                SUM(is_active = 1 AND COALESCE(sending_disabled, 0) = 0 AND (blocked_until IS NULL OR blocked_until <= NOW())) ready,
+                COUNT(DISTINCT CASE WHEN is_active = 1 AND COALESCE(sending_disabled, 0) = 0 THEN SUBSTRING_INDEX(email, '@', -1) END) live_domains,
                 COUNT(DISTINCT SUBSTRING_INDEX(email, '@', -1)) domains,
                 SUM(is_active = 0 AND last_block_at >= NOW() - INTERVAL 7 DAY) deactivated_7d, SUM(is_active = 0) inactive_total
             FROM senders");
-        $blockedList = $db->table('senders')->where('is_active', 1)->where('blocked_until', '>', now())
+        $blockedList = $db->table('senders')->where('is_active', 1)->where(fn ($q) => $q->whereNull('sending_disabled')->orWhere('sending_disabled', 0))->where('blocked_until', '>', now())
             ->orderByDesc('blocked_until')->limit(15)->get(['id', 'email', 'blocked_until', 'block_reason', 'block_count']);
         $capacity = null;
         try {

@@ -62,6 +62,8 @@ class DayPlanAssigner
         ?array &$stats = null,
         bool $densify = false,
         bool $adaptivePerEmail = false,
+        array $homogeneous = [],
+        int $maxHomogeneous = 0,
     ): array {
         $maxPerEmail = max(1, $maxPerEmail);
         $droppedNoSender = 0;
@@ -143,10 +145,14 @@ class DayPlanAssigner
                     // 1) Подсадка в открытый конверт (бесплатно по ёмкости) — ТОЛЬКО
                     // совместимые (качество письма). Несовместимый остаток добьёт раунд 2.
                     foreach ($bySupplier[$sid] ?? [] as $ei) {
-                        if (count($envelopes[$ei]['item_ids']) >= $limitFor($sid)) {
+                        // Однотипные позиции (кнопки 1–6 этажей: тип + бренд + название без цифр)
+                        // объединяются до $maxHomogeneous, остальные — до лимита письма.
+                        $sameGroup = $maxHomogeneous > $limitFor($sid)
+                            && $this->sameHomogeneousGroup($item, $envelopes[$ei]['item_ids'], $homogeneous);
+                        if (count($envelopes[$ei]['item_ids']) >= ($sameGroup ? $maxHomogeneous : $limitFor($sid))) {
                             continue;
                         }
-                        if (!$this->compatibleWithAll($item, $envelopes[$ei]['item_ids'], $compatible)) {
+                        if (!$sameGroup && !$this->compatibleWithAll($item, $envelopes[$ei]['item_ids'], $compatible)) {
                             continue;
                         }
                         $envelopes[$ei]['item_ids'][] = $item;
@@ -349,6 +355,22 @@ class DayPlanAssigner
     }
 
     /** Совместима ли позиция со ВСЕМИ позициями конверта (аффинность симметрична). */
+    /** Позиция и все позиции письма — одна однотипная группа (HomogeneousKey). */
+    private function sameHomogeneousGroup(int $item, array $envelopeItems, array $homogeneous): bool
+    {
+        $key = $homogeneous[$item] ?? null;
+        if ($key === null || $envelopeItems === []) {
+            return false;
+        }
+        foreach ($envelopeItems as $other) {
+            if (($homogeneous[$other] ?? null) !== $key) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private function compatibleWithAll(int $item, array $envelopeItems, array $compatible): bool
     {
         foreach ($envelopeItems as $other) {
