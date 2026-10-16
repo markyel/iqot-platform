@@ -39,6 +39,25 @@ class BegetMailApi
         $this->call('createMailbox', ['domain' => $domain, 'mailbox' => $mailbox, 'mailbox_password' => $password]);
     }
 
+    public function changePassword(string $domain, string $mailbox, string $password): void
+    {
+        $this->call('changeMailboxPassword', ['domain' => $domain, 'mailbox' => $mailbox, 'mailbox_password' => $password]);
+    }
+
+    /** Пароль ящика: Beget отклоняет пароль без спецсимвола (1208 Failed to create mailbox). */
+    public static function password(int $len = 16): string
+    {
+        $sets = ['abcdefghijkmnpqrstuvwxyz', 'ABCDEFGHJKLMNPQRSTUVWXYZ', '23456789', '!@#%-_'];
+        $chars = array_map(static fn ($s) => $s[random_int(0, strlen($s) - 1)], $sets);
+        $all = implode('', $sets);
+        while (count($chars) < $len) {
+            $chars[] = $all[random_int(0, strlen($all) - 1)];
+        }
+        shuffle($chars);
+
+        return implode('', $chars);
+    }
+
     public function dropMailbox(string $domain, string $mailbox): void
     {
         $this->call('dropMailbox', ['domain' => $domain, 'mailbox' => $mailbox]);

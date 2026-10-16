@@ -10,13 +10,12 @@ use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 /**
  * Управление алгоритмом «ящик на батч» (docs/alias-mailbox-design.md).
  *   status                                  — резерв, домены, ящики
  *   api-check {домен}                       — живость ключей Beget (только чтение: список ящиков)
- *   domain-add {домен} [--inbox=info] [--inbox-password=]
+ *   domain-add {домен} [--inbox=info] [--inbox-password=] [--reset-inbox-password]
  *                                           — домен в пул: общий ящик (создаётся, если нет) + катч-олл на него
  *   mailbox-create [--domain=] [--deadline=Y-m-d]
  *                                           — ручной ящик под батч (в Ф3 их создаёт план дня)
@@ -24,7 +23,7 @@ use Illuminate\Support\Str;
  */
 class AliasExpCommand extends Command
 {
-    protected $signature = 'alias-exp {action} {domain?} {--inbox=info} {--inbox-password=} {--domain=} {--deadline=} {--dry-run}';
+    protected $signature = 'alias-exp {action} {domain?} {--inbox=info} {--inbox-password=} {--reset-inbox-password} {--domain=} {--deadline=} {--dry-run}';
 
     protected $description = 'Алгоритм «ящик на батч»: домены, ящики, проверка API Beget';
 
@@ -84,7 +83,12 @@ class AliasExpCommand extends Command
             return self::FAILURE;
         }
         $password = (string) $this->option('inbox-password');
-        if ($beget->mailboxExists($domain, $inbox)) {
+        if ($beget->mailboxExists($domain, $inbox) && $this->option('reset-inbox-password')) {
+            // Только для своего, только что созданного ящика: владелец им не пользуется.
+            $password = BegetMailApi::password();
+            $beget->changePassword($domain, $inbox, $password);
+            $this->info("Пароль {$inbox}@{$domain} сброшен и сохранён зашифрованным");
+        } elseif ($beget->mailboxExists($domain, $inbox)) {
             if ($password === '') {
                 // Чужой пароль не меняем: им может пользоваться владелец.
                 $this->error("{$inbox}@{$domain} уже есть — передайте его пароль: --inbox-password=…");
@@ -93,7 +97,7 @@ class AliasExpCommand extends Command
             }
             $this->line("{$inbox}@{$domain} уже есть — используем");
         } else {
-            $password = $password !== '' ? $password : Str::password(16, symbols: false);
+            $password = $password !== '' ? $password : BegetMailApi::password();
             $beget->createMailbox($domain, $inbox, $password);
             $this->info("Создан общий ящик {$inbox}@{$domain} (пароль сохранён зашифрованным)");
         }
