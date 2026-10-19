@@ -16,7 +16,10 @@ use Illuminate\Support\Facades\Log;
  *     цены (товар у него точно есть), независимо от числа цен с других сайтов;
  *  2. Пул — потом: если после раунда «по запросу» (нет открытых запросов по товару) у позиции
  *     меньше POOL_TARGET_PRICES цен (сайты + КП), — профильному пулу IQOT по типу/области товара
- *     (CampaignSupplierSelector — карма, стоп-листы, отписки как в основном режиме).
+ *     (CampaignSupplierSelector — карма, стоп-листы, отписки как в основном режиме), отранжированному
+ *     по отдаче (rankPool: доля цен и ответов, карма по типу, явная привязка) без наших/тестовых адресов
+ *     и с выравниванием нагрузки внутри прогона — иначе все товары типа уходили одним и тем же первым по id
+ *     поставщикам (16.10.2026: 473 товара × 8 одних и тех же = 3 783 запроса, отменены).
  * Только программы price_mode=hybrid. Повтор по паре товар × поставщик — не чаще email_refresh_days
  * программы (по умолчанию 60). Отдельного лимита писем нет — общие лимиты ящиков и капы получателей.
  */
@@ -28,10 +31,14 @@ class RfqPlanner
 
     public const EXPIRES_DAYS = 14;
 
-    /** @return array{on_request: int, pool: int} */
+    /** @var array<int,int> supplier_id => запросов пула, назначенных в этом прогоне (выравнивание нагрузки) */
+    private array $assigned = [];
+
+    /** @return array{on_request: int, pool: int, pool_by_supplier: array<int,int>} */
     public function plan(bool $dryRun = false): array
     {
         $stats = ['on_request' => 0, 'pool' => 0];
+        $this->assigned = [];
         foreach (DB::table('monitoring_programs')->where('status', 'active')->where('price_mode', 'hybrid')->get() as $program) {
             $refresh = max(14, (int) ($program->email_refresh_days ?: 60));
             $stats['on_request'] += $this->onRequest($program, $refresh, $dryRun);
@@ -39,6 +46,8 @@ class RfqPlanner
                 $stats['pool'] += $this->pool($program, $refresh, $dryRun);
             }
         }
+        arsort($this->assigned);
+        $stats['pool_by_supplier'] = $this->assigned;
 
         return $stats;
     }
@@ -138,7 +147,7 @@ class RfqPlanner
                     $b->useNewRouting = true;
                     $b->productTypeIds = [(int) $p->product_type_id];
                     $b->domainIds = $p->domain_id ? [(int) $p->domain_id] : [];
-                    $poolCache[$ck] = array_map(fn ($s) => (int) $s['id'], $selector->select($b));
+                    $poolCache[$ck] = $this->rankPool(array_map(fn ($s) => (int) $s['id'], $selector->select($b)), (int) $p->product_type_id);
                 } catch (\Throwable $e) {
                     Log::warning('RfqPlanner: pool select failed', ['product_type_id' => $p->product_type_id, 'error' => $e->getMessage()]);
                     $poolCache[$ck] = [];
@@ -159,7 +168,11 @@ class RfqPlanner
                     ItemScope::listingCodes($l->matched_codes, $l->match_method, $l->match_evidence)))
                 ->pluck('supplier_id')->flip();
             $take = 0;
-            foreach ($poolCache[$ck] as $sid) {
+            // Нагрузка: каждые 5 уже назначенных в прогоне запросов вдвое снижают приоритет поставщика —
+            // товары одного типа расходятся по разным сильным поставщикам, а не по одним и тем же.
+            $order = $poolCache[$ck];
+            uksort($order, fn ($a, $b) => ($order[$b] / (1 + ($this->assigned[$b] ?? 0) / 5)) <=> ($order[$a] / (1 + ($this->assigned[$a] ?? 0) / 5)));
+            foreach (array_keys($order) as $sid) {
                 if ($take >= self::POOL_SUPPLIERS_PER_ROUND) {
                     break;
                 }
@@ -175,9 +188,50 @@ class RfqPlanner
                 }
                 $take++;
                 $made++;
+                $this->assigned[$sid] = ($this->assigned[$sid] ?? 0) + 1;
             }
         }
 
         return $made;
+    }
+
+    /**
+     * Пул типа → [supplier_id => балл], без наших/тестовых адресов. Балл: доля писем с ценой (×10) и с ответом (×4)
+     * по счётчикам suppliers (знаменатель не меньше 10 писем — новичок без истории не «выигрывает» случайным ответом),
+     * число цен (log), карма по этому типу (+3) и явная привязка к типу (+1), уверенность профиля (+1). Минимум 0.1 —
+     * поставщик без истории остаётся в пуле, но после проверенных.
+     *
+     * @param int[] $ids
+     * @return array<int,float>
+     */
+    private function rankPool(array $ids, int $typeId): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+        $exclude = array_map('mb_strtolower', (array) config('monitoring.hybrid.pool_exclude', []));
+        $r = DB::connection('reports');
+        $types = $r->table('supplier_product_types')->where('product_type_id', $typeId)->whereIn('supplier_id', $ids)
+            ->get(['supplier_id', 'is_included', 'positive_signals'])->keyBy('supplier_id');
+        $scores = [];
+        foreach (array_chunk($ids, 500) as $chunk) {
+            foreach ($r->table('suppliers')->whereIn('id', $chunk)->get(['id', 'email', 'total_requests_sent', 'total_responses_received',
+                'total_prices_offered', 'profile_confidence']) as $s) {
+                $email = mb_strtolower(trim((string) $s->email));
+                $domain = ltrim((string) strrchr($email, '@'), '@');
+                if ($email === '' || in_array($email, $exclude, true) || in_array($domain, $exclude, true)) {
+                    continue;
+                }
+                $sent = max(10, (int) $s->total_requests_sent);
+                $t = $types[$s->id] ?? null;
+                $scores[(int) $s->id] = max(0.1, round(
+                    10 * min(1, (int) $s->total_prices_offered / $sent) + 4 * min(1, (int) $s->total_responses_received / $sent)
+                    + log(1 + (int) $s->total_prices_offered) + ((int) ($t->positive_signals ?? 0) > 0 ? 3 : 0)
+                    + ((int) ($t->is_included ?? 0) === 1 ? 1 : 0) + (float) $s->profile_confidence, 4));
+            }
+        }
+        arsort($scores);
+
+        return $scores;
     }
 }

@@ -61,6 +61,11 @@ class HybridCommand extends Command
             case 'plan-kp':
                 $r = (new \App\Services\Monitoring\Hybrid\RfqPlanner())->plan($dry);
                 $this->info("Запросы КП: «по запросу» {$r['on_request']}, пул {$r['pool']}" . ($dry ? ' (dry-run)' : ''));
+                if ($r['pool_by_supplier'] ?? []) {
+                    $top = array_slice($r['pool_by_supplier'], 0, 15, true);
+                    $emails = \Illuminate\Support\Facades\DB::connection('reports')->table('suppliers')->whereIn('id', array_keys($top))->pluck('email', 'id');
+                    $this->line('  Пул: поставщиков ' . count($r['pool_by_supplier']) . ', больше всех запросов: ' . implode(', ', array_map(fn ($id, $n) => ($emails[$id] ?? $id) . " {$n}", array_keys($top), $top)));
+                }
                 break;
             case 'send':
                 if (!$dry && !config('monitoring.hybrid.send_enabled')) {

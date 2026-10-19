@@ -56,8 +56,10 @@ return [
         'send_enabled' => (bool) env('MONITORING_HYBRID_SEND', false),
         // Запросы КП профильному пулу (RfqPlanner::pool). Выключено 16.10.2026: подборщик отдавал
         // одних и тех же 8–9 «универсалов» по возрастанию id (в т.ч. наш liftway.ru) на все товары —
-        // 3 783 запроса. Включать после исправления выбора пула.
+        // 3 783 запроса. С 19.10.2026 пул ранжируется (RfqPlanner::rankPool) и выравнивается по нагрузке.
         'pool_enabled' => (bool) env('MONITORING_HYBRID_POOL', false),
+        // Не спрашивать пул: наши и тестовые адреса (e-mail целиком или домен). Свои ящики владельца — в .env прода.
+        'pool_exclude' => array_values(array_filter(array_map('trim', explode(',', (string) env('MONITORING_HYBRID_POOL_EXCLUDE', 'liftway.ru'))))),
     ],
 
     // Суточные квоты (MonitoringGovernor). Общие на все программы.
