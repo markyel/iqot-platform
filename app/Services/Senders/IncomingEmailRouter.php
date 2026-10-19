@@ -187,11 +187,12 @@ class IncomingEmailRouter
         }
         $hit = fn ($r) => [(int) $r->id, $r->supplier_id ? (int) $r->supplier_id : null, (int) $r->batch_id];
 
-        preg_match_all('/<[^<>\s]+>/', $email->inReplyTo . ' ' . $email->references, $m);
-        $refs = array_flip(array_map('mb_strtolower', $m[0]));
+        // webklex отдаёт In-Reply-To/References без угловых скобок, а message_id храним в скобках — сравниваем без них.
+        preg_match_all('/<?([^<>\s,]+@[^<>\s,]+)>?/', $email->inReplyTo . ' ' . $email->references, $m);
+        $refs = array_flip(array_map(fn ($v) => mb_strtolower(trim($v, '<>')), $m[1]));
         if ($refs !== []) {
             foreach ($rows as $r) {
-                $mid = mb_strtolower((string) (json_decode((string) $r->email_service_response, true)['message_id'] ?? ''));
+                $mid = mb_strtolower(trim((string) (json_decode((string) $r->email_service_response, true)['message_id'] ?? ''), '<> '));
                 if ($mid !== '' && isset($refs[$mid])) {
                     return $hit($r);
                 }
