@@ -12,7 +12,7 @@ use App\Support\Monitoring\ArticleNormalizer;
  *  2. LLM явно: другой товар (is_same_product=false) → отказ (бренд/тип/параметры).
  *  3. Артикул товара есть на странице ТОКЕНОМ (или совпал sku разметки) → oem_exact/structured_sku.
  *  4. Серая зона: числовые признаки наименования (D=240, 6 мм) расходятся со страницей → отказ.
- *  5. Серая зона: только LLM is_same_product=true → llm_verified; иначе отказ
+ *  5. Серая зона: только LLM is_same_product=true и её цитата есть на странице → llm_verified; иначе отказ
  *     (урок LazyLift: в серой зоне 95% привязок оказывались чужими).
  */
 class ListingIdentityVerifier
@@ -60,10 +60,48 @@ class ListingIdentityVerifier
         }
 
         if ($llm !== null && ($llm['is_same_product'] ?? null) === true) {
+            // Цитата, по которой модель «опознала» товар, обязана быть на странице: на странице бренда snab-lift
+            // (M10697, 19.10.2026) модель вернула дословно НАШЕ название, которого там нет, и цену соседнего товара.
+            if (!self::quoteOnPage($llmEvidence, $pageText)) {
+                return $this->reject('llm_evidence_not_on_page', $llmEvidence);
+            }
+
             return $this->accept('llm_verified', 0.80, $llmEvidence);
         }
 
         return $this->reject($llm === null ? 'no_article_on_page' : 'llm_unsure', $llmEvidence);
+    }
+
+    /**
+     * Дословная (с точностью до регистра, ё/е, пунктуации и пробелов) цитата есть в тексте страницы. Допуск — если
+     * модель чуть сократила цитату: ≥ 90% слов цитаты есть на странице и все слова с цифрами/латиницей (модели, коды).
+     */
+    public static function quoteOnPage(string $quote, string $page): bool
+    {
+        $norm = fn (string $t) => trim((string) preg_replace('/[^\p{L}\p{N}]+/u', ' ', str_replace('ё', 'е', mb_strtolower($t))));
+        $q = $norm($quote);
+        if (mb_strlen(str_replace(' ', '', $q)) < 4) {
+            return false;
+        }
+        $p = ' ' . $norm($page) . ' ';
+        if (str_contains($p, ' ' . $q . ' ') || str_contains($p, $q)) {
+            return true;
+        }
+        $words = array_values(array_filter(explode(' ', $q), fn ($w) => mb_strlen($w) >= 2));
+        if (count($words) < 3) {
+            return false;
+        }
+        $have = array_flip(explode(' ', trim($p)));
+        $hit = 0;
+        foreach ($words as $w) {
+            if (isset($have[$w])) {
+                $hit++;
+            } elseif (preg_match('/[\p{N}a-z]/u', $w)) {
+                return false; // модель/код/число из цитаты не встречается на странице
+            }
+        }
+
+        return $hit / count($words) >= 0.9;
     }
 
     /**

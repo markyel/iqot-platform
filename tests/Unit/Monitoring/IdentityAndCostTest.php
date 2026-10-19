@@ -61,9 +61,27 @@ class IdentityAndCostTest extends TestCase
         $v = new ListingIdentityVerifier();
         $p = $this->product('Ролик натяжной', ['KM763640G01']);
         $this->assertFalse($v->verify($p, 'Ролик натяжной для лифта', null, ['is_same_product' => null])['accepted']);
-        $ok = $v->verify($p, 'Ролик натяжной для лифта', null, ['is_same_product' => true, 'evidence_identity' => 'x']);
+        $ok = $v->verify($p, 'Ролик натяжной для лифта', null, ['is_same_product' => true, 'evidence_identity' => 'Ролик натяжной для лифта']);
         $this->assertTrue($ok['accepted']);
         $this->assertSame('llm_verified', $ok['method']);
+    }
+
+    public function test_llm_quote_must_be_on_page(): void
+    {
+        // M10697, 19.10.2026: страница бренда snab-lift без нашей платы, модель вернула наше же название и цену соседа.
+        $v = new ListingIdentityVerifier();
+        $p = $this->product('Плата индикатора DMC (7-13 остановок) красная индикация', ['48DMCEF'], 'AYBEY ELEKTRONIK');
+        $page = 'Aybey Elektronik — турецкий производитель. Наличие: под заказ Цена с НДС: 61 259 ₽ В корзину Плата SCC5 Aybey Elektronik Артикул: 24060';
+        $r = $v->verify($p, $page, null, ['is_same_product' => true, 'evidence_identity' => 'Плата индикатора DMC (7-13 остановок) красная индикация']);
+        $this->assertFalse($r['accepted']);
+        $this->assertSame('llm_evidence_not_on_page', $r['reason']);
+        $this->assertFalse($v->verify($p, $page, null, ['is_same_product' => true, 'evidence_identity' => ''])['accepted']);
+
+        // Регистр, пунктуация, ё/е и небольшое сокращение цитаты — допустимы; чужая модель — нет.
+        $this->assertTrue(ListingIdentityVerifier::quoteOnPage('плата индикатора DMC 7-13 остановок', 'Плата индикатора «DMC» (7–13 остановок), красная индикация — 5 400 ₽'));
+        $this->assertTrue(ListingIdentityVerifier::quoteOnPage('Ролик натяжной ёлочный', 'РОЛИК НАТЯЖНОЙ ЕЛОЧНЫЙ'));
+        $this->assertFalse(ListingIdentityVerifier::quoteOnPage('Плата индикатора DMC красная', 'Плата индикатора SEC красная индикация'));
+        $this->assertFalse(ListingIdentityVerifier::quoteOnPage('x', 'x y z'));
     }
 
     public function test_numeric_signals_conflict_in_gray_zone(): void
