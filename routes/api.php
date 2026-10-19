@@ -1,6 +1,5 @@
 <?php
 
-use App\Http\Controllers\Api\WebhookController;
 // use App\Http\Controllers\Api\RequestController;
 // use App\Http\Controllers\Api\SupplierController;
 // use App\Http\Controllers\Api\ReportController;
@@ -17,27 +16,6 @@ use Illuminate\Support\Facades\Route;
 | Все роуты защищены через Laravel Sanctum токены.
 |
 */
-
-// Публичные вебхуки от n8n (с проверкой подписи)
-Route::prefix('webhooks')->name('webhooks.')->group(function () {
-    // n8n отправляет сюда обновления по заявкам
-    Route::post('/request-update', [WebhookController::class, 'requestUpdate'])->name('request.update');
-    
-    // n8n отправляет сюда новые КП от поставщиков
-    Route::post('/offer-received', [WebhookController::class, 'offerReceived'])->name('offer.received');
-    
-    // n8n отправляет сюда готовые отчёты
-    Route::post('/report-ready', [WebhookController::class, 'reportReady'])->name('report.ready');
-    
-    // Статус email-рассылки
-    Route::post('/email-status', [WebhookController::class, 'emailStatus'])->name('email.status');
-
-    // PDF отчёт готов (от n8n Report Management API)
-    Route::post('/report-ready-pdf', [WebhookController::class, 'pdfReportReady'])->name('report.ready-pdf');
-
-    // Результат AI-парсинга заявки (от n8n Parse Request API)
-    Route::post('/parse-callback', [\App\Http\Controllers\Webhooks\ParseWebhookController::class, 'callback'])->name('parse.callback');
-});
 
 // Защищённые API роуты (требуют Sanctum токен)
 // Временно закомментированы до создания соответствующих контроллеров

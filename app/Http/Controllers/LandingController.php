@@ -94,18 +94,17 @@ class LandingController extends Controller
         // Создаём заявку в БД
         $demoRequest = DemoRequest::create($validated);
 
-        // Отправляем в n8n webhook
+        // Оповещение команды (раньше — n8n-вебхук demo-request; n8n выключен 10.2026). Заявка видна в /manage/demo-requests.
         try {
-            Http::post(config('services.n8n.webhook_url', '') . '/demo-request', [
-                'id' => $demoRequest->id,
-                ...$validated
-            ]);
-        } catch (\Exception $e) {
-            // Логируем ошибку, но не показываем пользователю
-            logger()->error('Failed to send demo request to n8n', [
-                'error' => $e->getMessage(),
-                'data' => $validated,
-            ]);
+            $e = fn ($v) => htmlspecialchars((string) $v, ENT_QUOTES);
+            app(\App\Services\Ops\OpsAlerter::class)->send(
+                "📝 <b>Демо-заявка #{$demoRequest->id}</b>\n"
+                . $e($validated['organization'] ?? '') . ' · ' . $e($validated['full_name'] ?? '') . "\n"
+                . $e($validated['email'] ?? '') . ' · ' . $e($validated['phone'] ?? '') . "\n"
+                . 'Позиций: ' . count(array_filter(preg_split('/\R/u', (string) ($validated['items_list'] ?? '')) ?: []))
+            );
+        } catch (\Throwable $ex) {
+            logger()->warning('Demo request alert failed', ['id' => $demoRequest->id, 'error' => $ex->getMessage()]);
         }
 
         if ($request->wantsJson()) {

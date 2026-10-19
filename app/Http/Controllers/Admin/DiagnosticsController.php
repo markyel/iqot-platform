@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Services\N8nParseService;
-use App\Services\N8nSenderService;
+use App\Services\Api\OpenAIClassifierClient;
+use App\Services\Requests\RequestTextParser;
+use App\Services\Senders\CustomerSenderService;
 use Illuminate\Http\Request;
 
+/** Диагностика: разбор заявок (ИИ), пул ящиков клиентских отправителей, БД. Без n8n (выключен 10.2026). */
 class DiagnosticsController extends Controller
 {
     public function index()
@@ -22,77 +24,32 @@ class DiagnosticsController extends Controller
 
     private function checkParseService(): array
     {
-        $config = [
-            'url' => config('services.n8n.parse_webhook_url'),
-            'token' => config('services.n8n.parse_auth_token'),
-        ];
-
-        $status = 'ok';
-        $message = 'Конфигурация корректна';
-        $details = [];
-
-        if (empty($config['url'])) {
-            $status = 'error';
-            $message = 'N8N_PARSE_WEBHOOK_URL не настроен в .env';
-            $details[] = 'Добавьте N8N_PARSE_WEBHOOK_URL=https://liftway.app.n8n.cloud/webhook/parse-request';
-        }
-
-        if (empty($config['token'])) {
-            $status = 'error';
-            $message = 'N8N_PARSE_AUTH_TOKEN не настроен в .env';
-            $details[] = 'Добавьте N8N_PARSE_AUTH_TOKEN в .env';
-        }
-
-        if ($status === 'ok' && strpos($config['token'], '__n8n_BLANK_VALUE') !== false) {
-            $status = 'warning';
-            $message = 'Используется placeholder токен';
-            $details[] = 'Замените токен на реальное значение в .env';
-        }
+        $ai = app(OpenAIClassifierClient::class);
+        $ok = $ai->isConfigured();
 
         return [
-            'name' => 'Parse Service (AI парсинг заявок)',
-            'status' => $status,
-            'message' => $message,
-            'config' => $config,
-            'details' => $details,
+            'name' => 'Разбор заявок (ИИ)',
+            'status' => $ok ? 'ok' : 'error',
+            'message' => $ok ? 'ИИ-клиент настроен' : 'ИИ-клиент не настроен (OPENAI_CLASSIFIER_*)',
+            'config' => ['model' => $ai->modelFull(), 'queue' => 'generate'],
+            'details' => [],
         ];
     }
 
     private function checkSenderService(): array
     {
-        $config = [
-            'url' => config('services.n8n.sender_webhook_url'),
-            'token' => config('services.n8n.sender_auth_token'),
-        ];
-
-        $status = 'ok';
-        $message = 'Конфигурация корректна';
-        $details = [];
-
-        if (empty($config['url'])) {
-            $status = 'error';
-            $message = 'N8N_SENDER_WEBHOOK_URL не настроен в .env';
-            $details[] = 'Добавьте N8N_SENDER_WEBHOOK_URL в .env';
-        }
-
-        if (empty($config['token'])) {
-            $status = 'error';
-            $message = 'N8N_SENDER_AUTH_TOKEN не настроен в .env';
-            $details[] = 'Добавьте N8N_SENDER_AUTH_TOKEN в .env';
-        }
-
-        if ($status === 'ok' && strpos($config['token'], '__n8n_BLANK_VALUE') !== false) {
-            $status = 'warning';
-            $message = 'Используется placeholder токен';
-            $details[] = 'Замените токен на реальное значение в .env';
+        try {
+            $free = count(app(CustomerSenderService::class)->getAvailableEmails()['emails'] ?? []);
+        } catch (\Throwable $e) {
+            return ['name' => 'Отправители клиентов', 'status' => 'error', 'message' => 'Ошибка БД reports', 'details' => [$e->getMessage()]];
         }
 
         return [
-            'name' => 'Sender Service (Управление отправителями)',
-            'status' => $status,
-            'message' => $message,
-            'config' => $config,
-            'details' => $details,
+            'name' => 'Отправители клиентов',
+            'status' => $free > 0 ? 'ok' : 'warning',
+            'message' => $free > 0 ? "Свободных ящиков в резерве: {$free}" : 'Свободных ящиков в reserved_emails нет',
+            'config' => [],
+            'details' => [],
         ];
     }
 
@@ -104,9 +61,9 @@ class DiagnosticsController extends Controller
 
         try {
             \DB::connection()->getPdo();
+            \DB::connection('reports')->getPdo();
 
-            // Проверка важных таблиц
-            $tables = ['users', 'system_settings', 'balance_holds', 'requests', 'request_items'];
+            $tables = ['users', 'system_settings', 'balance_holds', 'requests', 'request_items', 'parse_tasks'];
             foreach ($tables as $table) {
                 if (!\Schema::hasTable($table)) {
                     $status = 'error';
@@ -114,7 +71,6 @@ class DiagnosticsController extends Controller
                     $details[] = "Таблица '{$table}' не найдена. Запустите: php artisan migrate";
                 }
             }
-
         } catch (\Exception $e) {
             $status = 'error';
             $message = 'Ошибка подключения к базе данных';
@@ -132,51 +88,26 @@ class DiagnosticsController extends Controller
     public function testParse(Request $request)
     {
         $request->validate([
-            'text' => 'required|string|min:3'
+            'text' => 'required|string|min:3|max:10000',
         ]);
 
-        $parseService = app(N8nParseService::class);
-        $result = $parseService->parseRequest($request->text);
-
-        return response()->json($result);
+        try {
+            return response()->json(['success' => true] + app(RequestTextParser::class)->parse($request->text));
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()]);
+        }
     }
 
     public function testConnection()
     {
-        $url = config('services.n8n.parse_webhook_url');
-        $token = config('services.n8n.parse_auth_token');
-
-        if (empty($url) || empty($token)) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Configuration missing',
-                'message' => 'URL или токен не настроены'
-            ]);
-        }
-
+        $ai = app(OpenAIClassifierClient::class);
         try {
-            // Тестовый запрос с Header Auth
-            $response = \Illuminate\Support\Facades\Http::timeout(10)
-                ->withHeaders(['X-Auth-Token' => $token])
-                ->post($url, ['text' => 'Тестовая заявка']);
+            $t0 = microtime(true);
+            $res = $ai->jsonCompletion($ai->modelMini(), 'Ответь JSON {"ok": true}', 'ping', 20);
 
-            return response()->json([
-                'success' => true,
-                'status_code' => $response->status(),
-                'headers' => $response->headers(),
-                'body' => $response->body(),
-                'json' => $response->json(),
-                'url' => $url,
-                'token_length' => strlen($token),
-                'token_preview' => substr($token, 0, 10) . '...' . substr($token, -5)
-            ]);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
+            return response()->json(['success' => (bool) ($res['ok'] ?? false), 'ms' => (int) ((microtime(true) - $t0) * 1000)]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'error' => $e->getMessage()]);
         }
     }
 }

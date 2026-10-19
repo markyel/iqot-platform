@@ -36,12 +36,12 @@
                 </div>
 
                 <div class="form-group" style="margin-bottom: var(--space-4);">
-                    <label class="form-label">External sender ID (n8n)</label>
+                    <label class="form-label">ID отправителя (reports.senders)</label>
                     <input
                         type="number"
                         name="external_sender_id"
                         class="input"
-                        placeholder="ID отправителя в n8n (из N8nSenderService)"
+                        placeholder="ID отправителя в reports.senders"
                         min="1"
                     >
                     <div style="font-size: 0.875rem; color: var(--gray-600); margin-top: var(--space-1);">

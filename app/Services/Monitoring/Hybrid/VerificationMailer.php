@@ -353,7 +353,7 @@ class VerificationMailer
             return $row;
         }
         DB::connection(self::CONN)->table('requests')->insert([
-            'user_id' => (int) config('services.n8n.system_user_id', 1),
+            'user_id' => (int) config('services.requests.system_user_id', 1),
             'request_number' => $number,
             'title' => mb_substr('Мониторинг цен: ' . ($program->name ?? "программа {$programId}") . ' — проверка цен и запросы КП', 0, 500),
             'status' => 'active',

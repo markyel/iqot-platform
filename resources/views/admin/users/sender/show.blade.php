@@ -29,54 +29,6 @@
         </div>
     @endif
 
-    @if($configError)
-        <div class="alert alert-error" style="margin-bottom: var(--space-4);">
-            <div style="display: flex; align-items: start; gap: var(--space-3);">
-                <i data-lucide="alert-triangle" class="icon-md" style="margin-top: 2px;"></i>
-                <div>
-                    <strong>Ошибка конфигурации:</strong> {{ $configError }}
-                    <p style="margin-top: var(--space-2); margin-bottom: 0;">
-                        Добавьте необходимые переменные в файл <code>.env</code> и проверьте документацию в <code>SENDER_SETUP.md</code>
-                    </p>
-                </div>
-            </div>
-        </div>
-    @elseif($apiError)
-        <div class="alert alert-error" style="margin-bottom: var(--space-4);">
-            <div style="display: flex; align-items: start; gap: var(--space-3);">
-                <i data-lucide="alert-triangle" class="icon-md" style="margin-top: 2px;"></i>
-                <div style="flex: 1;">
-                    <strong>Ошибка подключения к n8n:</strong> {{ $apiError }}
-                    <details style="margin-top: var(--space-3);">
-                        <summary style="cursor: pointer; font-weight: 600;">Диагностика</summary>
-                        <div style="margin-top: var(--space-2); padding: var(--space-3); background: rgba(255, 255, 255, 0.5); border-radius: var(--radius-md);">
-                            <p><strong>Webhook URL:</strong> <code>{{ config('services.n8n.sender_webhook_url') }}</code></p>
-                            <p><strong>Auth Token установлен:</strong>
-                                @if(config('services.n8n.sender_auth_token'))
-                                    <i data-lucide="check" class="icon-sm" style="color: var(--success);"></i> Да
-                                @else
-                                    <i data-lucide="x" class="icon-sm" style="color: var(--error);"></i> Нет
-                                @endif
-                            </p>
-                            <p style="margin-top: var(--space-3);">
-                                <x-button variant="primary" :href="route('admin.sender.test')" size="sm" icon="search">
-                                    Тест подключения к n8n
-                                </x-button>
-                            </p>
-                            <p style="margin-top: var(--space-3); font-size: 0.875rem;">
-                                <strong>Что делать:</strong><br>
-                                1. Убедитесь, что n8n workflow запущен и активен<br>
-                                2. Проверьте, что webhook URL правильный<br>
-                                3. Убедитесь, что токен авторизации настроен в n8n<br>
-                                4. Замените placeholder токен в .env на реальный<br>
-                                5. Проверьте логи Laravel: <code>storage/logs/laravel.log</code>
-                            </p>
-                        </div>
-                    </details>
-                </div>
-            </div>
-        </div>
-    @endif
 
     @if($sender)
         {{-- Sender существует --}}

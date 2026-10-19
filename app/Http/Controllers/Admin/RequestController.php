@@ -62,7 +62,7 @@ class RequestController extends Controller
             ->findOrFail($id);
 
         // Получаем данные sender для отображения email
-        $senderService = app(\App\Services\N8nSenderService::class);
+        $senderService = app(\App\Services\Senders\CustomerSenderService::class);
         $senderData = $senderService->getUserSenderWithOrganization($request->user->id);
         $senderEmail = $senderData['sender']['email'] ?? null;
 

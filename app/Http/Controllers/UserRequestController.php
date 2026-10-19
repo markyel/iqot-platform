@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Services\Requests\RequestTextParser;
-use App\Services\N8nReportService;
 use App\Models\SystemSetting;
 use App\Models\Request as RequestModel;
 use App\Models\RequestItem;
@@ -19,12 +18,10 @@ use Illuminate\Support\Facades\DB;
 class UserRequestController extends Controller
 {
     private RequestTextParser $parseService;
-    private N8nReportService $reportService;
 
-    public function __construct(RequestTextParser $parseService, N8nReportService $reportService)
+    public function __construct(RequestTextParser $parseService)
     {
         $this->parseService = $parseService;
-        $this->reportService = $reportService;
     }
 
     /**
@@ -443,42 +440,15 @@ class UserRequestController extends Controller
             $customerName = $user->clientOrganization->name;
         }
 
-        // Вызываем API генерации отчета
-        $result = $this->reportService->generateReport(
-            [$request->main_db_request_id],
-            $user->id,
-            $customerName,
-            [
-                'include_supplier_profiles' => true,
-                'include_price_comparison' => true,
-            ]
-        );
+        try {
+            app(\App\Services\Reports\RequestPdfReport::class)->generate((int) $request->main_db_request_id, (int) $request->id, $user->id, $customerName);
+        } catch (\Throwable $e) {
+            \Log::error('PDF report failed', ['request_id' => $request->id, 'error' => $e->getMessage()]);
 
-        if (!($result['success'] ?? false)) {
-            return back()->with('error', $result['message'] ?? 'Ошибка при запуске генерации отчета.');
+            return back()->with('error', 'Не удалось сформировать PDF отчет. Попробуйте позже.');
         }
 
-        // Удаляем старые PDF отчеты для этой заявки
-        Report::where('request_id', $request->id)
-            ->whereNotNull('pdf_content')
-            ->delete();
-
-        // Создаем запись о генерации отчета
-        $reportCode = 'PDF-' . date('Ymd') . '-' . str_pad($result['report_id'], 6, '0', STR_PAD_LEFT);
-
-        Report::create([
-            'n8n_report_id' => $result['report_id'],
-            'request_id' => $request->id,
-            'user_id' => $user->id,
-            'code' => $reportCode,
-            'title' => "PDF отчет по заявке {$request->request_number}",
-            'type' => 'single',
-            'report_type' => 'request',
-            'status' => 'generating',
-            'callback_url' => route('webhooks.report.ready-pdf'),
-        ]);
-
-        return back()->with('success', 'Генерация PDF отчета запущена. Вы получите уведомление когда отчет будет готов.');
+        return back()->with('success', 'PDF отчет сформирован — можно скачать.');
     }
 
     /**

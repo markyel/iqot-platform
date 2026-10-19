@@ -35,16 +35,9 @@ return [
     |--------------------------------------------------------------------------
     */
     
-    'n8n' => [
-        'webhook_url' => env('N8N_WEBHOOK_URL', 'https://liftway.app.n8n.cloud/webhook'),
-        'auth_token' => env('N8N_AUTH_TOKEN'),
-        'api_key' => env('N8N_API_KEY'),
-        'sender_webhook_url' => env('N8N_SENDER_WEBHOOK_URL'),
-        'sender_auth_token' => env('N8N_SENDER_AUTH_TOKEN'),
-        'parse_webhook_url' => env('N8N_PARSE_WEBHOOK_URL', env('N8N_WEBHOOK_URL', 'https://liftway.app.n8n.cloud/webhook') . '/parse-request'),
-        'parse_auth_token' => env('N8N_PARSE_AUTH_TOKEN'),
-        'report_auth_token' => env('N8N_REPORT_AUTH_TOKEN', env('N8N_AUTH_TOKEN')),
-        'system_user_id' => env('N8N_SYSTEM_USER_ID', 1),
+    // Заявки: владелец (reports.requests.user_id) заявок из админки и одобренных из кабинета.
+    'requests' => [
+        'system_user_id' => (int) env('REQUESTS_SYSTEM_USER_ID', env('N8N_SYSTEM_USER_ID', 1)),
     ],
 
     // Диспетчер рассылки (замена n8n «Send Emails»). По умолчанию выключен —

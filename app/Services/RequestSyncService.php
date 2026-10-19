@@ -5,13 +5,14 @@ namespace App\Services;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Models\Request as LocalRequest;
+use App\Services\Senders\CustomerSenderService;
 
 class RequestSyncService
 {
-    protected string $connection = 'n8n_mysql';
-    protected N8nSenderService $senderService;
+    protected string $connection = 'reports'; // боевая БД (раньше отдельное подключение n8n_mysql к той же базе, без UTC-сессии)
+    protected CustomerSenderService $senderService;
 
-    public function __construct(N8nSenderService $senderService)
+    public function __construct(CustomerSenderService $senderService)
     {
         $this->senderService = $senderService;
     }
@@ -26,7 +27,7 @@ class RequestSyncService
         try {
             $mainDb->beginTransaction();
 
-            // Получаем данные organization и sender из n8n
+            // Организация и отправитель пользователя (reports)
             $senderData = $this->senderService->getUserSenderWithOrganization($localRequest->user->id);
             $organization = $senderData['organization'] ?? null;
             $sender = $senderData['sender'] ?? null;
@@ -115,7 +116,7 @@ class RequestSyncService
      */
     protected function getMainDbUserId($user): int
     {
-        return config('services.n8n.system_user_id', 1);
+        return (int) config('services.requests.system_user_id', 1);
     }
 
     /**

@@ -2,8 +2,6 @@
 
 namespace App\Providers;
 
-use App\Services\N8nSenderService;
-use App\Services\N8nParseService;
 use App\Models\ExternalRequestItem;
 use App\Models\ExternalOffer;
 use App\Observers\ExternalRequestItemObserver;
@@ -14,14 +12,6 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->app->singleton(N8nSenderService::class, function ($app) {
-            return new N8nSenderService();
-        });
-
-        $this->app->singleton(N8nParseService::class, function ($app) {
-            return new N8nParseService();
-        });
-
         $this->app->singleton(\App\Services\Api\OpenAIClassifierClient::class, function () {
             return \App\Services\Api\OpenAIClassifierClient::fromConfig();
         });
