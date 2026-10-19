@@ -285,6 +285,7 @@ Upsert офферов идемпотентен, но вставки в `request_
 - Внутри Laravel двойную отправку отсекает claim (`status='sending'`) на уровне диспетчера + проверка статуса в начале job.
 
 ### Команда и воркер
+- **Инцидент 06.07–19.10.2026:** диспетчер брал 30 самых старых pending-ответов; у них ящики выключены → джоб возвращал их в pending → те же 30 каждые 15 мин, очередь стояла (2 068). Фикс: выборка только ответов активных незаблокированных ящиков не старше `EMAILS_REPLIES_MAX_AGE_DAYS` (14); 1 724 ответа старше 14 дней сняты (`failed`, «expired: …») по решению владельца.
 - `emails:dispatch-replies {--force} {--limit=} {--reply=ID}` — порт «Get Pending Replies» (`outgoing_replies.status='pending'` ORDER BY `created_at`, LIMIT `batch_limit`=30). `--reply=ID` — точечный прогон одного ответа (claim + dispatch).
 - **Очередь `replies`** — нужен отдельный systemd-воркер на проде (`queue:work database --queue=replies --tries=0 --timeout=120`), по аналогии с `iqot-receive-worker@`. Заводить ТОЛЬКО когда флаг ON.
 - Расписание (`routes/console.php`): `->everyFifteenMinutes()->timezone('Europe/Riga')->weekdays()->between('8:00','20:00')->withoutOverlapping()` — рабочее окно как у массовой рассылки.
