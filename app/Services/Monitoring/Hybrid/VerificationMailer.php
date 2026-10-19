@@ -56,9 +56,12 @@ class VerificationMailer
     public function send(bool $dryRun = false): array
     {
         // Только активные программы в Гибриде: пауза или возврат в lite останавливают и уже запланированные письма.
-        $programs = DB::table('monitoring_programs')->where('status', 'active')->where('price_mode', 'hybrid')->pluck('id');
+        $programRows = DB::table('monitoring_programs')->where('status', 'active')->where('price_mode', 'hybrid')->get(['id', 'settings']);
+        $programs = $programRows->pluck('id');
+        $verifyPaused = $programRows->filter(fn ($p) => VerificationPlanner::verifyPaused($p))->pluck('id')->flip();
         $all = MpAsk::query()->where('status', MpAsk::STATUS_PLANNED)->where('expires_at', '>', now())
-            ->whereIn('program_id', $programs)->orderBy('created_at')->get();
+            ->whereIn('program_id', $programs)->orderBy('created_at')->get()
+            ->reject(fn (MpAsk $a) => $a->kind === 'verify' && isset($verifyPaused[$a->program_id]));
         if ($all->isEmpty()) {
             return ['letters' => 0, 'items' => 0, 'skipped_suppliers' => 0];
         }
@@ -83,7 +86,7 @@ class VerificationMailer
                 ? MonitoringSettings::get('verify_letters_per_day') - $this->lettersToday()
                 : PHP_INT_MAX;
             $sent = 0;
-            foreach ($all->filter($filter)->groupBy('supplier_id') as $supplierId => $supplierAsks) {
+            foreach ($this->supplierGroups($all->filter($filter), $kind) as [$supplierId, $supplierAsks]) {
                 $sup = $suppliers[$supplierId] ?? null;
                 if (!$sup) {
                     $skip('не годен к рассылке');
@@ -146,6 +149,33 @@ class VerificationMailer
 
         return ['letters' => $out['letters'], 'items' => $out['items'], 'skipped_suppliers' => array_sum($out['skipped']),
             'skipped' => $out['skipped'], 'by_kind' => $out['by_kind']];
+    }
+
+    /**
+     * Поставщики вида запроса. Проверки — по очереди между программами (поставщик программы А, затем Б, …),
+     * чтобы дневной бюджет проверок делился между программами, а не уходил той, чьи запросы созданы раньше.
+     *
+     * @return array<int,array{0:int,1:\Illuminate\Support\Collection<int,MpAsk>}>
+     */
+    private function supplierGroups(\Illuminate\Support\Collection $asks, string $kind): array
+    {
+        if ($kind !== 'verify') {
+            return $asks->groupBy('supplier_id')->map(fn ($g, $sid) => [(int) $sid, $g])->values()->all();
+        }
+        $queues = $asks->groupBy('program_id')->map(fn ($g) => $g->groupBy('supplier_id')->map(fn ($sg, $sid) => [(int) $sid, $sg])->values()->all())->all();
+        $out = [];
+        while ($queues !== []) {
+            foreach (array_keys($queues) as $pid) {
+                $next = array_shift($queues[$pid]);
+                if ($next === null) {
+                    unset($queues[$pid]);
+                    continue;
+                }
+                $out[] = $next;
+            }
+        }
+
+        return $out;
     }
 
     /**

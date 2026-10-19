@@ -16,7 +16,8 @@ use Illuminate\Support\Facades\DB;
  * листингу за 60 дней. По сайту — TrustPolicy::sampleSize (уровень 0: 3–5 позиций, выше — 1 из
  * 10/50/100, не реже раза в 20 дней). Порядок позиций: цена не подтверждалась или изменилась
  * после подтверждения → дороже → прочие. Сайты: сначала уровень 0 и подошедший срок проверки.
- * Бюджет — проверочных писем в сутки (агрессивность) × позиций в письме (как в обычной рассылке).
+ * Бюджет — проверочных писем в сутки (агрессивность) × позиций в письме (как в обычной рассылке), поровну между
+ * программами (остаток — другим); программы с settings.verify_paused не проверяются.
  */
 class VerificationPlanner
 {
@@ -32,12 +33,13 @@ class VerificationPlanner
     public function plan(bool $dryRun = false): array
     {
         $budget = MonitoringSettings::get('verify_letters_per_day') * VerificationMailer::itemsPerLetter()
-            - MpAsk::query()->where('created_at', '>=', now()->startOfDay())->count();
+            - MpAsk::query()->where('kind', 'verify')->where('created_at', '>=', now()->startOfDay())->count();
         if ($budget <= 0) {
             return ['budget_items' => 0, 'planned' => 0, 'sites' => 0];
         }
 
-        $programs = DB::table('monitoring_programs')->where('status', 'active')->where('price_mode', 'hybrid')->pluck('id');
+        $programs = DB::table('monitoring_programs')->where('status', 'active')->where('price_mode', 'hybrid')->get(['id', 'settings'])
+            ->reject(fn ($p) => self::verifyPaused($p))->pluck('id');
         if ($programs->isEmpty()) {
             return ['budget_items' => $budget, 'planned' => 0, 'sites' => 0];
         }
@@ -60,50 +62,84 @@ class VerificationPlanner
         $productCodes = ItemScope::productCodes($raw->pluck('product_id')->all());
         $rows = $raw->filter(fn ($r) => ItemScope::allows(ItemScope::itemCodes($r), $productCodes[(int) $r->product_id] ?? [],
             ItemScope::listingCodes($r->matched_codes, $r->match_method, $r->match_evidence)))
-            ->unique('id')->values();
+            ->unique(fn ($r) => $r->id . '|' . $r->program_id)->values();
 
-        $bySite = $rows->groupBy('site_id');
-        $sites = MpSite::query()->whereIn('id', $bySite->keys())->get()
+        $sites = MpSite::query()->whereIn('id', $rows->pluck('site_id')->unique())->get()
             ->reject(fn (MpSite $s) => \App\Support\Monitoring\DomainPolicy::isBlocked($s->domain)) // стоп-лист (маркетплейсы и т. п.)
-            ->keyBy('id')
-            ->sortBy(fn (MpSite $s) => [
-                (int) $s->trust_level === 0 ? 0 : 1,
-                $s->next_verification_due_at === null || $s->next_verification_due_at->isPast() ? 0 : 1,
-                -count($bySite[$s->id]),
-            ]);
+            ->keyBy('id');
+
+        // Бюджет делится между программами поровну: очередь сайтов у каждой программы своя (сначала уровень 0 и
+        // подошедший срок, затем больше кандидатов), программы берут по сайту по очереди; кончились сайты у одной —
+        // остаток уходит другим. Раньше общая очередь сортировалась по числу кандидатов, и программа с большим
+        // каталогом (Пилот, 10,5 тыс. цен) забирала все 100 проверок в день (19.10.2026).
+        $queues = [];
+        $siteRows = [];
+        foreach ($rows->groupBy('program_id') as $pid => $programRows) {
+            $bySite = $programRows->groupBy('site_id');
+            $siteRows[$pid] = $bySite;
+            $queues[$pid] = $bySite->keys()->filter(fn ($sid) => isset($sites[$sid]))
+                ->sortBy(fn ($sid) => [
+                    (int) $sites[$sid]->trust_level === 0 ? 0 : 1,
+                    $sites[$sid]->next_verification_due_at === null || $sites[$sid]->next_verification_due_at->isPast() ? 0 : 1,
+                    -count($bySite[$sid]),
+                ])->values()->all();
+        }
 
         $planned = 0;
         $touched = 0;
-        foreach ($sites as $site) {
-            if ($planned >= $budget) {
-                break;
-            }
-            $cands = $bySite[$site->id]->sortBy(fn ($r) => [
-                $r->confirmed_price === null || abs((float) $r->confirmed_price - (float) $r->price) > 0.01 ? 0 : 1,
-                -(float) $r->price,
-            ])->values();
-            $take = min(TrustPolicy::sampleSize($site, $cands->count()), $budget - $planned);
-            if ($take <= 0) {
-                continue;
-            }
-            $reason = (int) $site->trust_level === 0 ? 'first'
-                : ($site->next_verification_due_at === null || $site->next_verification_due_at->isPast() ? 'due' : 'sample');
-            foreach ($cands->take($take) as $r) {
-                if (!$dryRun) {
-                    MpAsk::create([
-                        'site_id' => $site->id, 'listing_id' => $r->id, 'product_id' => $r->product_id,
-                        'program_id' => $r->program_id, 'supplier_id' => $r->supplier_id, 'kind' => 'verify',
-                        'reason' => $r->confirmed_price !== null && abs((float) $r->confirmed_price - (float) $r->price) > 0.01 ? 'price_changed' : $reason,
-                        'site_price' => $r->price, 'site_currency' => $r->currency, 'site_vat_included' => $r->vat_included,
-                        'site_availability' => $r->availability, 'site_observed_at' => $r->observed_at,
-                        'status' => MpAsk::STATUS_PLANNED, 'expires_at' => now()->addDays(self::EXPIRES_DAYS),
-                    ]);
+        $doneSites = [];
+        $doneListings = [];
+        while ($planned < $budget && $queues !== []) {
+            foreach (array_keys($queues) as $pid) {
+                if ($planned >= $budget) {
+                    break;
                 }
-                $planned++;
+                $sid = array_shift($queues[$pid]);
+                if ($sid === null) {
+                    unset($queues[$pid]);
+                    continue;
+                }
+                if (isset($doneSites[$sid])) {
+                    continue; // сайт уже взят в этом прогоне другой программой — доверие к сайту общее
+                }
+                $site = $sites[$sid];
+                $cands = $siteRows[$pid][$sid]->reject(fn ($r) => isset($doneListings[$r->id]))->sortBy(fn ($r) => [
+                    $r->confirmed_price === null || abs((float) $r->confirmed_price - (float) $r->price) > 0.01 ? 0 : 1,
+                    -(float) $r->price,
+                ])->values();
+                $take = min(TrustPolicy::sampleSize($site, $cands->count()), $budget - $planned);
+                if ($take <= 0) {
+                    continue;
+                }
+                $reason = (int) $site->trust_level === 0 ? 'first'
+                    : ($site->next_verification_due_at === null || $site->next_verification_due_at->isPast() ? 'due' : 'sample');
+                foreach ($cands->take($take) as $r) {
+                    if (!$dryRun) {
+                        MpAsk::create([
+                            'site_id' => $site->id, 'listing_id' => $r->id, 'product_id' => $r->product_id,
+                            'program_id' => $r->program_id, 'supplier_id' => $r->supplier_id, 'kind' => 'verify',
+                            'reason' => $r->confirmed_price !== null && abs((float) $r->confirmed_price - (float) $r->price) > 0.01 ? 'price_changed' : $reason,
+                            'site_price' => $r->price, 'site_currency' => $r->currency, 'site_vat_included' => $r->vat_included,
+                            'site_availability' => $r->availability, 'site_observed_at' => $r->observed_at,
+                            'status' => MpAsk::STATUS_PLANNED, 'expires_at' => now()->addDays(self::EXPIRES_DAYS),
+                        ]);
+                    }
+                    $doneListings[$r->id] = true;
+                    $planned++;
+                }
+                $doneSites[$sid] = true;
+                $touched++;
             }
-            $touched++;
         }
 
         return ['budget_items' => $budget, 'planned' => $planned, 'sites' => $touched];
+    }
+
+    /** Проверки цен программы на паузе (settings.verify_paused) — решение владельца 19.10.2026 для Пилота. */
+    public static function verifyPaused(object $program): bool
+    {
+        $s = is_array($program->settings ?? null) ? $program->settings : (json_decode((string) ($program->settings ?? ''), true) ?: []);
+
+        return !empty($s['verify_paused']);
     }
 }
