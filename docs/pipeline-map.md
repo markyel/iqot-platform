@@ -147,7 +147,7 @@ QUEUE_CONNECTION=database  CACHE_STORE=database
 
 ### 2.2 Веб и админка (≈1 заявка/мес)
 - Веб: `UserRequestController::parse` → n8n `/parse-request` (AI-классификация **внутри n8n**) → `store` (iqot `requests.pending`, `is_customer_request=1`, один `balance_hold` на заявку) → админ `approve` → `RequestSyncService::syncToMainDb` через соединение `n8n_mysql` (⚠ без `timezone`, сдвиг −3ч) → `reports.requests status=new`, `is_customer_request=1`, `customer_*`, ⚠ `user_id = services.n8n.system_user_id (1)`.
-- Админка «Управление заявками» — полностью через n8n `/request-management` (создание/правка/отмена); пишет n8n.
+- Админка «Управление заявками» — нативно (`RequestManagementService`, с 19.10.2026; раньше n8n `/request-management`).
 - Telegram: кода в репо нет; если заявки и идут — пишет n8n напрямую.
 
 ### 2.3 Статусы
@@ -325,7 +325,7 @@ QUEUE_CONNECTION=database  CACHE_STORE=database
 ⚠ Нет потолка попыток: упавший вопрос переобрабатывается каждую минуту. ⚠ Адресат ответа — `from` последнего входящего письма беседы.
 
 ### 8.2 Ответ автора — **целиком n8n**
-Кабинет/админка → `N8nQuestionsService` (`questions-management`: `list_questions`, `answer_question`, `skip_question`, `list_questions_consolidated`). `author_answered`, ответ поставщику — делает n8n. **Для API-клиентов вопросов нет вообще** (ни эндпоинта, ни вебхука). Статистика: `author_questions` pending 320, answered 1239.
+Кабинет/админка → `AuthorAnswerService` (нативно с 19.10.2026; раньше n8n `questions-management`): список, ответ автора (`author_answered` + `outgoing_replies`), пропуск, группы. **Для API-клиентов вопросов нет вообще** (ни эндпоинта, ни вебхука).
 `emails:auto-close-questions` (09:00): 4–14 дней без ответа → поставщику «информации нет» (авто-ветка); >14 → `cancelled`.
 
 ### 8.3 Отправка ответов (`emails:dispatch-replies` → `SendOutgoingReplyJob` → `OutgoingReplySender`)
@@ -361,7 +361,7 @@ Claim `pending→sending` (реклейм ⚠ по `created_at`, не по вр�
 | n8n «Status Manager» | `CALL collect_response_signals()` (карма) + исторически lifecycle заявок/бесед | карма работает; lifecycle — нет |
 | MySQL-процедуры (8) | карма, `get_suppliers_for_item`, `calculate_request_completion` | тела недоступны (кроме функции completion) |
 | Триггеры `reports` | `tr_batch_set_queued_at`, `tr_batch_update_supplier_count` (на каждый INSERT email_queue — пересчёт по батчу), `tr_sender_update_usage` (`emails_sent_today+1` при `status→sent` — ⚠ **дублирует** `SendQueuedEmailJob::bumpSenderCounter`, подтверждено данными: счётчик = ровно 2× факт, §13 п.0), `before_sender_update` (сброс счётчика по `CURDATE()` сессии — UTC), `after_response_update` (`responses_received`), `after_offer_insert`/`after_sent_email_insert` (на пустых легаси-таблицах) | живые, неявная логика |
-| n8n webhooks | parse-request (веб-классификация), request-management (админ-заявки), questions-management (ответ автора), report-management (PDF), sender-webhook | используются |
+| n8n webhooks | все заменены нативным кодом 19.10.2026 (см. CLAUDE.md «Без n8n») | не используются |
 | Неаутентифицированные входящие вебхуки `/api/webhooks/request-update|offer-received|report-ready|email-status|report-ready-pdf` | легаси n8n → iqot | ⚠ дыра безопасности |
 | AI-прокси `ai3.lazylift.ru:8443` | все AI-вызовы (`OpenAIClassifierClient`, connectTimeout 15) | единая точка отказа |
 | Яндекс Cloud Search API v2 | discovery + релевантность plan-day | бюджет 2000/день |
