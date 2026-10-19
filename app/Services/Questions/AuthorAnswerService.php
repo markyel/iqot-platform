@@ -69,7 +69,7 @@ class AuthorAnswerService
     /** id боевой заявки вопроса (для проверки владельца в кабинете). */
     public function questionRequestId(int $questionId): ?int
     {
-        $id = $this->baseQuery()->where('sq.id', $questionId)->value('rq.id');
+        $id = $this->baseQuery()->where('sq.id', $questionId)->first()?->request_id; // value() при заданном select берёт первый столбец
 
         return $id !== null ? (int) $id : null;
     }
