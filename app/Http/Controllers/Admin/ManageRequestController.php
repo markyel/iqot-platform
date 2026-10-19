@@ -7,30 +7,27 @@ use App\Models\ClientOrganization;
 use App\Models\Category;
 use App\Models\ProductType;
 use App\Models\ApplicationDomain;
-use App\Services\N8nRequestService;
-use App\Services\N8nParseService;
-use App\Services\N8nQuestionsService;
+use App\Services\Requests\RequestManagementService;
+use App\Services\Requests\RequestTextParser;
 use App\Services\N8nReportService;
 use App\Models\Report;
 use Illuminate\Http\Request;
 
 class ManageRequestController extends Controller
 {
-    private N8nRequestService $n8nService;
-    private N8nParseService $parseService;
-    private N8nQuestionsService $questionsService;
+    private RequestManagementService $requests;
+    private RequestTextParser $parseService;
     private N8nReportService $reportService;
 
-    public function __construct(N8nRequestService $n8nService, N8nParseService $parseService, N8nQuestionsService $questionsService, N8nReportService $reportService)
+    public function __construct(RequestManagementService $requests, RequestTextParser $parseService, N8nReportService $reportService)
     {
-        $this->n8nService = $n8nService;
+        $this->requests = $requests;
         $this->parseService = $parseService;
-        $this->questionsService = $questionsService;
         $this->reportService = $reportService;
     }
 
     /**
-     * Список заявок из n8n
+     * Список заявок (reports.requests)
      */
     public function index(Request $request)
     {
@@ -65,13 +62,7 @@ class ManageRequestController extends Controller
         // Фильтр по неотвеченным вопросам будет применен на стороне приложения после получения summary
         // т.к. API не поддерживает фильтр has_unanswered
 
-        // Получаем заявки из n8n
-        $result = $this->n8nService->listRequests($filters, $sort, $pagination);
-
-        // n8n возвращает массив с одним элементом
-        if (is_array($result) && isset($result[0])) {
-            $result = $result[0];
-        }
+        $result = $this->requests->listRequests($filters, $sort, $pagination);
 
         if (!($result['success'] ?? false)) {
             return view('admin.manage.requests.index', [
@@ -85,7 +76,6 @@ class ManageRequestController extends Controller
 
         $requests = $result['requests'] ?? [];
 
-        // n8n возвращает pagination внутри объекта pagination, а не напрямую total
         $paginationInfo = $result['pagination'] ?? [];
         $total = $paginationInfo['total'] ?? 0;
         $currentPage = $paginationInfo['page'] ?? $pagination['page'];
@@ -96,12 +86,7 @@ class ManageRequestController extends Controller
         $questionsCounts = [];
         if (!empty($requests)) {
             $requestIds = array_column($requests, 'id');
-            $summaryResult = $this->questionsService->getQuestionsSummary($requestIds);
-
-            // n8n может возвращать массив с одним элементом
-            if (is_array($summaryResult) && isset($summaryResult[0])) {
-                $summaryResult = $summaryResult[0];
-            }
+            $summaryResult = ['success' => true, 'summary' => $this->requests->questionsSummary($requestIds)];
 
             if (($summaryResult['success'] ?? false) && isset($summaryResult['summary'])) {
                 // summary возвращается как объект с ключами request_id
@@ -213,12 +198,7 @@ class ManageRequestController extends Controller
             $data['customer_phone'] = $validated['customer_phone'] ?? null;
         }
 
-        $result = $this->n8nService->createRequest($data);
-
-        // n8n возвращает массив с одним элементом: [{"success": true, "request": {...}, "items": [...}}]
-        if (is_array($result) && isset($result[0])) {
-            $result = $result[0];
-        }
+        $result = $this->requests->createRequest($data);
 
         if (($result['success'] ?? false) && isset($result['request']['id'])) {
             return redirect()
@@ -236,12 +216,7 @@ class ManageRequestController extends Controller
      */
     public function show($id)
     {
-        $result = $this->n8nService->getRequest($id);
-
-        // n8n возвращает массив с одним элементом
-        if (is_array($result) && isset($result[0])) {
-            $result = $result[0];
-        }
+        $result = $this->requests->getRequest($id);
 
         if (!($result['success'] ?? false) || !isset($result['request'])) {
             return redirect()
@@ -260,12 +235,7 @@ class ManageRequestController extends Controller
      */
     public function edit($id)
     {
-        $result = $this->n8nService->getRequest($id);
-
-        // n8n возвращает массив с одним элементом
-        if (is_array($result) && isset($result[0])) {
-            $result = $result[0];
-        }
+        $result = $this->requests->getRequest($id);
 
         if (!($result['success'] ?? false) || !isset($result['request'])) {
             return redirect()
@@ -333,12 +303,7 @@ class ManageRequestController extends Controller
             $data['customer_phone'] = $validated['customer_phone'] ?? null;
         }
 
-        $result = $this->n8nService->updateRequest($id, $data);
-
-        // n8n возвращает массив с одним элементом
-        if (is_array($result) && isset($result[0])) {
-            $result = $result[0];
-        }
+        $result = $this->requests->updateRequest($id, $data);
 
         if ($result['success'] ?? false) {
             return redirect()
@@ -360,12 +325,7 @@ class ManageRequestController extends Controller
             'reason' => 'nullable|string|max:500'
         ]);
 
-        $result = $this->n8nService->cancelRequest($id, $validated['reason'] ?? null);
-
-        // n8n возвращает массив с одним элементом
-        if (is_array($result) && isset($result[0])) {
-            $result = $result[0];
-        }
+        $result = $this->requests->cancelRequest($id, $validated['reason'] ?? null);
 
         if ($result['success'] ?? false) {
             return redirect()
@@ -381,13 +341,7 @@ class ManageRequestController extends Controller
      */
     public function showReport($id)
     {
-        // Получаем заявку из n8n
-        $result = $this->n8nService->getRequest($id);
-
-        // n8n возвращает массив с одним элементом
-        if (is_array($result) && isset($result[0])) {
-            $result = $result[0];
-        }
+        $result = $this->requests->getRequest($id);
 
         if (!($result['success'] ?? false) || !isset($result['request'])) {
             return redirect()
@@ -456,13 +410,7 @@ class ManageRequestController extends Controller
      */
     public function generatePdfReport($id)
     {
-        // Получаем заявку из n8n
-        $result = $this->n8nService->getRequest($id);
-
-        // n8n возвращает массив с одним элементом
-        if (is_array($result) && isset($result[0])) {
-            $result = $result[0];
-        }
+        $result = $this->requests->getRequest($id);
 
         if (!($result['success'] ?? false) || !isset($result['request'])) {
             return back()->with('error', 'Заявка не найдена');

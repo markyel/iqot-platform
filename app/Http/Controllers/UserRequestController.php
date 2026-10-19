@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\N8nParseService;
+use App\Services\Requests\RequestTextParser;
 use App\Services\N8nReportService;
 use App\Models\SystemSetting;
 use App\Models\Request as RequestModel;
@@ -18,10 +18,10 @@ use Illuminate\Support\Facades\DB;
 
 class UserRequestController extends Controller
 {
-    private N8nParseService $parseService;
+    private RequestTextParser $parseService;
     private N8nReportService $reportService;
 
-    public function __construct(N8nParseService $parseService, N8nReportService $reportService)
+    public function __construct(RequestTextParser $parseService, N8nReportService $reportService)
     {
         $this->parseService = $parseService;
         $this->reportService = $reportService;
@@ -73,7 +73,7 @@ class UserRequestController extends Controller
     }
 
     /**
-     * AJAX: Запуск асинхронного парсинга текста через n8n AI
+     * AJAX: Запуск асинхронного разбора текста заявки (ИИ)
      */
     public function parse(Request $request)
     {
