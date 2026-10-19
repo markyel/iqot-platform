@@ -105,7 +105,7 @@ class VerificationMailer
                     });
                 }
                 // Письма поставщику, пока позволяют общие лимиты (кап получателя, свободный ящик).
-                foreach ($supplierAsks->values()->chunk($perLetter) as $letterAsks) {
+                foreach ($this->letters($supplierAsks->values(), $kind, $perLetter) as $letterAsks) {
                     if ($sent >= $budget) {
                         break 2;
                     }
@@ -146,6 +146,30 @@ class VerificationMailer
 
         return ['letters' => $out['letters'], 'items' => $out['items'], 'skipped_suppliers' => array_sum($out['skipped']),
             'skipped' => $out['skipped'], 'by_kind' => $out['by_kind']];
+    }
+
+    /**
+     * Письма поставщику: по perLetter позиций; у пула однотипные позиции (HomogeneousKey) — вместе, до
+     * monitoring.hybrid.pool_max_per_letter в письме (решение владельца 19.10.2026), разнотипные — по perLetter.
+     *
+     * @return \Illuminate\Support\Collection<int,\Illuminate\Support\Collection<int,MpAsk>>
+     */
+    private function letters(\Illuminate\Support\Collection $asks, string $kind, int $perLetter): \Illuminate\Support\Collection
+    {
+        $max = max(1, (int) config('monitoring.hybrid.pool_max_per_letter', 4));
+        if ($kind !== 'pool' || $max <= $perLetter) {
+            return $asks->chunk($perLetter)->map->values();
+        }
+        $out = collect();
+        $i = 0;
+        foreach ($asks->groupBy(fn (MpAsk $a) => \App\Services\Generate\HomogeneousKey::of(
+            (int) ($a->product?->product_type_id ?? 0) ?: null, $a->product?->brand, $a->product?->name) ?? ('#' . $i++)) as $group) {
+            foreach ($group->chunk($max) as $chunk) {
+                $out->push($chunk->values());
+            }
+        }
+
+        return $out;
     }
 
     /** Позиций в письме мониторинга — как в обычной рассылке (малопозиционные письма). */

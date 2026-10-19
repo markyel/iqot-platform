@@ -71,11 +71,19 @@ class DispatchPendingReplies extends Command
 
         $limit = (int) ($this->option('limit') ?: config('services.email_replies.batch_limit', 30));
 
-        $rows = DB::connection('reports')->table('outgoing_replies')
-            ->where('status', 'pending')
-            ->orderBy('created_at')
+        // Только ответы, которые МОГУТ уйти сейчас: ящик активен и не на блоке, ответ не старше max_age_days.
+        // Раньше брались просто 30 самых старых: ответы выключенных ящиков джоб возвращал в pending, и те же 30
+        // перебирались каждые 15 минут — с 06.07.2026 очередь стояла (2 068 ответов, 19.10.2026).
+        $maxAge = max(1, (int) config('services.email_replies.max_age_days', 14));
+        $rows = DB::connection('reports')->table('outgoing_replies as o')
+            ->join('senders as s', 's.id', '=', 'o.sender_id')
+            ->where('o.status', 'pending')
+            ->where('o.created_at', '>=', now()->subDays($maxAge))
+            ->where('s.is_active', 1)
+            ->where(fn ($q) => $q->whereNull('s.blocked_until')->orWhereRaw('s.blocked_until <= NOW()'))
+            ->orderBy('o.created_at')
             ->limit($limit)
-            ->get(['id', 'sender_id']);
+            ->get(['o.id', 'o.sender_id']);
 
         if ($rows->isEmpty()) {
             $this->info('No pending outgoing replies.');

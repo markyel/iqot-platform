@@ -414,6 +414,8 @@ return [
         'enabled' => (bool) env('EMAILS_REPLIES_ENABLED', false),
         // Сколько готовых ответов за тик ставим в очередь отправки.
         'batch_limit' => (int) env('EMAILS_REPLIES_BATCH_LIMIT', 30),
+        // Старше — не шлём (ответ на вопрос поставщика месячной давности бессмысленен); остаются pending для решения.
+        'max_age_days' => (int) env('EMAILS_REPLIES_MAX_AGE_DAYS', 14),
         // Сколько раз ретраить транзиентную ошибку коннекта (битый IP round-robin
         // smtp.beget.com) до перевода ответа в 'failed'. Зеркало email_queue.max_retries.
         'max_retries' => (int) env('EMAILS_REPLIES_MAX_RETRIES', 3),

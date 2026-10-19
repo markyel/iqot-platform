@@ -308,6 +308,24 @@ class ProgressDashboard
             'trust' => DB::table('mp_sites')->selectRaw('trust_level, COUNT(*) c')->groupBy('trust_level')->pluck('c', 'trust_level')->all(),
             'budget' => $budget, 'limits' => $limits, 'llm_usd_limit' => MonitoringSettings::get('llm_usd_per_day'),
             'per_product_per_day' => $perProductPerDay,
+            // Подтверждение цен сайтов КП (Гибрид): по программам — письма-проверки, исходы сверок, подтверждённые цены, КП.
+            'confirm' => \App\Models\Monitoring\MonitoringProgram::query()->orderBy('id')->get()->map(function ($mp) {
+                $prods = DB::table('program_items')->where('program_id', $mp->id)->whereNotNull('product_id')->distinct()->pluck('product_id')->all();
+                $asks = DB::table('mp_asks')->where('program_id', $mp->id)->where('kind', 'verify')
+                    ->selectRaw("SUM(status IN ('sent','answered','expired')) sent, SUM(status = 'answered') answered, SUM(status IN ('planned','queued')) waiting")->first();
+                $out = $prods === [] ? collect() : DB::table('mp_verifications')->whereIn('product_id', $prods)
+                    ->selectRaw('source, outcome, COUNT(*) n')->groupBy('source', 'outcome')->get();
+
+                return [
+                    'p' => $mp, 'asks' => $asks,
+                    'outcomes' => $out->groupBy('outcome')->map(fn ($g) => (int) $g->sum('n'))->all(),
+                    'by_source' => $out->groupBy('source')->map(fn ($g) => (int) $g->sum('n'))->all(),
+                    'confirmed' => $prods === [] ? 0 : DB::table('mp_listings')->whereIn('product_id', $prods)->where('bench', false)->whereNotNull('confirmed_at')->count(),
+                    'priced' => $prods === [] ? 0 : DB::table('mp_listings')->whereIn('product_id', $prods)->where('bench', false)->where('status', 'active')->whereNotNull('price')->count(),
+                    'kp' => DB::table('mp_kp_offers as k')->join('mp_asks as a', 'a.id', '=', 'k.ask_id')->where('a.program_id', $mp->id)
+                        ->selectRaw('COUNT(*) offers, COUNT(DISTINCT k.product_id) products')->first(),
+                ];
+            })->all(),
             // Тарификация (§11a): последние сутки начисления, не списано, последнее списание, предупреждение.
             'billing' => \App\Models\Monitoring\MonitoringProgram::query()->orderBy('id')->get()->map(fn ($mp) => [
                 'p' => $mp,

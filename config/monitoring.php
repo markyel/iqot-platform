@@ -59,6 +59,9 @@ return [
         // 3 783 запроса. С 19.10.2026 пул ранжируется (RfqPlanner::rankPool) и выравнивается по нагрузке.
         'pool_enabled' => (bool) env('MONITORING_HYBRID_POOL', false),
         // Не спрашивать пул: наши и тестовые адреса (e-mail целиком или домен). Свои ящики владельца — в .env прода.
+        // Однотипные позиции пула (HomogeneousKey: тип + бренд + название без цифр) — в одно письмо, до N штук
+        // (решение владельца 19.10.2026); разнотипные — по одной, как в обычной рассылке.
+        'pool_max_per_letter' => (int) env('MONITORING_HYBRID_POOL_PER_LETTER', 4),
         'pool_exclude' => array_values(array_filter(array_map('trim', explode(',', (string) env('MONITORING_HYBRID_POOL_EXCLUDE', 'liftway.ru'))))),
     ],
 
