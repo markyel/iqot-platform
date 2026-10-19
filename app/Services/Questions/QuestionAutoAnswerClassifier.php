@@ -113,7 +113,7 @@ class QuestionAutoAnswerClassifier
 
         return [
             'can_auto_answer' => (bool) ($classification['can_auto_answer'] ?? false),
-            'answer_text' => $classification['answer_text'] ?? null,
+            'answer_text' => self::stripUnknownRequisites($classification['answer_text'] ?? null),
             'reasoning' => (string) ($classification['reasoning'] ?? ''),
             'related_item_index' => $itemIndex,
             'related_item_id' => $relatedItemId,
@@ -189,6 +189,8 @@ class QuestionAutoAnswerClassifier
 
    КРИТИЧЕСКИ ВАЖНО:
    - Поставщик просит НАШИ данные, чтобы выставить НАМ предложение!
+   - Реквизит, которого НЕТ в КОНТЕКСТЕ (значение «не указан»), НЕ ПИШИ вовсе — ни строкой «не указан»,
+     ни выдуманным значением (никаких «ул. Примерная», «д. 1», условных телефонов и ИНН).
    - НЕ пиши "будет предоставлена позже" — предоставь данные СЕЙЧАС
    - ВСЕГДА подставляй РЕАЛЬНЫЕ значения из раздела КОНТЕКСТ
 
@@ -476,5 +478,30 @@ PROMPT;
         $str = trim((string) ($value ?? ''));
 
         return $str !== '' ? $str : $default;
+    }
+
+    /**
+     * Убрать из автоответа реквизиты-заглушки: «не указан», выдуманные адреса («ул. Примерная, д. 1»,
+     * 19.10.2026 — у организации из резерва нет адреса, модель его сочинила) и шаблонные значения.
+     */
+    public static function stripUnknownRequisites(?string $text): ?string
+    {
+        if ($text === null || $text === '') {
+            return $text;
+        }
+        $bad = '/не\s+указан|не\s+указана|примерн|образец|xxx|ххх|\b123456\b|\b000000\b|\bд\.\s*1\b.*ул\.|ул\.\s*пример/iu';
+        $lines = preg_split('/\R/u', $text) ?: [];
+        $out = [];
+        foreach ($lines as $line) {
+            // Строка «Поле: значение» с заглушкой — выкидываем целиком.
+            if (preg_match('/^\s*[\p{L} ]{2,25}:[^:]*$/u', $line) && preg_match($bad, $line)) {
+                continue;
+            }
+            // В сплошном тексте: «Адрес: не указан,» — вырезаем пару «поле: заглушка».
+            $line = preg_replace('/(?:,\s*)?[\p{L} ]{2,25}:\s*(?:не\s+указан[ао]?|[^,;.]*примерн[^,;.]*)(?=[,;.]|$)/iu', '', $line) ?? $line;
+            $out[] = $line;
+        }
+
+        return trim(implode("\n", $out));
     }
 }

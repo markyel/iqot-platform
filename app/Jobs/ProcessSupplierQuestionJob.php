@@ -66,6 +66,14 @@ class ProcessSupplierQuestionJob implements ShouldQueue
             }
 
             $batchId = (int) ($question->batch_id ?: $question->conversation_batch_id);
+            // Повтор того же вопроса после нашего автоответа (CRM поставщика переспрашивает на каждое письмо —
+            // ДелоЛифт 19.10.2026: 6 автоответов за 2,5 часа) — не отвечаем автоматически, вопрос автору заявки.
+            if (self::isRepeatAfterAutoAnswer($question)) {
+                $this->forwardToAuthor($loader, $batchId, $question, ['related_item_id' => $question->request_item_id ?? null], []);
+                Log::info('ProcessSupplierQuestionJob: повтор после автоответа — автору', ['question_id' => $this->questionId]);
+
+                return;
+            }
             $batch = $loader->loadBatch($batchId);
             $items = $loader->loadRequestItems($batchId);
             $authorAnswers = $loader->loadAuthorAnswers($batchId);
@@ -187,6 +195,32 @@ class ProcessSupplierQuestionJob implements ShouldQueue
      * @param array<string,mixed> $decision
      * @param array<string,mixed> $consolidation
      */
+    /**
+     * Тот же поставщик за последние REPEAT_DAYS уже получил автоответ на похожий вопрос (≥ 75% совпадения
+     * нормализованного текста) — в любой беседе: CRM поставщика пишет с разных бесед/ящиков.
+     */
+    public static function isRepeatAfterAutoAnswer(object $question, int $days = 7): bool
+    {
+        $norm = fn ($t) => trim((string) preg_replace('/[^\p{L}\p{N}]+/u', ' ', mb_strtolower((string) $t)));
+        $text = $norm($question->question_text ?? '');
+        if ($text === '') {
+            return false;
+        }
+        $prev = DB::connection('reports')->table('supplier_questions')
+            ->where('supplier_id', $question->supplier_id)->where('id', '!=', $question->question_id)
+            ->where('status', 'auto_answered')->where('created_at', '>=', now()->subDays($days))
+            ->pluck('question_text');
+        foreach ($prev as $p) {
+            $p = $norm($p);
+            similar_text($text, $p, $pct);
+            if ($p !== '' && ($p === $text || $pct >= 75)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function forwardToAuthor(
         QuestionContextLoader $loader,
         int $batchId,
