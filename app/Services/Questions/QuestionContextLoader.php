@@ -21,13 +21,13 @@ class QuestionContextLoader
      * Порт «Get Pending Questions» (точечно по id) + JOIN беседы/поставщика.
      * Возвращает null, если вопрос уже не в статусе pending (claim-проверка).
      */
-    public function loadQuestion(int $questionId): ?object
+    public function loadQuestion(int $questionId, array $statuses = ['pending']): ?object
     {
         return DB::connection(self::CONN)->table('supplier_questions as sq')
             ->join('email_conversations as ec', 'sq.conversation_id', '=', 'ec.id')
             ->join('suppliers as s', 'sq.supplier_id', '=', 's.id')
             ->where('sq.id', $questionId)
-            ->where('sq.status', 'pending')
+            ->whereIn('sq.status', $statuses)
             ->first([
                 'sq.id as question_id',
                 'sq.question_text',

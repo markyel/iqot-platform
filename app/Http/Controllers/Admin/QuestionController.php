@@ -3,14 +3,14 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Services\N8nQuestionsService;
+use App\Services\Questions\AuthorAnswerService;
 use Illuminate\Http\Request;
 
 class QuestionController extends Controller
 {
-    private N8nQuestionsService $questionsService;
+    private AuthorAnswerService $questionsService;
 
-    public function __construct(N8nQuestionsService $questionsService)
+    public function __construct(AuthorAnswerService $questionsService)
     {
         $this->questionsService = $questionsService;
     }
@@ -59,11 +59,6 @@ class QuestionController extends Controller
 
         $result = $this->questionsService->listQuestions($filters, $sort, $pagination);
 
-        // n8n может возвращать массив с одним элементом
-        if (is_array($result) && isset($result[0])) {
-            $result = $result[0];
-        }
-
         $questions = $result['questions'] ?? [];
         $paginationData = $result['pagination'] ?? [
             'total' => 0,
@@ -98,11 +93,6 @@ class QuestionController extends Controller
         ];
 
         $result = $this->questionsService->listQuestions($filters, $sort, $pagination);
-
-        // n8n может возвращать массив с одним элементом
-        if (is_array($result) && isset($result[0])) {
-            $result = $result[0];
-        }
 
         $questions = $result['questions'] ?? [];
         $paginationData = $result['pagination'] ?? [
@@ -147,11 +137,6 @@ class QuestionController extends Controller
             auth()->id()
         );
 
-        // n8n может возвращать массив с одним элементом
-        if (is_array($result) && isset($result[0])) {
-            $result = $result[0];
-        }
-
         if ($result['success'] ?? false) {
             return back()->with('success', 'Ответ успешно отправлен');
         }
@@ -185,11 +170,6 @@ class QuestionController extends Controller
             (int)$questionId,
             $validated['reason'] ?? null
         );
-
-        // n8n может возвращать массив с одним элементом
-        if (is_array($result) && isset($result[0])) {
-            $result = $result[0];
-        }
 
         if ($result['success'] ?? false) {
             return back()->with('success', 'Вопрос пропущен');

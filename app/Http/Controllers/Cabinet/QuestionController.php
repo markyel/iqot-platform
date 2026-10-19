@@ -3,14 +3,14 @@
 namespace App\Http\Controllers\Cabinet;
 
 use App\Http\Controllers\Controller;
-use App\Services\N8nQuestionsService;
+use App\Services\Questions\AuthorAnswerService;
 use Illuminate\Http\Request;
 
 class QuestionController extends Controller
 {
-    private N8nQuestionsService $questionsService;
+    private AuthorAnswerService $questionsService;
 
-    public function __construct(N8nQuestionsService $questionsService)
+    public function __construct(AuthorAnswerService $questionsService)
     {
         $this->questionsService = $questionsService;
     }
@@ -63,11 +63,6 @@ class QuestionController extends Controller
 
         $result = $this->questionsService->listQuestions($filters, $sort, $pagination);
 
-        // n8n может возвращать массив с одним элементом
-        if (is_array($result) && isset($result[0])) {
-            $result = $result[0];
-        }
-
         $questions = $result['questions'] ?? [];
         $paginationData = $result['pagination'] ?? [
             'total' => 0,
@@ -97,6 +92,11 @@ class QuestionController extends Controller
         if (!$userRequest) {
             abort(403, 'Доступ запрещен');
         }
+        // Вопрос должен относиться к этой заявке (иначе можно ответить на чужой вопрос, подставив его id)
+        if (!$userRequest->main_db_request_id
+            || $this->questionsService->questionRequestId((int) $questionId) !== (int) $userRequest->main_db_request_id) {
+            abort(403, 'Доступ запрещен');
+        }
 
         // Подготовка файлов
         $files = [];
@@ -118,11 +118,6 @@ class QuestionController extends Controller
             $files,
             auth()->id()
         );
-
-        // n8n может возвращать массив с одним элементом
-        if (is_array($result) && isset($result[0])) {
-            $result = $result[0];
-        }
 
         if ($result['success'] ?? false) {
             return back()->with('success', 'Ответ успешно отправлен');

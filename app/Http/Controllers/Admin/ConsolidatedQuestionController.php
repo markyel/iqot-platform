@@ -3,14 +3,14 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Services\N8nQuestionsService;
+use App\Services\Questions\AuthorAnswerService;
 use Illuminate\Http\Request;
 
 class ConsolidatedQuestionController extends Controller
 {
-    private N8nQuestionsService $questionsService;
+    private AuthorAnswerService $questionsService;
 
-    public function __construct(N8nQuestionsService $questionsService)
+    public function __construct(AuthorAnswerService $questionsService)
     {
         $this->questionsService = $questionsService;
     }
@@ -23,12 +23,7 @@ class ConsolidatedQuestionController extends Controller
         $userId = auth()->id();
         $requestId = $request->get('request_id');
 
-        $result = $this->questionsService->getConsolidatedQuestions($userId, $requestId);
-
-        // n8n может возвращать массив с одним элементом
-        if (is_array($result) && isset($result[0])) {
-            $result = $result[0];
-        }
+        $result = $this->questionsService->getConsolidatedQuestions($requestId ? (int) $requestId : null);
 
         if (!($result['success'] ?? false)) {
             return view('admin.questions.consolidated', [
@@ -102,11 +97,6 @@ class ConsolidatedQuestionController extends Controller
             $files,
             auth()->id()
         );
-
-        // n8n может возвращать массив с одним элементом
-        if (is_array($result) && isset($result[0])) {
-            $result = $result[0];
-        }
 
         if ($result['success'] ?? false) {
             $answeredCount = $result['answered_count'] ?? $result['data']['answered_count'] ?? 0;
