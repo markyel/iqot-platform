@@ -52,18 +52,18 @@
             <div class="card-header"><h3 class="card-title">Подтверждение цен сайтов КП (Гибрид)</h3></div>
             <div class="table-container">
                 <table class="table">
-                    <thead><tr><th>Программа</th><th>Писем-проверок отправлено / ответили / ждут</th><th>Цена подтверждена</th><th>Расхождение</th><th>Нет в наличии</th><th>Не сравнить / другая база / аналог</th><th>Подтверждённых цен на страницах</th><th>КП получено (позиций)</th></tr></thead>
+                    <thead><tr><th>Программа</th><th>Проверок: отпр. / ответ / ждут</th><th>Подтверждено</th><th>Расхождение</th><th>Нет в наличии</th><th>Прочее</th><th>Подтверждённых цен</th><th>КП (позиций)</th></tr></thead>
                     <tbody>
                         @foreach ($v['confirm'] ?? [] as $c)
                             @php($o = $c['outcomes']) @php($a = $c['asks'])
                             <tr>
-                                <td><strong>{{ $c['p']->name }}</strong> <span style="color: var(--color-text-muted);">#{{ $c['p']->id }}</span></td>
+                                <td style="min-width: 220px;"><strong>{{ \Illuminate\Support\Str::limit($c['p']->name, 40) }}</strong> <span style="color: var(--color-text-muted);">#{{ $c['p']->id }}</span></td>
                                 <td>{{ $fmt($a->sent ?? 0) }} / {{ $fmt($a->answered ?? 0) }} / {{ $fmt($a->waiting ?? 0) }}</td>
                                 <td><strong>{{ $fmt($o['match'] ?? 0) }}</strong></td>
                                 <td>{{ $fmt($o['price_mismatch'] ?? 0) }}</td>
                                 <td>{{ $fmt($o['availability'] ?? 0) }}</td>
-                                <td>{{ $fmt($o['inconclusive'] ?? 0) }} / {{ $fmt($o['basis_diff'] ?? 0) }} / {{ $fmt($o['match_error'] ?? 0) }}</td>
-                                <td>{{ $fmt($c['confirmed']) }} <span style="font-size: var(--text-sm); color: var(--color-text-muted);">из {{ $fmt($c['priced']) }} с ценой</span></td>
+                                <td title="не сравнить / другая база НДС / аналог">{{ $fmt(($o['inconclusive'] ?? 0) + ($o['basis_diff'] ?? 0) + ($o['match_error'] ?? 0)) }}</td>
+                                <td>{{ $fmt($c['confirmed']) }} <span style="font-size: var(--text-sm); color: var(--color-text-muted);">из {{ $fmt($c['priced']) }}</span></td>
                                 <td>{{ $fmt($c['kp']->offers ?? 0) }} ({{ $fmt($c['kp']->products ?? 0) }})</td>
                             </tr>
                         @endforeach
@@ -72,7 +72,7 @@
             </div>
             <div style="padding: var(--space-3) var(--space-4); color: var(--color-text-muted); font-size: var(--text-sm);">
                 Сверка — КП поставщика против цены на его сайте: письмом-проверкой Гибрида и по КП обычных заявок на те же товары.
-                «Цена подтверждена» — расхождение в пределах допуска; подтверждённая цена помечается на странице и повышает доверие к сайту.
+                «Подтверждено» — расхождение в пределах допуска (цена помечается на странице и повышает доверие к сайту); «Прочее» — не сравнить, другая база НДС, аналог; «Подтверждённых цен» — из всех цен на страницах товаров программы.
             </div>
         </div>
 
