@@ -335,30 +335,9 @@ class VerificationMailer
     /** @return array<string,int> email => остаток дневного капа (как PlanDayCampaign::recipientCaps) */
     private function recipientCaps(array $emails): array
     {
-        $emails = array_values(array_unique(array_filter($emails)));
-        if ($emails === []) {
-            return [];
-        }
-        $baseCap = (int) config('services.email_dispatch.recipient_daily_cap', 10);
-        $today = Carbon::now('Europe/Moscow')->toDateString();
-        $pending = DB::connection(self::CONN)->table('email_queue')->whereIn(DB::raw('LOWER(to_email)'), $emails)
-            ->where('status', 'pending')->where('scheduled_at', '<', self::HELD)
-            ->selectRaw('LOWER(to_email) r, COUNT(*) c')->groupBy(DB::raw('LOWER(to_email)'))->pluck('c', 'r');
-        $meta = DB::connection(self::CONN)->table('recipient_mailboxes')->whereIn('email', $emails)
-            ->get(['email', 'daily_cap', 'daily_sent_count', 'daily_sent_date', 'is_blocked'])->keyBy('email');
-        $out = [];
-        foreach ($emails as $e) {
-            $r = $meta[$e] ?? null;
-            if ($r && (int) $r->is_blocked === 1) {
-                $out[$e] = 0;
-                continue;
-            }
-            $cap = ($r && $r->daily_cap !== null) ? (int) $r->daily_cap : $baseCap;
-            $sent = ($r && (string) $r->daily_sent_date === $today) ? (int) $r->daily_sent_count : 0;
-            $out[$e] = max(0, $cap - $sent - (int) ($pending[$e] ?? 0));
-        }
-
-        return $out;
+        // Свой лимит канала «мониторинг» (каналы изолированы — RecipientChannels): заявки клиентов его не выбирают.
+        return (new \App\Services\Dispatch\RecipientChannels())->remaining(
+            array_map('mb_strtolower', $emails), \App\Services\Dispatch\RecipientChannels::MONITORING);
     }
 
     /** @return array<int,int> sender_id => остаток на сегодня (не персональные, рабочие) */

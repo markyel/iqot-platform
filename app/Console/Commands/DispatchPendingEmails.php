@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Jobs\SendQueuedEmailJob;
 use App\Models\Reports\EmailQueue;
 use App\Models\Reports\RecipientMailbox;
+use App\Services\Dispatch\RecipientChannels;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -60,14 +61,20 @@ class DispatchPendingEmails extends Command
         $limit = max(1, (int) $this->option('limit'));
         $tick = max(5, (int) $this->option('tick'));
 
-        // 2) Адаптивный пейсинг по получателю: какие to_email «созрели» на этот тик.
-        $eligibleRecipients = $this->eligibleRecipients();
-
-        // Ветка «ящик на батч»: письма ящика расписаны по дням (AliasWindow::slots), но внутри дня ящику доступны
-        // все письма на сегодня — шлёт тем получателям, кто уже созрел; темп держат пауза ящика (300 с) и лимит дня.
-        $aliasIds = \App\Support\Senders\SenderPool::aliasIds();
+        // 2) Каналы и их лимиты на получателя (заявки / эксперимент / мониторинг изолированы, RecipientChannels).
+        //    Ветка «ящик на батч»: письма ящика расписаны по дням, но внутри дня ящику доступны все письма на сегодня.
+        $channels = new RecipientChannels();
+        $aliasIds = $channels->aliasIds();
         $aliasUntil = Carbon::now('Europe/Moscow')->endOfDay()->utc()->toDateTimeString();
         $aliasIdList = array_keys($aliasIds) ?: [0];
+        $monitoringBatches = array_keys($channels->monitoringBatchIds()) ?: [0];
+
+        // Адаптивный пейсинг: какие to_email «созрели» на этот тик — отдельно в каждом канале.
+        $eligible = $this->eligibleByChannel($channels, $aliasUntil);
+        if ($eligible === []) {
+            $this->info('Dispatched: 0 (нет созревших получателей на этот тик)');
+            return self::SUCCESS;
+        }
 
         // 3) Готовые ящики: активные, не заблокированные, у которых есть письма к отправке.
         $senders = DB::connection('reports')->table('senders as s')
@@ -109,22 +116,11 @@ class DispatchPendingEmails extends Command
 
         // 4) Round-robin по ящикам: на каждый берём perSenderCap писем, ставим
         //    с накопительной задержкой по этому ящику (0, delay, 2·delay, …).
-        //    Дополнительно — пейсинг по получателю: пропускаем «не созревшие»
-        //    to_email и не более одного письма получателю за тик ($reserved).
+        //    Не более одного письма получателю за тик ($reserved) — во всех каналах вместе.
         $dispatched = 0;
         $totalCapHit = 0;
         $reserved = []; // нормализованный to_email => уже отдали письмо в этом тике
-
-        // Плоский список созревших получателей — загоняем его в SQL-выборку по
-        // ящику (см. ниже), чтобы LIMIT считал уже готовых кандидатов, а не
-        // «первые N писем подряд». Иначе фронт очереди, забитый остывающими
-        // получателями с длинным хвостом писем, голодит созревших глубже.
-        $eligibleKeys = array_keys($eligibleRecipients);
-        // У писем ветки «ящик на батч» лимиты мягче — без созревших для основной ветки тик ещё может быть не пустым.
-        if ($eligibleKeys === [] && \App\Support\Senders\SenderPool::aliasIds() === []) {
-            $this->info('Dispatched: 0 (нет созревших получателей на этот тик)');
-            return self::SUCCESS;
-        }
+        $byChannel = [];
 
         // Дневной лимит ящика (прогрев): «1 батч = 1 sender» → весь пул батча может
         // висеть на одном ящике; чтобы он не слал больше daily_limit/сутки, лимит
@@ -139,10 +135,6 @@ class DispatchPendingEmails extends Command
         $dailyLimitHit = 0;
         // Ящики ветки «ящик на батч» шлют только в своё окно (будни 9–18 МСК), уже общего окна тика.
         $aliasClosed = !\App\Services\AliasExp\AliasWindow::isOpen() ? $aliasIds : [];
-        // Свои (на 20% мягче) лимиты получателя для писем ветки; основная ветка свой потолок не превышает.
-        $boost = (float) config('services.alias_exp.recipient_boost', 1.2);
-        $eligibleAlias = ($aliasIds !== [] && $boost > 1.0) ? $this->eligibleRecipients($boost, $aliasUntil) : $eligibleRecipients;
-        $eligibleAliasKeys = array_keys($eligibleAlias);
 
         foreach ($senders as $sender) {
             if ($dispatched >= $limit) {
@@ -152,11 +144,6 @@ class DispatchPendingEmails extends Command
                 continue;
             }
             $isAlias = isset($aliasIds[(int) $sender->id]);
-            $eligibleNow = $isAlias ? $eligibleAlias : $eligibleRecipients;
-            $eligibleNowKeys = $isAlias ? $eligibleAliasKeys : $eligibleKeys;
-            if ($eligibleNowKeys === []) {
-                continue;
-            }
 
             $delaySec = max(1, (int) ($sender->send_delay_seconds ?: 2));
             // Сколько ящик успеет отправить до следующего тика (+1 в запас от простоя).
@@ -180,38 +167,52 @@ class DispatchPendingEmails extends Command
             }
             // Берём по ОДНОМУ письму на созревшего получателя (GROUP BY), с буфером
             // +50 на случай, что часть получателей уже заняты другим ящиком в этом
-            // тике ($reserved). Фильтр зрелости — whereIn по eligibleKeys ДО лимита.
+            // тике ($reserved). Фильтр зрелости — whereIn по созревшим своего канала ДО лимита.
             $fetch = $perSenderCap + 50;
-
-            $rows = DB::connection('reports')->table('email_queue')
-                ->where('sender_id', $sender->id)
-                ->where(function ($q) use ($isAlias, $aliasUntil) {
-                    $q->where(function ($q) use ($isAlias, $aliasUntil) {
-                        $isAlias
-                            ? $q->where('status', 'pending')->where('scheduled_at', '<=', $aliasUntil)
-                            : $q->where('status', 'pending')->whereRaw('scheduled_at <= NOW()');
-                    })->orWhere(function ($q) {
-                        $q->where('status', 'error')
-                            ->whereColumn('retry_count', '<', 'max_retries')
-                            ->whereRaw('scheduled_at <= NOW()');
+            $fetchRows = function (string $channel) use ($sender, $isAlias, $aliasUntil, $monitoringBatches, $eligible, $fetch) {
+                $keys = array_keys($eligible[$channel] ?? []);
+                if ($keys === []) {
+                    return collect();
+                }
+                $q = DB::connection('reports')->table('email_queue')
+                    ->where('sender_id', $sender->id)
+                    ->where(function ($q) use ($isAlias, $aliasUntil) {
+                        $q->where(function ($q) use ($isAlias, $aliasUntil) {
+                            $isAlias
+                                ? $q->where('status', 'pending')->where('scheduled_at', '<=', $aliasUntil)
+                                : $q->where('status', 'pending')->whereRaw('scheduled_at <= NOW()');
+                        })->orWhere(function ($q) {
+                            $q->where('status', 'error')
+                                ->whereColumn('retry_count', '<', 'max_retries')
+                                ->whereRaw('scheduled_at <= NOW()');
+                        });
+                    })
+                    // Только СОЗРЕВШИЕ в этом канале получатели (пейсинг) — фильтр ДО лимита.
+                    ->whereIn(DB::raw('LOWER(to_email)'), $keys)
+                    ->whereNotExists(function ($q) {
+                        $q->select(DB::raw(1))
+                            ->from('recipient_mailboxes as rm')
+                            ->whereColumn('rm.email', DB::raw('LOWER(email_queue.to_email)'))
+                            ->where('rm.is_blocked', 1);
                     });
-                })
-                // Только СОЗРЕВШИЕ получатели (пейсинг) — фильтр ДО лимита, иначе
-                // окно из первых N писем забивают остывающие и созревшие голодают.
-                ->whereIn(DB::raw('LOWER(to_email)'), $eligibleNowKeys)
-                // Не выбирать письма заблокированным получателям (см. выше).
-                ->whereNotExists(function ($q) {
-                    $q->select(DB::raw(1))
-                        ->from('recipient_mailboxes as rm')
-                        ->whereColumn('rm.email', DB::raw('LOWER(email_queue.to_email)'))
-                        ->where('rm.is_blocked', 1);
-                })
+                // Письма мониторинга и заявок идут с одних и тех же ящиков — разделяем по батчу.
+                if ($channel === RecipientChannels::MONITORING) {
+                    $q->whereIn('batch_id', $monitoringBatches);
+                } elseif ($channel === RecipientChannels::MAIN) {
+                    $q->where(fn ($q) => $q->whereNull('batch_id')->orWhereNotIn('batch_id', $monitoringBatches));
+                }
+
                 // По одному письму на получателя (самое приоритетное/старое из его хвоста).
-                ->groupBy(DB::raw('LOWER(to_email)'))
-                ->orderByRaw('MAX(priority) DESC')
-                ->orderByRaw('MIN(scheduled_at) ASC')
-                ->limit($fetch)
-                ->get([DB::raw('MIN(id) as id'), DB::raw('LOWER(to_email) as to_email')]);
+                return $q->groupBy(DB::raw('LOWER(to_email)'))
+                    ->orderByRaw('MAX(priority) DESC')
+                    ->orderByRaw('MIN(scheduled_at) ASC')
+                    ->limit($fetch)
+                    ->get([DB::raw('MIN(id) as id'), DB::raw('LOWER(to_email) as to_email')])
+                    ->each(fn ($r) => $r->channel = $channel);
+            };
+            $rows = $isAlias
+                ? $fetchRows(RecipientChannels::ALIAS)
+                : $fetchRows(RecipientChannels::MONITORING)->concat($fetchRows(RecipientChannels::MAIN));
 
             $accum = 0;
             $sentThisSender = 0;
@@ -222,7 +223,7 @@ class DispatchPendingEmails extends Command
 
                 $recipient = mb_strtolower(trim((string) $row->to_email));
                 // Получатель не созрел по интервалу ИЛИ уже получил письмо в этом тике.
-                if ($recipient === '' || !isset($eligibleNow[$recipient]) || isset($reserved[$recipient])) {
+                if ($recipient === '' || !isset($eligible[$row->channel][$recipient]) || isset($reserved[$recipient])) {
                     continue;
                 }
 
@@ -243,6 +244,7 @@ class DispatchPendingEmails extends Command
 
                 $accum += $delaySec;
                 $dispatched++;
+                $byChannel[$row->channel] = ($byChannel[$row->channel] ?? 0) + 1;
                 $sentThisSender++;
             }
 
@@ -252,36 +254,29 @@ class DispatchPendingEmails extends Command
         }
 
         $this->info("Dispatched: {$dispatched} (senders: {$senders->count()}, получателей: "
-            . count($reserved) . ", на тик-лимите: {$totalCapHit}, на дневном лимите: {$dailyLimitHit})");
+            . count($reserved) . ", на тик-лимите: {$totalCapHit}, на дневном лимите: {$dailyLimitHit}) по каналам: " . json_encode($byChannel));
         return self::SUCCESS;
     }
 
     /**
-     * Множество «созревших» получателей на текущий тик (адаптивный пейсинг).
+     * «Созревшие» на текущий тик получатели — отдельно по каналам (заявки / эксперимент / мониторинг).
      *
-     * Для каждого to_email с pending-письмами считаем
-     *   interval = clamp(остаток_рабочего_окна / pending_получателю, MIN, MAX)
-     * и считаем получателя готовым, если он ещё ни разу не получал письма
-     * (last_dispatched_at IS NULL) или с прошлой раздачи прошло >= interval.
+     * У каждого канала свой дневной кап на адресата (RecipientChannels::cap) и свой адаптивный интервал
+     *   interval = max(пол, горизонт / pending_канала_у_адресата), от последнего письма этого канала сегодня.
+     * Общий для всех каналов — только пол: между любыми двумя письмами адресату не меньше
+     * recipient_interval_min_seconds (или личного override), по recipient_mailboxes.last_dispatched_at.
+     * Горизонт = доля остатка рабочего окна (work_window_fraction): утром темп выше, к вечеру хвост дочищается.
      *
-     * Все времена — в tz приложения (UTC): last_dispatched_at пишется через now()
-     * (Eloquent сохраняет UTC-строку), читаем сырое значение и парсим как UTC.
+     * Все времена — в tz приложения (UTC): last_dispatched_at пишется через now(), читаем сырое значение как UTC.
      *
-     * @return array<string,bool> нормализованный to_email => true
+     * @return array<string,array<string,bool>> канал => [нормализованный to_email => true]
      */
-    private function eligibleRecipients(float $boost = 1.0, ?string $until = null): array
+    private function eligibleByChannel(RecipientChannels $channels, string $aliasUntil): array
     {
         $minInterval = max(1, (int) config('services.email_dispatch.recipient_interval_min_seconds', 300));
         $maxInterval = max($minInterval, (int) config('services.email_dispatch.recipient_interval_max_seconds', 3600));
         $tz = (string) config('services.email_dispatch.work_window_timezone', 'Europe/Riga');
         $endHour = (int) config('services.email_dispatch.work_window_end_hour', 20);
-
-        // Горизонт размазывания = ДОЛЯ остатка рабочего окна (work_window_fraction,
-        // дефолт 0.5 = половина). Смысл: в течение дня подъезжают НОВЫЕ заявки, и
-        // «зарезервированная» вторая часть окна их впитывает — иначе утром темп искусственно
-        // низкий (весь объём размазан на всё окно), а к вечеру скачок. Планируя под половину,
-        // поднимаем утренний темп; к концу окна доля→0 → интервал→MIN, хвост дочищается.
-        // Вне окна (ручной --force) горизонт = MAX → щадящий режим.
         $windowFraction = (float) config('services.email_dispatch.work_window_fraction', 0.5);
         if ($windowFraction <= 0 || $windowFraction > 1) {
             $windowFraction = 0.5;
@@ -292,46 +287,13 @@ class DispatchPendingEmails extends Command
             ? max(60, (int) round(abs($nowTz->diffInSeconds($windowEnd)) * $windowFraction))
             : $maxInterval;
 
-        // pending по нормализованному получателю.
-        $counts = DB::connection('reports')->table('email_queue')
-            ->selectRaw('LOWER(to_email) as r, COUNT(*) as n')
-            ->where(function ($q) use ($until) {
-                $q->where(function ($q) use ($until) {
-                    // $until — горизонт ветки «ящик на батч» (письма на сегодня), иначе только наступившие.
-                    $until !== null
-                        ? $q->where('status', 'pending')->where('scheduled_at', '<=', $until)
-                        : $q->where('status', 'pending')->whereRaw('scheduled_at <= NOW()');
-                })->orWhere(function ($q) {
-                    $q->where('status', 'error')
-                        ->whereColumn('retry_count', '<', 'max_retries')
-                        ->whereRaw('scheduled_at <= NOW()');
-                });
-            })
-            ->whereRaw("TRIM(to_email) <> ''")
-            ->groupBy(DB::raw('LOWER(to_email)'))
-            ->pluck('n', 'r');
-
-        if ($counts->isEmpty()) {
+        $pending = $channels->pending($aliasUntil);
+        if ($pending === []) {
             return [];
         }
-
-        // Дневной потолок на получателя (через ВСЕ ящики) — анти-FBL. База из конфига,
-        // но per-адрес может быть переопределён адаптивным daily_cap (по вовлечённости,
-        // emails:recompute-recipient-caps). Тянем метку раздачи, счётчик и cap одним запросом.
-        $baseCap = (int) config('services.email_dispatch.recipient_daily_cap', 10);
-        $today = RecipientMailbox::recipientDay();
-        $rmRows = DB::connection('reports')->table('recipient_mailboxes')
-            ->whereIn('email', $counts->keys()->all())
-            ->get(['email', 'last_dispatched_at', 'daily_sent_count', 'daily_sent_date', 'daily_cap']);
-        $lastDispatched = [];
-        $dailyCount = [];
-        $capFor = [];
-        foreach ($rmRows as $r) {
-            $lastDispatched[$r->email] = $r->last_dispatched_at;
-            // Счётчик валиден только за сегодня (МСК); прошлый день = 0.
-            $dailyCount[$r->email] = ((string) $r->daily_sent_date === $today) ? (int) $r->daily_sent_count : 0;
-            $capFor[$r->email] = $r->daily_cap !== null ? (int) $r->daily_cap : $baseCap;
-        }
+        $emails = array_keys($pending);
+        $meta = $channels->recipientMeta($emails);
+        $usage = $channels->usageToday($emails);
 
         // Личный интервал / пауза по отписке (suppliers, см. SupplierUnsubscribeEscalator):
         // override поднимает ПОЛ интервала для адреса; активная пауза (unsubscribe_until в
@@ -339,50 +301,40 @@ class DispatchPendingEmails extends Command
         // адрес → берём самый щадящий (макс. интервал / макс. пауза).
         $overrides = [];
         $pausedUntil = [];
-        $supplierMeta = DB::connection('reports')->table('suppliers')
-            ->whereIn(DB::raw('LOWER(email)'), $counts->keys()->all())
-            ->get([DB::raw('LOWER(email) as r'), 'unsubscribe_until', 'send_interval_override_seconds']);
-        foreach ($supplierMeta as $m) {
-            if ($m->send_interval_override_seconds !== null) {
-                $overrides[$m->r] = max($overrides[$m->r] ?? 0, (int) $m->send_interval_override_seconds);
-            }
-            if ($m->unsubscribe_until !== null) {
-                $pausedUntil[$m->r] = max($pausedUntil[$m->r] ?? '', (string) $m->unsubscribe_until);
+        foreach (array_chunk($emails, 1000) as $chunk) {
+            foreach (DB::connection('reports')->table('suppliers')->whereIn(DB::raw('LOWER(email)'), $chunk)
+                ->get([DB::raw('LOWER(email) as r'), 'unsubscribe_until', 'send_interval_override_seconds']) as $m) {
+                if ($m->send_interval_override_seconds !== null) {
+                    $overrides[$m->r] = max($overrides[$m->r] ?? 0, (int) $m->send_interval_override_seconds);
+                }
+                if ($m->unsubscribe_until !== null) {
+                    $pausedUntil[$m->r] = max($pausedUntil[$m->r] ?? '', (string) $m->unsubscribe_until);
+                }
             }
         }
 
         $now = now();
         $eligible = [];
-        foreach ($counts as $recipient => $n) {
-            // На паузе по отписке — пропускаем до истечения.
-            if (isset($pausedUntil[$recipient]) && Carbon::parse($pausedUntil[$recipient])->isFuture()) {
+        foreach ($pending as $recipient => $byChannel) {
+            $m = $meta[$recipient];
+            if ($m['blocked'] || (isset($pausedUntil[$recipient]) && Carbon::parse($pausedUntil[$recipient])->isFuture())) {
                 continue;
             }
-
-            // Дневной потолок на получателя (через все ящики) — анти-FBL. Per-адрес cap
-            // (адаптивный daily_cap) с фолбэком на базу. Добрал за МСК-день → не eligible.
-            // $boost > 1 — письма ветки «ящик на батч»: потолок и темп на получателя мягче (services.alias_exp.recipient_boost).
-            $cap = (int) ceil(($capFor[$recipient] ?? $baseCap) * $boost);
-            if ($cap > 0 && ($dailyCount[$recipient] ?? 0) >= $cap) {
-                continue;
-            }
-
-            // Интервал = горизонт / pending_ЭТОГО_получателя, но НЕ ниже пола (MIN или
-            // личный override — анти-спам). ПОТОЛКА НЕТ: так весь текущий объём
-            // распределяется до конца (фракции) окна. Мало писем у адресата → длинный
-            // интервал (пошлёт своё и всё); много → интервал падает к полу. Агрегат сам
-            // подстраивается под нагрузку: бэклог большой → все у пола (макс. безопасный
-            // темп), малый → растянуто. Прежний MAX-потолок держал редко-пендинговых на
-            // 60м и не давал слить весь бэклог за окно (жалоба пользователя).
+            // Общий пол между любыми письмами адресату (все каналы).
             $floor = max($minInterval, (int) ($overrides[$recipient] ?? 0));
-            $interval = max($floor, intdiv($remainingSec, max(1, (int) $n)));
-            if ($boost > 1.0) {
-                $interval = max($floor, (int) round($interval / $boost));
+            if ($m['last'] !== null && Carbon::parse($m['last'])->gt($now->copy()->subSeconds($floor))) {
+                continue;
             }
-            $last = $lastDispatched[$recipient] ?? null;
-
-            if ($last === null || Carbon::parse($last)->lte($now->copy()->subSeconds($interval))) {
-                $eligible[$recipient] = true;
+            foreach ($byChannel as $channel => $n) {
+                $cap = RecipientChannels::cap($channel, $m['cap']);
+                $used = $usage[$recipient][$channel] ?? ['n' => 0, 'last' => null];
+                if ($cap <= 0 || $used['n'] >= $cap) {
+                    continue;
+                }
+                $interval = max($floor, intdiv($remainingSec, max(1, (int) $n)));
+                if ($used['last'] === null || Carbon::parse($used['last'])->lte($now->copy()->subSeconds($interval))) {
+                    $eligible[$channel][$recipient] = true;
+                }
             }
         }
 

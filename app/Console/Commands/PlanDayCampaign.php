@@ -672,36 +672,8 @@ class PlanDayCampaign extends Command
      */
     private function recipientCaps(array $emails): array
     {
-        if ($emails === []) {
-            return [];
-        }
-        $baseCap = (int) config('services.email_dispatch.recipient_daily_cap', 10);
-        $today = Carbon::now('Europe/Moscow')->toDateString();
-        $pending = DB::connection(self::CONN)->table('email_queue')
-            ->whereIn(DB::raw('LOWER(to_email)'), $emails)
-            // Только к отправке до конца сегодняшних суток: будущие слоты ветки «ящик на батч» (письма
-            // расписаны на дни вперёд) не должны съедать дневной кап получателя основной рассылки.
-            ->where('status', 'pending')->where('scheduled_at', '<=', Carbon::now('Europe/Moscow')->endOfDay()->utc())
-            ->selectRaw('LOWER(to_email) r, COUNT(*) c')->groupBy(DB::raw('LOWER(to_email)'))->pluck('c', 'r');
-        $caps = [];
-        $rows = DB::connection(self::CONN)->table('recipient_mailboxes')->whereIn('email', $emails)
-            ->get(['email', 'daily_cap', 'daily_sent_count', 'daily_sent_date', 'is_blocked']);
-        $meta = [];
-        foreach ($rows as $r) {
-            $meta[$r->email] = $r;
-        }
-        foreach ($emails as $e) {
-            $r = $meta[$e] ?? null;
-            if ($r && (int) $r->is_blocked === 1) {
-                $caps[$e] = 0;
-                continue;
-            }
-            $cap = ($r && $r->daily_cap !== null) ? (int) $r->daily_cap : $baseCap;
-            $sentToday = ($r && (string) $r->daily_sent_date === $today) ? (int) $r->daily_sent_count : 0;
-            $used = $sentToday + (int) ($pending[$e] ?? 0);
-            $caps[$e] = max(0, $cap - $used);
-        }
-        return $caps;
+        // Лимит канала «заявки» (каналы изолированы — RecipientChannels): письма эксперимента и мониторинга его не едят.
+        return (new \App\Services\Dispatch\RecipientChannels())->remaining($emails, \App\Services\Dispatch\RecipientChannels::MAIN);
     }
 
     /** @param array<int,int>|null $onlyItemIds @return array<int,array<string,mixed>> */

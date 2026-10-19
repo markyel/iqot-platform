@@ -126,6 +126,13 @@ return [
         // Это БАЗА; per-адрес cap адаптируется (recipient_mailboxes.daily_cap) командой
         // emails:recompute-recipient-caps. День — по МСК (локальный день получателя). 0 = выкл.
         'recipient_daily_cap' => (int) env('EMAILS_RECIPIENT_DAILY_CAP', 10),
+        // Изолированные дневные лимиты писем на получателя по каналам (решение владельца 19.10.2026,
+        // App\Services\Dispatch\RecipientChannels): заявки — кап адресата (выше), эксперимент «ящик на батч» —
+        // доля от него (не меньше 1), мониторинг — свой фиксированный. Общий — только пол интервала между письмами.
+        'channels' => [
+            'alias_share' => (float) env('EMAILS_CAP_ALIAS_SHARE', 0.2),
+            'monitoring_cap' => (int) env('EMAILS_CAP_MONITORING', 2),
+        ],
         // Границы и шаг адаптации per-адрес cap (по вовлечённости).
         'recipient_cap_max' => (int) env('EMAILS_RECIPIENT_CAP_MAX', 15),        // ответил/офферы → к max
         'recipient_cap_min' => (int) env('EMAILS_RECIPIENT_CAP_MIN', 5),         // нет реакции/баунсы → к min
@@ -693,9 +700,7 @@ return [
         'send_delay_seconds' => (int) env('ALIAS_EXP_SEND_DELAY', 300),     // 1 письмо в 5 мин
         'daily_limit' => (int) env('ALIAS_EXP_DAILY_LIMIT', 120),
         'mailboxes_per_day' => (int) env('ALIAS_EXP_MAILBOXES_PER_DAY', 10),
-        // Лимиты на получателя для писем ветки мягче на 20%: дневной потолок ×1.2, интервал ÷1.2 (не ниже пола) —
-        // решение владельца 16.10.2026; основная ветка свой потолок не превышает.
-        'recipient_boost' => (float) env('ALIAS_EXP_RECIPIENT_BOOST', 1.2),
+        // Лимит писем на получателя у ветки — свой канал (services.email_dispatch.channels.alias_share, 19.10.2026).
         'window_start_hour' => (int) env('ALIAS_EXP_WINDOW_START', 9),      // рабочие часы ветки (решение 16.10)
         'window_end_hour' => (int) env('ALIAS_EXP_WINDOW_END', 18),
         'window_timezone' => env('ALIAS_EXP_WINDOW_TZ', 'Europe/Moscow'),

@@ -271,12 +271,9 @@ class PlanRenderIntents extends Command
             return [[], []];
         }
 
-        $pending = DB::connection(self::CONN)->table('email_queue')
-            ->whereIn(DB::raw('LOWER(to_email)'), $emails)
-            ->where('status', 'pending')->where('scheduled_at', '<', self::HELD)
-            ->selectRaw('LOWER(to_email) r, COUNT(*) c')
-            ->groupBy(DB::raw('LOWER(to_email)'))->pluck('c', 'r')
-            ->map(static fn ($v) => (int) $v)->all();
+        // Ожидающие только канала «заявки» (каналы изолированы — RecipientChannels).
+        $pending = array_map(static fn ($byChannel) => (int) ($byChannel[\App\Services\Dispatch\RecipientChannels::MAIN] ?? 0),
+            (new \App\Services\Dispatch\RecipientChannels())->pending(null, '2036-12-31 23:59:59', $emails));
 
         $baseCap = (int) config('services.email_dispatch.recipient_daily_cap', 10);
         $caps = [];
