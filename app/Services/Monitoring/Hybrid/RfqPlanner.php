@@ -34,6 +34,18 @@ class RfqPlanner
     /** @var array<int,int> supplier_id => запросов пула, назначенных в этом прогоне (выравнивание нагрузки) */
     private array $assigned = [];
 
+    /** @var array<int,array<string,true>> supplier_id => домены его почты и сайта */
+    private array $supplierDomains = [];
+
+    public static function bareDomain(string $host): string
+    {
+        $host = mb_strtolower(trim($host));
+        $host = (string) preg_replace('#^[a-z]+://#', '', $host);
+        $host = explode('/', $host)[0];
+
+        return (string) preg_replace('/^www\./', '', $host);
+    }
+
     /** @return array{on_request: int, pool: int, pool_by_supplier: array<int,int>} */
     public function plan(bool $dryRun = false): array
     {
@@ -167,6 +179,11 @@ class RfqPlanner
                 ->filter(fn ($l) => ItemScope::allows(ItemScope::itemCodes($p), $productCodes[(int) $p->id] ?? [],
                     ItemScope::listingCodes($l->matched_codes, $l->match_method, $l->match_evidence)))
                 ->pluck('supplier_id')->flip();
+            // То же по домену: сайт с ценой ещё не связан с карточкой поставщика (mp_sites.supplier_id пуст —
+            // 19.10.2026: 93 таких сайта у mzCorp, 2 запроса пула ушли бы поставщику, чья цена уже есть на его сайте).
+            $priceDomains = DB::table('mp_listings as l')->join('mp_sites as s', 's.id', '=', 'l.site_id')
+                ->where('l.product_id', $p->id)->where('l.bench', false)->where('l.status', 'active')->whereNotNull('l.price')
+                ->pluck('s.domain')->map(fn ($d) => self::bareDomain((string) $d))->filter()->flip();
             $take = 0;
             // Нагрузка: каждые 5 уже назначенных в прогоне запросов вдвое снижают приоритет поставщика —
             // товары одного типа расходятся по разным сильным поставщикам, а не по одним и тем же.
@@ -176,7 +193,8 @@ class RfqPlanner
                 if ($take >= self::POOL_SUPPLIERS_PER_ROUND) {
                     break;
                 }
-                if (isset($asked[$sid]) || isset($withPrice[$sid])) {
+                if (isset($asked[$sid]) || isset($withPrice[$sid])
+                    || array_intersect_key($this->supplierDomains[$sid] ?? [], $priceDomains->all()) !== []) {
                     continue;
                 }
                 if (!$dryRun) {
@@ -215,10 +233,11 @@ class RfqPlanner
             ->get(['supplier_id', 'is_included', 'positive_signals'])->keyBy('supplier_id');
         $scores = [];
         foreach (array_chunk($ids, 500) as $chunk) {
-            foreach ($r->table('suppliers')->whereIn('id', $chunk)->get(['id', 'email', 'total_requests_sent', 'total_responses_received',
+            foreach ($r->table('suppliers')->whereIn('id', $chunk)->get(['id', 'email', 'website', 'total_requests_sent', 'total_responses_received',
                 'total_prices_offered', 'profile_confidence']) as $s) {
                 $email = mb_strtolower(trim((string) $s->email));
                 $domain = ltrim((string) strrchr($email, '@'), '@');
+                $this->supplierDomains[(int) $s->id] = array_fill_keys(array_values(array_filter([$domain, self::bareDomain((string) $s->website)])), true);
                 if ($email === '' || in_array($email, $exclude, true) || in_array($domain, $exclude, true)) {
                     continue;
                 }
