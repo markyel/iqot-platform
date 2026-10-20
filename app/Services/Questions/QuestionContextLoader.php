@@ -73,7 +73,29 @@ class QuestionContextLoader
             ->whereIn('id', $ids)
             ->orderBy('position_number')
             ->get(['id', 'request_id', 'position_number', 'name', 'brand', 'article', 'quantity', 'unit', 'category', 'description'])
+            ->map(function ($it) {
+                $it->quantity = self::humanQuantity($it->quantity);
+
+                return $it;
+            })
             ->all();
+    }
+
+    /**
+     * DECIMAL(…,3) отдаёт «2.000» — поставщик читает это как две тысячи (ЛифтКомплект 20.10.2026: «2000 шт, верно?»).
+     * Целое — без дробной части, дробное — через запятую без хвостовых нулей.
+     */
+    public static function humanQuantity(mixed $q): string
+    {
+        if ($q === null || $q === '') {
+            return '';
+        }
+        $f = (float) str_replace(',', '.', (string) $q);
+        if (abs($f - round($f)) < 1e-9) {
+            return (string) (int) round($f);
+        }
+
+        return str_replace('.', ',', rtrim(rtrim(number_format($f, 3, '.', ''), '0'), '.'));
     }
 
     /**
