@@ -239,7 +239,23 @@ class PlanDayCampaign extends Command
             $cands = $this->option('alias-force')
                 ? AliasBranch::forcedCandidates($positions, $poolMap, $onlyAlias, max(1, (int) $this->option('alias-min-pool')))
                 : AliasBranch::candidates($positions, $poolMap, $emailedCount, $onlyAlias);
-            $aliasGroups = array_slice(AliasBranch::group($cands, $itemRows, (int) config('services.alias_exp.items_per_batch', 2)), 0, $budget);
+            $aliasGroups = AliasBranch::group($cands, $itemRows, (int) config('services.alias_exp.items_per_batch', 2));
+            if ($this->option('alias-force')) {
+                // Получатели пары — объединение остаточных пулов: поставщик, которому одну из позиций уже писали,
+                // получил бы её повторно. Пары — только из позиций, о которых ещё никому не писали.
+                $split = [];
+                foreach ($aliasGroups as $g) {
+                    if (count($g) > 1 && array_filter($g, fn ($i) => ($emailedCount[$i] ?? 0) > 0)) {
+                        foreach ($g as $i) {
+                            $split[] = [$i];
+                        }
+                    } else {
+                        $split[] = $g;
+                    }
+                }
+                $aliasGroups = $split;
+            }
+            $aliasGroups = array_slice($aliasGroups, 0, $budget);
             foreach ($aliasGroups as $g) {
                 foreach ($g as $iid) {
                     $aliasRows[$iid] = $itemRows[$iid];
