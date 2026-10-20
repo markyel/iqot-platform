@@ -102,6 +102,30 @@ class AliasBranch
     }
 
     /**
+     * Ручной запуск (plan-day --alias-force): позиции вне доли и уже разосланные части пула. Письма из нового
+     * ящика уйдут только остаточному пулу (кому эту позицию ещё не отправляли), основная ветка позицию дальше не берёт.
+     * Порядок — по остатку пула (больше писем в эксперимент), затем срочности.
+     *
+     * @param int[]|null $only только эти позиции
+     * @return int[]
+     */
+    public static function forcedCandidates(array $positions, array $poolMap, ?array $only, int $minPool): array
+    {
+        $claimed = self::claimedItemIds();
+        $out = [];
+        foreach ($positions as $id => $m) {
+            if (!empty($m['is_customer']) || isset($claimed[$id]) || count($poolMap[$id] ?? []) < $minPool
+                || ($only !== null && !in_array((int) $id, $only, true))) {
+                continue;
+            }
+            $out[] = (int) $id;
+        }
+        usort($out, fn ($a, $b) => [count($poolMap[$b] ?? []), $positions[$b]['urgency'] ?? 0] <=> [count($poolMap[$a] ?? []), $positions[$a]['urgency'] ?? 0]);
+
+        return $out;
+    }
+
+    /**
      * Пары: позиции одного типа и области; однотипные (HomogeneousKey) — первыми. Пулы таких позиций совпадают
      * (подбор поставщиков идёт по типу/области), получатели батча — объединение пулов.
      *

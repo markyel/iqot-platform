@@ -54,6 +54,8 @@ class PlanDayCampaign extends Command
         {--alias-only : (тест) только ветка «ящик на батч», без основного плана}
         {--alias-items= : (тест) в ветку «ящик на батч» — только эти позиции (через запятую), без проверки доли}
         {--alias-limit= : Потолок батчей ветки «ящик на батч» за прогон (по умолчанию — дневной бюджет ящиков)}
+        {--alias-force : (ручной запуск) в ветку и позиции вне доли и уже разосланные части пула — письма только остаточному пулу (≥ --alias-min-pool)}
+        {--alias-min-pool=20 : С --alias-force — минимум ещё не опрошенных поставщиков у позиции}
         {--force : Запустить при выключенном флаге}';
 
     protected $description = 'Фаза 2: построить дневной план рассылки (позиции→пулы→Яндекс→аффинность→назначатель)';
@@ -228,13 +230,15 @@ class PlanDayCampaign extends Command
         foreach (AliasBranch::claimedItemIds() as $cid => $_) {
             unset($positions[$cid], $poolMap[$cid], $itemRows[$cid], $relevantMap[$cid]);
         }
-        if (AliasBranch::enabled() || $aliasOnly || $this->option('alias-limit') !== null || $this->option('alias-items')) {
+        if (AliasBranch::enabled() || $aliasOnly || $this->option('alias-limit') !== null || $this->option('alias-items') || $this->option('alias-force')) {
             $budget = AliasBranch::budgetToday();
             if ($this->option('alias-limit') !== null) {
                 $budget = min($budget, max(0, (int) $this->option('alias-limit')));
             }
             $onlyAlias = $this->option('alias-items') ? array_map('intval', explode(',', (string) $this->option('alias-items'))) : null;
-            $cands = AliasBranch::candidates($positions, $poolMap, $emailedCount, $onlyAlias);
+            $cands = $this->option('alias-force')
+                ? AliasBranch::forcedCandidates($positions, $poolMap, $onlyAlias, max(1, (int) $this->option('alias-min-pool')))
+                : AliasBranch::candidates($positions, $poolMap, $emailedCount, $onlyAlias);
             $aliasGroups = array_slice(AliasBranch::group($cands, $itemRows, (int) config('services.alias_exp.items_per_batch', 2)), 0, $budget);
             foreach ($aliasGroups as $g) {
                 foreach ($g as $iid) {
@@ -244,6 +248,10 @@ class PlanDayCampaign extends Command
             $this->line(sprintf('  [ВЕТКА ящик-на-батч] кандидатов %d, бюджет ящиков %d, батчей %d (позиций %d, получателей ~%d)',
                 count($cands), $budget, count($aliasGroups), count($aliasRows),
                 array_sum(array_map(fn ($g) => count(array_unique(array_merge(...array_map(fn ($i) => $poolMap[$i] ?? [], $g)))), $aliasGroups))));
+            foreach ($aliasGroups as $g) {
+                $this->line(sprintf('    · %s → получателей %d', implode(' + ', array_map(fn ($i) => "#{$i} " . mb_substr((string) ($itemRows[$i]['name'] ?? ''), 0, 60)
+                    . ' (уже писали ' . ($emailedCount[$i] ?? 0) . ')', $g)), count(array_unique(array_merge(...array_map(fn ($i) => $poolMap[$i] ?? [], $g))))));
+            }
         }
         $aliasPool = array_intersect_key($poolMap, $aliasRows);
         $aliasRelevant = array_intersect_key($relevantMap, $aliasRows);
