@@ -374,10 +374,12 @@ class ReplyEmailBuilder
             $ts = time();
         }
 
-        $day = (int) date('j', $ts);
-        $month = $months[(int) date('n', $ts)] ?? '';
-        $year = date('Y', $ts);
-        $time = date('H:i', $ts);
+        // Метки reports — UTC-сессия; поставщику показываем московское время (было «07:12» вместо 10:12, 20.10.2026).
+        $msk = \Carbon\Carbon::createFromTimestamp($ts)->setTimezone('Europe/Moscow');
+        $day = (int) $msk->format('j');
+        $month = $months[(int) $msk->format('n')] ?? '';
+        $year = $msk->format('Y');
+        $time = $msk->format('H:i');
 
         return "{$day} {$month} {$year} г., {$time}";
     }
