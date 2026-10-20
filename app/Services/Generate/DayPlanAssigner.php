@@ -252,34 +252,49 @@ class DayPlanAssigner
             return !isset($sendersOfSupplier[$env['supplier_id']][$s]);
         };
 
+        // Ящик группе — тот, кто может взять БОЛЬШЕ всего её конвертов (ротация/«один ящик — одно письмо адресату
+        // в день»/лимит), остаток — следующему такому же, а не каждому отказнику по кругу новый ящик: 20.10.2026
+        // по кругу 26% писем уходили отказниками и давали ~700 батчей по одному письму. Крупные группы — первыми.
+        uasort($groups, static fn ($a, $b) => count($b) <=> count($a));
         foreach ($groups as $idxs) {
-            $current = null; // липкий ящик группы
-            foreach ($idxs as $i) {
-                $env = $envelopes[$i];
-                if ($current !== null && ($senderCaps[$current] ?? 0) <= 0) {
-                    $current = null; // лимит липкого исчерпан — группе нужен следующий
-                }
-                $use = ($current !== null && $okFor($current, $env)) ? $current : null;
-                if ($use === null) {
-                    for ($k = 0; $k < $n; $k++) {
-                        $s = (int) $senderIds[($sPtr + $k) % $n];
-                        if ($okFor($s, $env)) {
-                            $use = $s;
-                            $sPtr = ($sPtr + $k + 1) % max(1, $n);
-                            break;
+            $left = $idxs;
+            while ($left !== []) {
+                $best = null;
+                $bestTake = [];
+                for ($k = 0; $k < $n; $k++) {
+                    $s = (int) $senderIds[($sPtr + $k) % $n];
+                    $cap = (int) ($senderCaps[$s] ?? 0);
+                    if ($cap <= 0) {
+                        continue;
+                    }
+                    $take = [];
+                    foreach ($left as $i) {
+                        if ($okFor($s, $envelopes[$i])) {
+                            $take[] = $i;
+                            if (count($take) >= $cap) {
+                                break;
+                            }
+                        }
+                    }
+                    if (count($take) > count($bestTake)) {
+                        $best = $s;
+                        $bestTake = $take;
+                        if (count($take) === count($left)) {
+                            break; // берёт всю группу — лучше не будет
                         }
                     }
                 }
-                if ($use === null) {
-                    $droppedNoSender++; // ни одного допустимого ящика (ротация/лимиты) — дроп
-                    continue;
+                if ($best === null) {
+                    $droppedNoSender += count($left); // ни одного допустимого ящика (ротация/лимиты) — дроп
+                    break;
                 }
-                if ($current === null) {
-                    $current = $use; // новый липкий (конверто-специфичный обход current не меняет)
+                $sPtr = (array_search($best, $senderIds, true) + 1) % max(1, $n); // равномерность между группами
+                foreach ($bestTake as $i) {
+                    $senderOf[$i] = $best;
+                    $senderCaps[$best]--;
+                    $sendersOfSupplier[$envelopes[$i]['supplier_id']][$best] = true;
                 }
-                $senderOf[$i] = $use;
-                $senderCaps[$use]--;
-                $sendersOfSupplier[$env['supplier_id']][$use] = true;
+                $left = array_values(array_diff($left, $bestTake));
             }
         }
 
