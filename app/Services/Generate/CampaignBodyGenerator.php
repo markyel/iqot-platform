@@ -41,7 +41,23 @@ class CampaignBodyGenerator
         $batch->emailTemplate = $template;
         $batch->emailTone = $tone;
 
+        // Один текст на ящик в сутки (решение владельца 20.10.2026): батч = ящик × набор позиций, при 1 позиции
+        // в письме это ~1 200 вызовов gpt-4o в день, из них 944 батча по одному письму. Стиль ящика (шаблон/тон/угол)
+        // от этого не меняется; текст не называет товар — только область, поэтому годится для любых позиций
+        // той же области, цели письма, именного заказчика и «одна позиция / несколько».
+        $reuseKey = $this->reuseKey($batch, $senderId, $template);
+        if ($reuseKey !== null && is_array($cached = \Illuminate\Support\Facades\Cache::get($reuseKey))) {
+            $batch->aiBody = $cached;
+            $batch->aiModel = $this->bodyModel;
+
+            return $cached;
+        }
+
         [$system, $user] = $this->buildPrompts($batch, $template ?? [], $tone ?? []);
+        if ($reuseKey !== null) {
+            $system .= "\n\nТЕКСТ ПОВТОРНО ИСПОЛЬЗУЕТСЯ для разных позиций этой области: НЕ называй конкретный товар или тип товара"
+                . " (датчик, башмак, ремень, плата…) — только область («по лифтовым запчастям») или нейтрально «по позициям».";
+        }
 
         $body = $this->fallbackBody();
         try {
@@ -57,7 +73,33 @@ class CampaignBodyGenerator
 
         $batch->aiBody = $body;
         $batch->aiModel = $this->bodyModel;
+        if ($reuseKey !== null && $body !== $this->fallbackBody()) {
+            \Illuminate\Support\Facades\Cache::put($reuseKey, $body, now('Europe/Moscow')->endOfDay());
+        }
+
         return $body;
+    }
+
+    /**
+     * Ключ переиспользования текста: ящик × МСК-сутки × шаблон × цель письма × именной заказчик × первая область
+     * позиций × одна/несколько позиций. null — переиспользование выключено (EMAILS_GENERATE_BODY_REUSE=false).
+     */
+    private function reuseKey(Batch $batch, int $senderId, ?array $template): ?string
+    {
+        if (!(bool) config('services.email_generate.body_reuse', true) || $senderId <= 0) {
+            return null;
+        }
+        $domain = (int) ($batch->domainIds[0] ?? ($batch->items[0]['domain_id'] ?? 0));
+
+        return 'bodygen:' . implode(':', [
+            $senderId,
+            now('Europe/Moscow')->format('Ymd'),
+            (int) ($template['id'] ?? 0),
+            $batch->purpose ?? 'main',
+            $batch->isCustomerRequest ? md5((string) $batch->customerCompany) : '0',
+            $domain,
+            count($batch->items) > 1 ? 'n' : '1',
+        ]);
     }
 
     /**

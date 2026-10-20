@@ -533,6 +533,8 @@ return [
         'body_model' => env('EMAILS_GENERATE_BODY_MODEL', 'gpt-4o'),
         // Температура тела — уникальность формулировок.
         'body_temperature' => (float) env('EMAILS_GENERATE_BODY_TEMP', 0.7),
+        // Один текст на ящик в сутки (по области/цели/заказчику), а не на каждый батч — с 20.10.2026.
+        'body_reuse' => (bool) env('EMAILS_GENERATE_BODY_REUSE', true),
         // Токен генерится AI по стилю sender'а (token_templates.prompt_template).
         'token_model' => env('EMAILS_GENERATE_TOKEN_MODEL', 'gpt-4o-mini'),
         'token_use_ai' => (bool) env('EMAILS_GENERATE_TOKEN_USE_AI', true),

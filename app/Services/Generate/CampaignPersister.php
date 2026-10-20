@@ -188,6 +188,23 @@ class CampaignPersister
      *
      * @param array<int,int> $itemIds
      */
+    /**
+     * Те же проверки, что в persist() (дедуп по позициям, ротация ящиков), — ДО генерации текста:
+     * кого persist всё равно отсеет, тому письмо не собираем, а батч без адресатов не создаём
+     * (20.10.2026: 44 пустых батча в сутки с оплаченной генерацией текста).
+     *
+     * @param array<int,array<string,mixed>> $suppliers строки поставщиков (id, email)
+     * @param int[] $itemIds
+     * @return array<int,array<string,mixed>>
+     */
+    public function writableSuppliers(array $suppliers, array $itemIds, int $senderId): array
+    {
+        $window = max(0, (int) config('services.email_generate.sender_recipient_days', 7));
+
+        return array_values(array_filter($suppliers, fn ($s) => !$this->alreadyContacted($itemIds, (int) ($s['id'] ?? 0))
+            && !($window > 0 && $this->senderEmailedRecently($senderId, (string) ($s['email'] ?? ''), $window))));
+    }
+
     private function alreadyContacted(array $itemIds, int $supplierId): bool
     {
         if ($itemIds === [] || $supplierId <= 0) {

@@ -477,6 +477,11 @@ class PlanDayCampaign extends Command
                     Log::warning('PlanDayCampaign: у ящика нет профиля/email — группа пропущена', ['sender_id' => $g['sender_id']]);
                     continue;
                 }
+                $suppliers = $persister->writableSuppliers($suppliers, array_map('intval', $g['item_ids']), (int) $g['sender_id']);
+                if ($suppliers === []) {
+                    $skipped++;
+                    continue; // всех отсеет дедуп/ротация — не платим за текст и не создаём пустой батч
+                }
                 $batch->suppliers = $suppliers;
                 $batch->supplierIds = array_map(static fn ($s) => (int) $s['id'], $suppliers);
 
