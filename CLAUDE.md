@@ -171,7 +171,7 @@ n8n-воркфлоу авто-отключился из-за повторяющ�
 ## AI-анализ ответов поставщиков (заменяет воркфлоу n8n «Process Email Conversations»)
 Следующий шаг конвейера после приёма: берёт необработанные входящие письма (`email_messages.ai_processed=0`), прогоняет тело + вложения (КП) через AI, извлекает ценовые офферы и вопросы, пишет в боевые таблицы (`request_item_responses`, `request_item_multi_responses`, `supplier_questions`), проставляет `email_messages.ai_classification`/`ai_processed=1` и обновляет статус беседы. БД та же — `reports`.
 
-Поток: планировщик (`->everyThirtyMinutes()`) → `emails:analyze-replies` → по job на письмо в очередь `analyze` → `AnalyzeSupplierReplyJob` → `SupplierReplyAnalyzer` (AI) → `SupplierReplyPersister` (запись).
+Поток: планировщик (`->everyTenMinutes()`, с 20.10.2026; было 30 мин) → `emails:analyze-replies` → по job на письмо в очередь `analyze` → `AnalyzeSupplierReplyJob` → `SupplierReplyAnalyzer` (AI) → `SupplierReplyPersister` (запись).
 
 ### Сервисы (`app/Services/Analysis/`)
 - **`DocumentTextExtractor`** — локальный парсинг вложений (БЕЗ Google Docs/Drive): Excel→`phpoffice/phpspreadsheet` (листы в TSV), PDF→`smalot/pdfparser`, Word→`phpoffice/phpword` (рекурсивный обход), html/text — как есть. Читает с диска `public` по `email_attachments.local_path`. Каждый файл в своём try/catch (битое вложение не валит письмо). Итог обрезается до `doc_max_chars` (начало 70% + конец 30%).
@@ -198,7 +198,7 @@ Upsert офферов идемпотентен, но вставки в `request_
 ## Триаж вопросов поставщиков (заменяет воркфлоу n8n «Process Supplier Questions»)
 Следующий шаг после AI-анализа: AI-анализ раскладывает входящие письма на офферы и вопросы (`supplier_questions.status='pending'`); триаж берёт эти вопросы и решает — ответить поставщику **автоматически** или направить вопрос **автору заявки**. БД та же — `reports`. Авто-ответы складываются в `outgoing_replies` (status='pending'); **их отправку делает отдельный шаг `emails:dispatch-replies`** (см. раздел «Отправка готовых ответов»).
 
-Поток: планировщик (`->everyTwoHours()`) → `emails:process-questions` → по job на вопрос в очередь `questions` → `ProcessSupplierQuestionJob` → AI #1 → ветка Auto/Author.
+Поток: планировщик (`->everyMinute()`) → `emails:process-questions` → по job на вопрос в очередь `questions` → `ProcessSupplierQuestionJob` → AI #1 → ветка Auto/Author.
 
 ### Сервисы (`app/Services/Questions/`)
 - **`QuestionContextLoader`** — сбор контекста (порт MySQL-узлов Get Pending/Batch/Request Items/Sender/Author Answers/Author User ID/Original Message/Template). Всё через query builder на `reports`. `loadQuestion` повторно проверяет `status='pending'` (claim). `loadAuthorAnswers` — до `history_limit` прошлых ответов автора по заявке с COALESCE `original_reply_id` (reply с файлами → любой reply) и `files_count` (образец для похожих вопросов + копирование вложений).
@@ -292,7 +292,7 @@ Upsert офферов идемпотентен, но вставки в `request_
 - **Инцидент 06.07–19.10.2026:** диспетчер брал 30 самых старых pending-ответов; у них ящики выключены → джоб возвращал их в pending → те же 30 каждые 15 мин, очередь стояла (2 068). Фикс: выборка только ответов активных незаблокированных ящиков не старше `EMAILS_REPLIES_MAX_AGE_DAYS` (14); 1 724 ответа старше 14 дней сняты (`failed`, «expired: …») по решению владельца.
 - `emails:dispatch-replies {--force} {--limit=} {--reply=ID}` — порт «Get Pending Replies» (`outgoing_replies.status='pending'` ORDER BY `created_at`, LIMIT `batch_limit`=30). `--reply=ID` — точечный прогон одного ответа (claim + dispatch).
 - **Очередь `replies`** — нужен отдельный systemd-воркер на проде (`queue:work database --queue=replies --tries=0 --timeout=120`), по аналогии с `iqot-receive-worker@`. Заводить ТОЛЬКО когда флаг ON.
-- Расписание (`routes/console.php`): `->everyFifteenMinutes()->timezone('Europe/Riga')->weekdays()->between('8:00','20:00')->withoutOverlapping()` — рабочее окно как у массовой рассылки.
+- Расписание (`routes/console.php`): `->everyMinute()->timezone('Europe/Riga')->weekdays()->between('8:00','21:00')` (9–22 МСК). Путь письма поставщика до нашего ответа: приём 5 мин → разбор 10 мин → вопрос и отправка каждую минуту.
 - Конфиг (`services.email_replies`): `EMAILS_REPLIES_ENABLED` (дефолт false), `EMAILS_REPLIES_BATCH_LIMIT` (30), `EMAILS_REPLIES_MAX_RETRIES` (дефолт 3 — потолок ретраев транзиентного коннекта).
 
 ## Идентификация неопознанных писем (заменяет воркфлоу n8n «Process Unidentified Emails v4»)

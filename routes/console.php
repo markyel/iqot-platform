@@ -118,10 +118,10 @@ Schedule::command('emails:receive-dispatch')
     ->withoutOverlapping();
 
 // AI-анализ ответов поставщиков (замена n8n «Process Email Conversations», раз в
-// 30 мин). По умолчанию молчит, пока флаг EMAILS_ANALYZE_ENABLED=false —
+// 10 мин — с 20.10.2026, чтобы ответ поставщику уходил за ~15 мин). По умолчанию молчит, пока флаг EMAILS_ANALYZE_ENABLED=false —
 // включать ТОЛЬКО после отключения n8n-воркфлоу (multi/questions не идемпотентны).
 Schedule::command('emails:analyze-replies')
-    ->everyThirtyMinutes()
+    ->everyTenMinutes()
     ->withoutOverlapping();
 
 // Триаж вопросов поставщиков (замена n8n «Process Supplier Questions»). Гоним
