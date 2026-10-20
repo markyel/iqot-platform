@@ -1003,6 +1003,10 @@ class CampaignEmailBuilder
     public static function cleanTaglessSubject(string $s): string
     {
         $s = preg_replace('/\(\s*\)|№\s*(?=$|[,·—–:-])|№\s*$/u', '', $s) ?? $s;
+        // Название обрезано внутри скобок («BUP-50-HD (18...35 V DC», 20.10.2026) — хвост с незакрытой скобкой убираем.
+        while (mb_substr_count($s, '(') > mb_substr_count($s, ')') && ($p = mb_strrpos($s, '(')) !== false) {
+            $s = mb_substr($s, 0, $p);
+        }
         $s = preg_replace('/^\s*[·—–:,-]+\s*/u', '', $s) ?? $s;
         $s = preg_replace('/\s*[·—–:,-]+\s*(?:(?:заявка|запрос)\s*)?$/iu', '', $s) ?? $s;
         $s = preg_replace('/^\s*заявка\s*[·—–:,-]\s*/iu', '', $s) ?? $s;
