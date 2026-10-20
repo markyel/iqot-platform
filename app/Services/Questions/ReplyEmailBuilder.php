@@ -253,8 +253,8 @@ class ReplyEmailBuilder
      */
     private function renderSignatureContacts(string $format, array $org, mixed $phone, mixed $email, string $linkColor): string
     {
-        $name = $org['name'] ?? null;
-        $address = $org['actual_address'] ?? null;
+        $name = isset($org['name']) ? \App\Support\Senders\OrgText::name($org['name']) : null;
+        $address = isset($org['actual_address']) ? \App\Support\Senders\OrgText::address($org['actual_address']) : null;
         $inn = $org['inn'] ?? null;
         $website = $org['website'] ?? null;
 

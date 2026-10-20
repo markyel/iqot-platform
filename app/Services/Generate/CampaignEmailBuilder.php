@@ -44,11 +44,11 @@ class CampaignEmailBuilder
         $senderOrganization = null;
         if (!empty($sender['client_organization_id'])) {
             $senderOrganization = [
-                'name' => $sender['organization_name'] ?? null,
+                'name' => isset($sender['organization_name']) ? \App\Support\Senders\OrgText::name($sender['organization_name']) : null,
                 'inn' => $sender['organization_inn'] ?? null,
                 'kpp' => $sender['organization_kpp'] ?? null,
-                'legal_address' => $sender['organization_legal_address'] ?? null,
-                'actual_address' => $sender['organization_actual_address'] ?? null,
+                'legal_address' => isset($sender['organization_legal_address']) ? \App\Support\Senders\OrgText::address($sender['organization_legal_address']) : null,
+                'actual_address' => isset($sender['organization_actual_address']) ? \App\Support\Senders\OrgText::address($sender['organization_actual_address']) : null,
                 'phone' => $sender['organization_phone'] ?? null,
                 'email' => $sender['organization_email'] ?? null,
                 'director_name' => $sender['organization_director_name'] ?? null,

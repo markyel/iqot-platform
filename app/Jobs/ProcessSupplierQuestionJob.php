@@ -275,11 +275,8 @@ class ProcessSupplierQuestionJob implements ShouldQueue
             return null;
         }
         // Данные из выгрузок: «ООО АДЕПТ ПЛЮС"» (кавычка без пары), «197342, 197342, Г.…» (индекс дважды).
-        $name = trim((string) ($sender->organization_name ?? ''));
-        if (preg_match('/^(ООО|АО|ЗАО|ПАО|ОАО|НАО|ИП)\s+(.+)$/u', $name, $m)) {
-            $name = $m[1] . ' «' . trim(str_replace(['"', '«', '»', '“', '”'], '', $m[2])) . '»';
-        }
-        $address = preg_replace('/^(\d{6}),\s*\1,\s*/u', '$1, ', trim((string) ($sender->organization_legal_address ?? ''))) ?? '';
+        $name = \App\Support\Senders\OrgText::name($sender->organization_name ?? null);
+        $address = \App\Support\Senders\OrgText::address($sender->organization_legal_address ?? null);
         $lines = [];
         foreach ([
             'Наименование' => $name,
