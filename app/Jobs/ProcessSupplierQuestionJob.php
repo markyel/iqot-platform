@@ -88,7 +88,7 @@ class ProcessSupplierQuestionJob implements ShouldQueue
             // «не вижу таблицу/вышлите ещё раз» → повтор позиций. LLM на длинном
             // промпте эти случаи стабильно не ловит, поэтому решаем в коде.
             if (!$decision['can_auto_answer']) {
-                $forced = $this->forcedAnswer($question, $items, $decision);
+                $forced = self::requisitesAnswer($question, $sender) ?? $this->forcedAnswer($question, $items, $decision);
                 if ($forced !== null) {
                     $decision['can_auto_answer'] = true;
                     $decision['answer_text'] = $forced;
@@ -197,7 +197,8 @@ class ProcessSupplierQuestionJob implements ShouldQueue
      */
     /**
      * Тот же поставщик за последние REPEAT_DAYS уже получил автоответ на похожий вопрос (≥ 75% совпадения
-     * нормализованного текста) — в любой беседе: CRM поставщика пишет с разных бесед/ящиков.
+     * нормализованного текста) от ТОГО ЖЕ ящика (любая беседа: CRM поставщика переспрашивает на каждое письмо
+     * ящика). Разные ящики — разные наши организации: просьба реквизитов у каждого — не повтор (20.10.2026).
      */
     public static function isRepeatAfterAutoAnswer(object $question, int $days = 7): bool
     {
@@ -206,10 +207,14 @@ class ProcessSupplierQuestionJob implements ShouldQueue
         if ($text === '') {
             return false;
         }
-        $prev = DB::connection('reports')->table('supplier_questions')
-            ->where('supplier_id', $question->supplier_id)->where('id', '!=', $question->question_id)
-            ->where('status', 'auto_answered')->where('created_at', '>=', now()->subDays($days))
-            ->pluck('question_text');
+        $db = DB::connection('reports');
+        $senderId = (int) $db->table('email_batches')->where('id', (int) ($question->batch_id ?: $question->conversation_batch_id ?? 0))->value('sender_id');
+        $prev = $db->table('supplier_questions as q')
+            ->leftJoin('email_batches as b', 'b.id', '=', 'q.batch_id')
+            ->where('q.supplier_id', $question->supplier_id)->where('q.id', '!=', $question->question_id)
+            ->where('q.status', 'auto_answered')->where('q.created_at', '>=', now()->subDays($days))
+            ->when($senderId > 0, fn ($w) => $w->where('b.sender_id', $senderId))
+            ->pluck('q.question_text');
         foreach ($prev as $p) {
             $p = $norm($p);
             similar_text($text, $p, $pct);
@@ -254,6 +259,41 @@ class ProcessSupplierQuestionJob implements ShouldQueue
      * @param array<int,object> $items
      * @param array<string,mixed> $decision
      */
+    /**
+     * Просьба реквизитов / карточки предприятия / ИНН (решение владельца 20.10.2026): отвечаем реквизитами
+     * организации ящика текстом в теле письма (файла с печатью у нас нет). ИИ такие вопросы часто отдавал автору
+     * («карточка с печатью», «вместе с заявкой») — ДелоЛифт, ЧипДип, asutpro ждали ответа. null — не про реквизиты
+     * или у организации нет даже названия/ИНН.
+     */
+    public static function requisitesAnswer(object $question, ?object $sender): ?string
+    {
+        $text = mb_strtolower((string) ($question->question_text ?? ''));
+        if (!preg_match('/реквизит|карт(очк)?\w*\s+(предприят|компани|организац|контрагент|фирм)|\bинн\b/u', $text)) {
+            return null;
+        }
+        if ($sender === null || (trim((string) ($sender->organization_name ?? '')) === '' && trim((string) ($sender->organization_inn ?? '')) === '')) {
+            return null;
+        }
+        $lines = [];
+        foreach ([
+            'Наименование' => $sender->organization_name ?? null,
+            'ИНН' => $sender->organization_inn ?? null,
+            'КПП' => $sender->organization_kpp ?? null,
+            'Юридический адрес' => $sender->organization_legal_address ?? null,
+            'Телефон' => ($sender->phone ?? null) ?: ($sender->organization_phone ?? null),
+            'Email' => $sender->email ?? null,
+            'Контактное лицо' => $sender->sender_full_name ?? null,
+        ] as $label => $value) {
+            $value = trim((string) $value);
+            if ($value !== '') {
+                $lines[] = "{$label}: {$value}";
+            }
+        }
+
+        return "Направляем реквизиты нашей организации:\n" . implode("\n", $lines)
+            . "\n\nПришлите, пожалуйста, коммерческое предложение по позициям из запроса.";
+    }
+
     private function forcedAnswer(object $question, array $items, array $decision): ?string
     {
         $text = mb_strtolower((string) ($question->question_text ?? ''));
