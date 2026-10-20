@@ -379,7 +379,7 @@ class CampaignEmailBuilder
     private function getUsedFields(string $format, array $config): array
     {
         $columns = $config['columns'] ?? [];
-        $itemTemplate = $config['item_template'] ?? '';
+        $itemTemplate = ($config['item_template'] ?? '') !== '' ? self::withQuantity($config['item_template']) : '';
 
         $used = [];
         $add = static function (string $f) use (&$used) {
@@ -411,6 +411,20 @@ class CampaignEmailBuilder
         }
 
         return $used;
+    }
+
+    /**
+     * Шаблон строки позиции без количества («{name}» у «Запрос КП» №32 и «Запрос стоимости» №30, 20.10.2026: ~10% писем
+     * уходили без количества) — дописываем его: поставщик должен видеть, сколько нужно.
+     */
+    public static function withQuantity(mixed $tpl, bool $inline = false): string
+    {
+        $tpl = (string) $tpl;
+        if ($tpl === '' || str_contains($tpl, '{quantity}')) {
+            return $tpl;
+        }
+
+        return rtrim($tpl) . ($inline ? ' ({quantity} {unit})' : ' — {quantity} {unit}');
     }
 
     private function getDefaultItemTemplate(string $format): string
@@ -568,7 +582,7 @@ class CampaignEmailBuilder
      */
     private function renderList(array $items, array $cfg, array $style, string $listStyle): string
     {
-        $itemTemplate = $cfg['item_template'] ?? '{name} — {quantity} {unit}';
+        $itemTemplate = self::withQuantity($cfg['item_template'] ?? '{name} — {quantity} {unit}');
         $brandSuffix = $cfg['brand_suffix_template'] ?? '({brand})';
         $textColor = $style['text_color'] ?? '#333';
         $fontSize = $style['font_size'] ?? '10pt';
@@ -675,7 +689,7 @@ class CampaignEmailBuilder
      */
     private function renderInline(array $items, array $cfg, array $style): string
     {
-        $itemTemplate = $cfg['item_template'] ?? '{name} ({quantity} {unit})';
+        $itemTemplate = self::withQuantity($cfg['item_template'] ?? '{name} ({quantity} {unit})', true);
         $separator = $cfg['separator'] ?? '; ';
         $prefix = $cfg['prefix'] ?? '';
         $suffix = $cfg['suffix'] ?? '.';
@@ -734,7 +748,7 @@ class CampaignEmailBuilder
     private function renderParagraph(array $items, array $cfg, array $style): string
     {
         $introText = $cfg['intro_text'] ?? '';
-        $itemTemplate = $cfg['item_template'] ?? '{name} — {quantity} {unit}';
+        $itemTemplate = self::withQuantity($cfg['item_template'] ?? '{name} — {quantity} {unit}');
         $separator = $cfg['separator'] ?? ', ';
         $lastSeparator = $cfg['last_separator'] ?? ' и ';
         $suffix = $cfg['suffix'] ?? '.';
