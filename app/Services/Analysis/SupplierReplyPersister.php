@@ -80,9 +80,11 @@ class SupplierReplyPersister
                 $this->saveOffer($offer, $supplierId, $batchId, $emailQueueId);
             }
 
-            // Отказ по определению не содержит вопроса к нам — не сохраняем questions,
-            // даже если AI вытащил их из процитированного исходного запроса (header-less цитата).
-            if (($classification['email_type'] ?? '') !== 'rejection') {
+            // Отказ обычно не содержит вопроса к нам — не сохраняем questions, даже если AI вытащил их из
+            // процитированного исходного запроса (header-less цитата). Исключение — «нет в наличии» со встречным
+            // вопросом («под заказ рассматриваете?», Эскалайн 20.10.2026): на него нужно ответить.
+            if (($classification['email_type'] ?? '') !== 'rejection'
+                || ($classification['rejection_reason'] ?? '') === 'not_available') {
                 foreach (($classification['questions'] ?? []) as $question) {
                     if (is_array($question)) {
                         $question['related_item_id'] = $this->resolveItemId($question['related_item_id'] ?? null, $itemIds);

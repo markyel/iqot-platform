@@ -23,6 +23,10 @@ class ReplyEmailBuilder
     public function build(array $context, ?object $originalMessage, ?object $template): array
     {
         $template ??= (object) [];
+        // Ящики ветки «ящик на батч» пишут без меток (ответ опознаётся по адресу) — и в ответах тоже (20.10.2026).
+        if (isset(\App\Support\Senders\SenderPool::aliasIds()[(int) ($context['sender_id'] ?? 0)])) {
+            $context['tracking_token'] = null;
+        }
 
         $displayConfig = $this->decodeJson($template->items_display_config ?? null);
         $globalStyle = is_array($displayConfig['style'] ?? null) ? $displayConfig['style'] : [];
@@ -341,7 +345,7 @@ class ReplyEmailBuilder
         $email = (string) ($context['sender_email'] ?? '');
         $token = (string) ($context['tracking_token'] ?? '');
 
-        $text = "{$greeting},\n\n{$answer}\n\nС уважением,\n{$fullName}\n{$phone}\n{$email}\n\n---\nRef: {$token}\n";
+        $text = "{$greeting},\n\n{$answer}\n\nС уважением,\n{$fullName}\n{$phone}\n{$email}\n" . (trim($token) !== '' ? "\n---\nRef: {$token}\n" : '');
 
         if ($originalMessage !== null) {
             $date = $this->formatRuDate($originalMessage->received_at ?? null);
