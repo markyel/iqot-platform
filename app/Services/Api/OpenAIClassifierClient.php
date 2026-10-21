@@ -87,7 +87,7 @@ class OpenAIClassifierClient
         // connectTimeout отдельно от общего timeout: наблюдали вечный SYN-SENT к прокси
         // (коннект не устанавливается и не рвётся) — общий timeout его не оборвал,
         // рендер вставал навсегда. Коннект дольше 15с = мёртвая точка, рвём сразу.
-        $response = $this->post($headers, [
+        $response = $this->post($headers, $this->adaptPayload([
             'model' => $model,
             'messages' => [
                 ['role' => 'system', 'content' => $systemPrompt],
@@ -96,7 +96,7 @@ class OpenAIClassifierClient
             'temperature' => $temperature,
             'max_tokens' => $maxTokens,
             'response_format' => ['type' => 'json_object'],
-        ]);
+        ]));
 
         if (!$response->successful()) {
             $body = $response->body();
@@ -190,6 +190,24 @@ class OpenAIClassifierClient
     }
 
     private const PRIMARY_DOWN_KEY = 'ai:primary:down';
+
+    /**
+     * «Рассуждающие» модели (gpt-5*, o1/o3/o4, gpt-6*, модели шлюза Beget): без низкого усилия max_tokens уходит на
+     * рассуждения и ответ пустой; у OpenAI gpt-5/o* вместо max_tokens — max_completion_tokens и только temperature=1.
+     */
+    private function adaptPayload(array $payload): array
+    {
+        $model = (string) ($payload['model'] ?? '');
+        if (preg_match('/^(gpt-5|gpt-6|o[134]\b|o[134]-)/', $model) || str_contains($this->baseUrl, 'api-llm.beget.com')) {
+            $payload['reasoning_effort'] = $payload['reasoning_effort'] ?? 'low';
+            if (str_starts_with($model, 'gpt-5') || preg_match('/^o[134]/', $model)) {
+                $payload['max_completion_tokens'] = max(300, (int) ($payload['max_tokens'] ?? 0));
+                unset($payload['max_tokens'], $payload['temperature']);
+            }
+        }
+
+        return $payload;
+    }
 
     /**
      * Резервный OpenAI-совместимый шлюз (ИИ-Шлюз Beget): BEGET_LLM_BASE_URL + BEGET_LLM_API_KEY, соответствие моделей
@@ -315,6 +333,8 @@ class OpenAIClassifierClient
             'model' => is_array($data) && is_string($data['model'] ?? null) && $data['model'] !== '' ? $data['model'] : $requestedModel,
             'prompt_tokens' => (int) ($usage['prompt_tokens'] ?? 0),
             'completion_tokens' => (int) ($usage['completion_tokens'] ?? 0),
+            'cached_tokens' => (int) ($usage['prompt_tokens_details']['cached_tokens'] ?? 0),
+            'cost_rub' => (float) ($usage['cost_rub'] ?? 0),
         ];
         $this->recordUsage(is_array($usage) ? $usage : []);
     }
@@ -331,10 +351,13 @@ class OpenAIClassifierClient
     {
         try {
             $task = 'unknown';
-            foreach (debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 8) as $f) {
-                if (isset($f['class']) && $f['class'] !== self::class) {
-                    $task = class_basename($f['class']);
+            foreach (debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 12) as $f) {
+                if (isset($f['class']) && str_contains($f['class'], '\\Bench')) {
+                    $task = 'Bench'; // стенды сравнения моделей — отдельно от боевого расхода
                     break;
+                }
+                if ($task === 'unknown' && isset($f['class']) && $f['class'] !== self::class) {
+                    $task = class_basename($f['class']);
                 }
             }
             $model = mb_substr((string) ($this->lastUsage['model'] ?? ''), 0, 60);
