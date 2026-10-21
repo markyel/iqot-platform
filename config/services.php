@@ -335,6 +335,11 @@ return [
         'enabled' => (bool) env('EMAILS_ANALYZE_ENABLED', false),
         // Отдельный ключ модели (промпт большой → берём полноценную модель, не mini).
         'model' => env('EMAILS_ANALYSIS_MODEL', 'gpt-4o'),
+        // Решение владельца 21.10.2026 (вариант «Б» по стенду emails:bench-analysis, 150 писем): обычные письма —
+        // лёгкая модель (gpt-4.1-mini: 95% цен как у gpt-4o, в 6 раз дешевле), а письма с документами во вложении
+        // и ответы на запросы мониторинга (проверка цены сайта, «по запросу», пул) — model (gpt-4o): mini путал
+        // колонки таблиц КП и не засчитывал подтверждение цен сайта. Пусто — всё на model.
+        'model_light' => env('EMAILS_ANALYSIS_MODEL_LIGHT', 'gpt-4.1-mini'),
         // Таймаут запроса к AI: промпт+документы большие, дефолтных 30с мало.
         'timeout' => (int) env('EMAILS_ANALYSIS_TIMEOUT', 120),
         // Потолок токенов ответа (офферов/вопросов может быть много).
@@ -644,7 +649,7 @@ return [
             'enabled' => (bool) env('BEGET_LLM_BACKUP', true),
             'base_url' => env('BEGET_LLM_BASE_URL'),
             'api_key' => env('BEGET_LLM_API_KEY'),
-            'models' => env('BEGET_LLM_MODEL_MAP', 'gpt-4o=gpt-6.1-sol,gpt-4o-mini=gpt-6-luna'),
+            'models' => env('BEGET_LLM_MODEL_MAP', 'gpt-4o=gpt-6.1-sol,gpt-4.1-mini=gpt-6.1-sol,gpt-4o-mini=gpt-6.1-sol'), // luna на стенде 21.10 — 58% цен, в резерве только sol
             'reasoning_effort' => env('BEGET_LLM_REASONING_EFFORT', 'low'),
         ],
     ],

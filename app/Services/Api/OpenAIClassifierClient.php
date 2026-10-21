@@ -241,7 +241,7 @@ class OpenAIClassifierClient
         }
         $light = str_contains($model, 'mini') || str_contains($model, 'nano');
 
-        return $light ? ($backup['models']['gpt-4o-mini'] ?? 'gpt-6-luna') : ($backup['models']['gpt-4o'] ?? 'gpt-6.1-sol');
+        return $light ? ($backup['models']['gpt-4o-mini'] ?? 'gpt-6.1-sol') : ($backup['models']['gpt-4o'] ?? 'gpt-6.1-sol');
     }
 
     private function postBackup(array $backup, array $payload): ?\Illuminate\Http\Client\Response

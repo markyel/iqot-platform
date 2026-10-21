@@ -83,7 +83,7 @@ class AnalyzeSupplierReplyJob implements ShouldQueue
                 (int) ($ec['pdf_max_bytes'] ?? 0),
             ))->extractFromAttachments($attachments);
 
-            $analyzer = $this->makeAnalyzer($ec);
+            $analyzer = $this->makeAnalyzer($ec, $this->modelFor($ec, $attachments, $batchId));
 
             $classification ??= $analyzer->analyze([
                 'sender_name' => $message->supplier_name ?? null,
@@ -213,7 +213,32 @@ class AnalyzeSupplierReplyJob implements ShouldQueue
     /**
      * @param array<string,mixed> $ec блок config('services.email_analysis')
      */
-    private function makeAnalyzer(array $ec): SupplierReplyAnalyzer
+    /**
+     * Модель разбора (вариант «Б», 21.10.2026): документ во вложении (не картинка подписи) или ответ на запрос
+     * мониторинга (батч из mp_asks) — основная модель (gpt-4o), остальное — лёгкая (gpt-4.1-mini).
+     *
+     * @param array<int,object> $attachments
+     */
+    private function modelFor(array $ec, array $attachments, int $batchId): string
+    {
+        $full = (string) ($ec['model'] ?? 'gpt-4o');
+        $light = trim((string) ($ec['model_light'] ?? ''));
+        if ($light === '') {
+            return $full;
+        }
+        foreach ($attachments as $a) {
+            if (!(str_starts_with((string) ($a->mime_type ?? ''), 'image/') && (int) ($a->file_size ?? 0) > 0 && (int) $a->file_size < 150_000)) {
+                return $full; // документ (КП, счёт, таблица) или крупная картинка (скан)
+            }
+        }
+        if ($batchId > 0 && DB::table('mp_asks')->where('batch_id', $batchId)->exists()) {
+            return $full; // проверка цены сайта / «по запросу» / пул мониторинга — подтверждения цен важны для тарифа
+        }
+
+        return $light;
+    }
+
+    private function makeAnalyzer(array $ec, ?string $model = null): SupplierReplyAnalyzer
     {
         $cfg = config('services.openai_classifier');
 
@@ -246,7 +271,7 @@ class AnalyzeSupplierReplyJob implements ShouldQueue
         );
 
         return new SupplierReplyAnalyzer($client, $fetcher, [
-            'model' => (string) ($ec['model'] ?? 'gpt-4o'),
+            'model' => $model ?? (string) ($ec['model'] ?? 'gpt-4o'),
             'max_tokens' => (int) ($ec['max_tokens'] ?? 4096),
             'fetch_urls' => (bool) ($ec['fetch_urls'] ?? true),
             'fetch_max' => (int) ($ec['fetch_max'] ?? 3),
