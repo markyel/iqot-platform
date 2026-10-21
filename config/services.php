@@ -637,6 +637,14 @@ return [
         'model_mini' => env('OPENAI_CLASSIFIER_MODEL_MINI', 'gpt-4o-mini'),
         'model_full' => env('OPENAI_CLASSIFIER_MODEL_FULL', 'gpt-4o'),
         'timeout' => (int) env('OPENAI_CLASSIFIER_TIMEOUT', 30),
+        // Резерв на отказ основного (бюджет, 429, 5xx, нет связи) — ИИ-Шлюз Beget (с 21.10.2026).
+        'backup' => [
+            'enabled' => (bool) env('BEGET_LLM_BACKUP', true),
+            'base_url' => env('BEGET_LLM_BASE_URL'),
+            'api_key' => env('BEGET_LLM_API_KEY'),
+            'models' => env('BEGET_LLM_MODEL_MAP', 'gpt-4o=gpt-6.1-sol,gpt-4o-mini=gpt-6-luna'),
+            'reasoning_effort' => env('BEGET_LLM_REASONING_EFFORT', 'low'),
+        ],
     ],
 
     /*

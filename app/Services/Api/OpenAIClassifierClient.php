@@ -129,22 +129,114 @@ class OpenAIClassifierClient
      */
     private function post(array $headers, array $payload): \Illuminate\Http\Client\Response
     {
-        $response = null;
-        foreach ([0, 2000, 5000] as $pauseMs) {
-            if ($pauseMs > 0) {
-                usleep(($pauseMs + random_int(0, 2000)) * 1000);
-            }
-            // Сетевые сбои (таймаут чтения) не повторяем: три таймаута подряд пережили бы таймаут воркера.
-            $response = Http::withHeaders($headers)
-                ->connectTimeout(15)
-                ->timeout($this->timeout)
-                ->post($this->baseUrl . '/chat/completions', $payload);
-            if ($response->successful() || !in_array($response->status(), [429, 500, 502, 503, 504, 520, 522, 524], true)) {
-                return $response;
+        $backup = self::backupConfig();
+        // Основной уже признан недоступным (кончился бюджет / 5xx / нет связи) — сразу в резерв, без пауз повтора.
+        if ($backup !== null && \Illuminate\Support\Facades\Cache::get(self::PRIMARY_DOWN_KEY)) {
+            $b = $this->postBackup($backup, $payload);
+            if ($b !== null && $b->successful()) {
+                return $b;
             }
         }
 
+        $response = null;
+        try {
+            foreach ([0, 2000, 5000] as $pauseMs) {
+                if ($pauseMs > 0) {
+                    usleep(($pauseMs + random_int(0, 2000)) * 1000);
+                }
+                // Сетевые сбои (таймаут чтения) не повторяем: три таймаута подряд пережили бы таймаут воркера.
+                $response = Http::withHeaders($headers)
+                    ->connectTimeout(15)
+                    ->timeout($this->timeout)
+                    ->post($this->baseUrl . '/chat/completions', $payload);
+                if ($response->successful() || !in_array($response->status(), [429, 500, 502, 503, 504, 520, 522, 524], true)) {
+                    return $response;
+                }
+                if ($response->status() === 429 && str_contains($response->body(), 'insufficient_quota')) {
+                    break; // бюджет кончился — повторять бессмысленно
+                }
+            }
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            if ($backup === null) {
+                throw $e;
+            }
+            $response = null;
+        }
+
+        if ($backup !== null) {
+            // Бюджет/5xx/нет связи — основной недоступен на 5 мин (дальше сразу резерв); обычный 429 перегрузки — резерв
+            // только для этого вызова. 21.10.2026: кончился бюджет OpenAI, ИИ стоял 00:00–09:45 МСК.
+            $hard = $response === null || $response->status() >= 500
+                || ($response->status() === 429 && str_contains($response->body(), 'insufficient_quota'));
+            if ($hard && \Illuminate\Support\Facades\Cache::add(self::PRIMARY_DOWN_KEY, 1, 300)) {
+                Log::warning('OpenAIClassifier: основной ИИ недоступен — 5 мин через резерв', ['status' => $response?->status(), 'backup' => $backup['base_url']]);
+            }
+            $b = $this->postBackup($backup, $payload);
+            if ($b !== null && $b->successful()) {
+                return $b;
+            }
+        }
+
+        if ($response === null) {
+            throw new \RuntimeException('OpenAIClassifier: connection failed (primary and backup)');
+        }
+
         return $response;
+    }
+
+    private const PRIMARY_DOWN_KEY = 'ai:primary:down';
+
+    /**
+     * Резервный OpenAI-совместимый шлюз (ИИ-Шлюз Beget): BEGET_LLM_BASE_URL + BEGET_LLM_API_KEY, соответствие моделей
+     * BEGET_LLM_MODEL_MAP («gpt-4o=gpt-6.1-sol,gpt-4o-mini=gpt-6-luna»). Без ключа — резерва нет.
+     *
+     * @return array{base_url:string, api_key:string, models:array<string,string>, effort:string}|null
+     */
+    public static function backupConfig(): ?array
+    {
+        $b = (array) config('services.openai_classifier.backup', []);
+        if (!($b['enabled'] ?? true) || empty($b['base_url']) || empty($b['api_key'])) {
+            return null;
+        }
+        $models = [];
+        foreach (array_filter(array_map('trim', explode(',', (string) ($b['models'] ?? '')))) as $pair) {
+            [$from, $to] = array_pad(array_map('trim', explode('=', $pair, 2)), 2, '');
+            if ($from !== '' && $to !== '') {
+                $models[$from] = $to;
+            }
+        }
+
+        return ['base_url' => rtrim((string) $b['base_url'], '/'), 'api_key' => (string) $b['api_key'], 'models' => $models,
+            'effort' => (string) ($b['reasoning_effort'] ?? 'low')];
+    }
+
+    /** Модель резерва для нашей: точное соответствие, иначе «лёгкая» для mini/nano, иначе «полная». */
+    public static function backupModel(array $backup, string $model): string
+    {
+        if (isset($backup['models'][$model])) {
+            return $backup['models'][$model];
+        }
+        $light = str_contains($model, 'mini') || str_contains($model, 'nano');
+
+        return $light ? ($backup['models']['gpt-4o-mini'] ?? 'gpt-6-luna') : ($backup['models']['gpt-4o'] ?? 'gpt-6.1-sol');
+    }
+
+    private function postBackup(array $backup, array $payload): ?\Illuminate\Http\Client\Response
+    {
+        $payload['model'] = self::backupModel($backup, (string) ($payload['model'] ?? ''));
+        // Модели шлюза «рассуждающие»: без низкого усилия бюджет max_tokens уходит на рассуждения, ответ пустой.
+        $payload['reasoning_effort'] = $backup['effort'];
+        $payload['max_tokens'] = max(300, (int) ($payload['max_tokens'] ?? 0));
+        try {
+            return Http::withHeaders(['Authorization' => 'Bearer ' . $backup['api_key'], 'Content-Type' => 'application/json'])
+                ->connectTimeout(15)
+                ->timeout(max($this->timeout, 60))
+                ->post($backup['base_url'] . '/chat/completions', $payload);
+        } catch (\Throwable $e) {
+            Log::warning('OpenAIClassifier: резервный ИИ недоступен', ['error' => mb_substr($e->getMessage(), 0, 200)]);
+
+            return null;
+        }
     }
 
     /**
