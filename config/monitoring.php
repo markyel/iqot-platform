@@ -80,6 +80,8 @@ return [
     'llm' => [
         'model' => env('MONITORING_LLM_MODEL', 'gpt-4o-mini'),
         'timeout' => (int) env('MONITORING_LLM_TIMEOUT', 60),
+        // Предел вызовов ИИ мониторингом в минуту — половина общего лимита прокси (300/мин), остальное письмам/ответам.
+        'per_minute' => (int) env('MONITORING_LLM_PER_MINUTE', 150),
         'max_tokens' => 400,
         // Окно текста вокруг упоминаний артикула/названия и общий потолок (не «первые 7000»).
         'window_chars' => 2500,

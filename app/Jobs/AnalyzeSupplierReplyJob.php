@@ -93,10 +93,16 @@ class AnalyzeSupplierReplyJob implements ShouldQueue
             if (!empty($classification['ai_failed'])) {
                 // AI недоступен/вернул мусор — НЕ помечаем письмо обработанным: оно
                 // переанализируется на следующем тике (ai_attempts уже увеличен).
+                // Сбой прокси (429/5xx/таймаут) — не вина письма: попытку возвращаем, иначе пик лимита сжигает все три.
+                if (!empty($classification['ai_transient'])) {
+                    DB::connection('reports')->table('email_messages')->where('id', $this->messageId)
+                        ->where('ai_attempts', '>', 0)->decrement('ai_attempts');
+                }
                 Log::warning('AnalyzeSupplierReplyJob: AI failed, will retry', [
                     'message_id' => $this->messageId,
-                    'attempt' => (int) ($message->ai_attempts ?? 0) + 1,
+                    'attempt' => (int) ($message->ai_attempts ?? 0) + (empty($classification['ai_transient']) ? 1 : 0),
                     'max_attempts' => $maxAttempts,
+                    'transient' => !empty($classification['ai_transient']),
                 ]);
                 return;
             }

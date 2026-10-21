@@ -230,6 +230,19 @@ class ListingChecker
 
                 return $this->result('quota', null, null, 'llm budget exhausted');
             }
+            // Свой предел вызовов ИИ в минуту: прокси общий (300/мин на IP прода), пики мониторинга давали 429
+            // разбору ответов поставщиков и генерации писем (20.10.2026: 20 тыс. отказов за 17–18.10). Сверх предела —
+            // перенос проверки на 5–15 мин без наблюдения и без счётчика неудач.
+            $perMinute = (int) config('monitoring.llm.per_minute', 150);
+            if ($perMinute > 0) {
+                $key = 'mon:llm:rpm:' . now()->format('YmdHi');
+                \Illuminate\Support\Facades\Cache::add($key, 0, 120);
+                if ((int) \Illuminate\Support\Facades\Cache::increment($key) > $perMinute) {
+                    $listing->forceFill(['next_check_at' => now()->addMinutes(random_int(5, 15))])->save();
+
+                    return $this->result('quota', null, null, 'llm per-minute limit');
+                }
+            }
             $llm = $this->llm->extract($product, $listing->url, $window);
             $cost = (float) $llm['cost_usd'];
             $this->governor->record('llm_call', 1, $cost);

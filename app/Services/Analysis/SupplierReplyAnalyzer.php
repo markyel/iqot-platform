@@ -78,7 +78,11 @@ class SupplierReplyAnalyzer
         } catch (\Throwable $e) {
             Log::warning('SupplierReplyAnalyzer: AI pass failed', ['error' => $e->getMessage()]);
 
-            return $this->fallback();
+            // 429/5xx/таймаут — сбой ИИ-прокси, не письма: попытку не засчитываем (20.10.2026: 166 ответов
+            // поставщиков навсегда остались неразобранными — три попытки подряд пришлись на пик 429 от мониторинга).
+            $transient = (bool) preg_match('/HTTP (429|5\d\d)|timed out|timeout|cURL error (6|7|28|35|52|56)/i', $e->getMessage());
+
+            return ['ai_transient' => $transient] + $this->fallback();
         }
     }
 
