@@ -129,11 +129,14 @@ class OpenAIClassifierClient
      */
     private function post(array $headers, array $payload): \Illuminate\Http\Client\Response
     {
+        $this->lastProvider = 'primary';
         $backup = self::backupConfig();
         // Основной уже признан недоступным (кончился бюджет / 5xx / нет связи) — сразу в резерв, без пауз повтора.
         if ($backup !== null && \Illuminate\Support\Facades\Cache::get(self::PRIMARY_DOWN_KEY)) {
             $b = $this->postBackup($backup, $payload);
             if ($b !== null && $b->successful()) {
+                $this->lastProvider = 'beget';
+
                 return $b;
             }
         }
@@ -173,6 +176,8 @@ class OpenAIClassifierClient
             }
             $b = $this->postBackup($backup, $payload);
             if ($b !== null && $b->successful()) {
+                $this->lastProvider = 'beget';
+
                 return $b;
             }
         }
@@ -311,5 +316,49 @@ class OpenAIClassifierClient
             'prompt_tokens' => (int) ($usage['prompt_tokens'] ?? 0),
             'completion_tokens' => (int) ($usage['completion_tokens'] ?? 0),
         ];
+        $this->recordUsage(is_array($usage) ? $usage : []);
+    }
+
+    /** Где сейчас был ответ: основной прокси или резерв (Beget). */
+    private string $lastProvider = 'primary';
+
+    /**
+     * Учёт расхода по задачам за МСК-сутки (ai_usage_daily, 21.10.2026). Задача — класс, вызвавший клиент.
+     * Цена OpenAI — по monitoring.llm_prices (закэшированный вход — половина цены входа), у Beget — его cost_rub.
+     * Сбой учёта вызов не роняет.
+     */
+    private function recordUsage(array $usage): void
+    {
+        try {
+            $task = 'unknown';
+            foreach (debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 8) as $f) {
+                if (isset($f['class']) && $f['class'] !== self::class) {
+                    $task = class_basename($f['class']);
+                    break;
+                }
+            }
+            $model = mb_substr((string) ($this->lastUsage['model'] ?? ''), 0, 60);
+            $prompt = (int) ($usage['prompt_tokens'] ?? 0);
+            $completion = (int) ($usage['completion_tokens'] ?? 0);
+            $cached = (int) ($usage['prompt_tokens_details']['cached_tokens'] ?? 0);
+            $rub = (float) ($usage['cost_rub'] ?? 0);
+            $usd = 0.0;
+            if ($this->lastProvider === 'primary') {
+                $price = (new \App\Services\Monitoring\LlmCostCalculator())->priceFor($model);
+                if ($price !== null) {
+                    $usd = (($prompt - $cached) * $price[0] + $cached * $price[0] * 0.5 + $completion * $price[1]) / 1_000_000;
+                }
+            }
+            \Illuminate\Support\Facades\DB::statement(
+                'INSERT INTO ai_usage_daily (day, task, model, provider, calls, prompt_tokens, cached_tokens, completion_tokens, cost_usd, cost_rub, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, NOW(), NOW())
+                 ON DUPLICATE KEY UPDATE calls = calls + 1, prompt_tokens = prompt_tokens + VALUES(prompt_tokens),
+                   cached_tokens = cached_tokens + VALUES(cached_tokens), completion_tokens = completion_tokens + VALUES(completion_tokens),
+                   cost_usd = cost_usd + VALUES(cost_usd), cost_rub = cost_rub + VALUES(cost_rub), updated_at = NOW()',
+                [now('Europe/Moscow')->toDateString(), $task, $model, $this->lastProvider, $prompt, $cached, $completion, round($usd, 4), round($rub, 2)]
+            );
+        } catch (\Throwable) {
+            // учёт не критичен
+        }
     }
 }
