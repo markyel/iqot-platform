@@ -188,6 +188,13 @@ Schedule::command('emails:plan-render')
 // строит план дня (позиции→пулы→Яндекс-бюджет→аффинность→назначатель) и рендерит
 // его в email_queue. Тяжёлый прогон (минуты) — строго runInBackground. При
 // включении перевести plan-render в режим top-up новых поставщиков.
+// Пересборка писем с запасным текстом после сбоя ИИ (21.10.2026: кончился бюджет OpenAI — весь утренний план
+// с одним текстом). Пока ИИ недоступен — команда сама откладывает; трогает только pending-письма.
+Schedule::command('emails:rebody')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 Schedule::command('emails:plan-day')
     ->dailyAt('07:30')
     ->timezone('Europe/Moscow')

@@ -59,11 +59,13 @@ class CampaignBodyGenerator
                 . " (датчик, башмак, ремень, плата…) — только область («по лифтовым запчастям») или нейтрально «по позициям».";
         }
 
-        $body = $this->fallbackBody();
+        $body = $this->fallbackBody($senderId);
+        $failed = true;
         try {
             if ($this->ai->isConfigured()) {
                 $parsed = $this->ai->jsonCompletion($this->bodyModel, $system, $user, $this->maxTokens, $this->temperature);
                 $body = $this->normalizeBody($parsed);
+                $failed = false;
             }
         } catch (\Throwable $e) {
             Log::warning('CampaignBodyGenerator: AI body failed, using fallback', [
@@ -72,8 +74,8 @@ class CampaignBodyGenerator
         }
 
         $batch->aiBody = $body;
-        $batch->aiModel = $this->bodyModel;
-        if ($reuseKey !== null && $body !== $this->fallbackBody()) {
+        $batch->aiModel = $failed ? 'fallback' : $this->bodyModel; // emails:rebody ищет такие батчи
+        if ($reuseKey !== null && !$failed && !self::isFallback($body)) {
             \Illuminate\Support\Facades\Cache::put($reuseKey, $body, now('Europe/Moscow')->endOfDay());
         }
 
@@ -650,16 +652,51 @@ TXT;
     }
 
     /**
-     * @return array<string,string>
+     * Запасные тексты на время сбоя ИИ. Вариант — по ящику (стабилен у ящика, разный у разных ящиков): 21.10.2026
+     * ИИ не работал с 00:00 до ~09:45 МСК, и все 511 батчей утреннего плана с 55 ящиков ушли с ОДНИМ текстом.
+     * Вариант 0 — прежний (по нему узнаются письма до этой правки). Письма с запасным текстом потом
+     * пересобирает emails:rebody, когда ИИ снова доступен.
      */
-    private function fallbackBody(): array
-    {
-        return [
-            'greeting' => 'Добрый день,',
-            'introduction' => 'Собираем цены по позициям ниже — что можете предложить?',
+    public const FALLBACKS = [
+        ['greeting' => 'Добрый день,', 'introduction' => 'Собираем цены по позициям ниже — что можете предложить?',
             'closing' => 'Подскажите, пожалуйста, цену, сроки и условия оплаты.',
             'request' => 'Собираем цены по позициям ниже — подскажите стоимость, сроки и условия оплаты.',
-            'found_intro' => 'Часть, кажется, у вас есть — гляньте, пожалуйста, и по остальному.',
-        ];
+            'found_intro' => 'Часть, кажется, у вас есть — гляньте, пожалуйста, и по остальному.'],
+        ['greeting' => 'Здравствуйте,', 'introduction' => 'Подбираем поставщика по позициям из списка.',
+            'closing' => 'Сориентируйте, пожалуйста, по стоимости, срокам и оплате.',
+            'request' => 'Подбираем поставщика по списку — сориентируйте, пожалуйста, по цене и срокам.',
+            'found_intro' => 'Похоже, часть позиций у вас есть — посмотрите, пожалуйста, и остальное.'],
+        ['greeting' => 'Добрый день!', 'introduction' => 'Нужно коммерческое предложение по позициям ниже.',
+            'closing' => 'Интересуют цена, срок поставки и условия оплаты.',
+            'request' => 'Пришлите, пожалуйста, КП по позициям: цена, срок и условия оплаты.',
+            'found_intro' => 'Видели у вас часть позиций — подскажите и по остальным.'],
+        ['greeting' => 'Коллеги, добрый день.', 'introduction' => 'Есть потребность в позициях из списка.',
+            'closing' => 'Сколько выйдет и когда сможете отгрузить?',
+            'request' => 'Есть потребность по списку — сколько выйдет и когда сможете отгрузить?',
+            'found_intro' => 'Часть позиций, судя по сайту, у вас есть — гляньте и остальное.'],
+        ['greeting' => 'Здравствуйте!', 'introduction' => 'Собираем предложения по позициям ниже.',
+            'closing' => 'Дайте, пожалуйста, стоимость, срок и как по оплате.',
+            'request' => 'Собираем предложения по списку — дайте, пожалуйста, стоимость и срок.',
+            'found_intro' => 'Часть, кажется, есть у вас — посмотрите, пожалуйста, всё целиком.'],
+    ];
+
+    /**
+     * @return array<string,string>
+     */
+    private function fallbackBody(int $senderId = 0): array
+    {
+        return self::FALLBACKS[$senderId > 0 ? $senderId % count(self::FALLBACKS) : 0];
+    }
+
+    /** Запасной ли это текст (любой вариант) — по вступлению (просьбу normalizeBody дозаполняет запасной и у живого ответа ИИ). */
+    public static function isFallback(array $body): bool
+    {
+        foreach (self::FALLBACKS as $f) {
+            if (($body['introduction'] ?? null) === $f['introduction']) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
