@@ -173,7 +173,7 @@ class AnalyzeSupplierReplyJob implements ShouldQueue
     {
         return DB::connection('reports')->table('email_attachments')
             ->where('email_message_id', $this->messageId)
-            ->get(['file_name', 'mime_type', 'local_path'])
+            ->get(['file_name', 'mime_type', 'file_size', 'local_path'])
             ->all();
     }
 
