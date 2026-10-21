@@ -39,7 +39,7 @@ class RebodyFallbackEmails extends Command
                 }
                 $w->where('b.ai_model', 'fallback');
                 foreach (CampaignBodyGenerator::FALLBACKS as $f) {
-                    $w->orWhere('b.email_body_text', 'like', '%' . $f['introduction'] . '%');
+                    $w->orWhere(fn ($x) => $x->where('b.email_body_text', 'like', '%' . $f['introduction'] . '%')->where('b.email_body_text', 'like', '%' . $f['request'] . '%'));
                 }
             });
         $monitoring = DB::table('mp_asks')->whereNotNull('batch_id')->where('created_at', '>=', $since)->pluck('batch_id')->map(fn ($v) => (int) $v)->all();
@@ -125,7 +125,7 @@ class RebodyFallbackEmails extends Command
     private function fallbackVariant(string $bodyText): ?array
     {
         foreach (CampaignBodyGenerator::FALLBACKS as $f) {
-            if (str_contains($bodyText, $f['introduction'])) {
+            if (str_contains($bodyText, $f['introduction']) && str_contains($bodyText, $f['request'])) {
                 return $f;
             }
         }

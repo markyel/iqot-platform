@@ -694,11 +694,14 @@ TXT;
         return self::FALLBACKS[$senderId > 0 ? $senderId % count(self::FALLBACKS) : 0];
     }
 
-    /** Запасной ли это текст (любой вариант) — по вступлению (просьбу normalizeBody дозаполняет запасной и у живого ответа ИИ). */
+    /**
+     * Запасной ли это текст (любой вариант): И вступление, И просьба запасные. По одному полю нельзя — normalizeBody
+     * дозаполняет запасной фразой поле, которое шаблону ящика не нужно и ИИ его не написал.
+     */
     public static function isFallback(array $body): bool
     {
         foreach (self::FALLBACKS as $f) {
-            if (($body['introduction'] ?? null) === $f['introduction']) {
+            if (($body['introduction'] ?? null) === $f['introduction'] && ($body['request'] ?? null) === $f['request']) {
                 return true;
             }
         }
