@@ -73,14 +73,19 @@ class AnalyzeSupplierReplyJob implements ShouldQueue
             $bodyCleaner = new EmailBodyCleaner();
             $body = $bodyCleaner->clean($message->body_text ?? null, $message->body_html ?? null);
 
-            $documentText = (new DocumentTextExtractor(
+            // Пустые письма, автоответы «получили ваше письмо», повторы — без ИИ (EMAILS_ANALYZE_PREFILTER, 21.10.2026).
+            $classification = (bool) ($ec['prefilter'] ?? true)
+                ? (new \App\Services\Analysis\ReplyPrefilter())->classify($body, $attachments, $message)
+                : null;
+
+            $documentText = $classification !== null ? '' : (new DocumentTextExtractor(
                 (int) ($ec['doc_max_chars'] ?? 30000),
                 (int) ($ec['pdf_max_bytes'] ?? 0),
             ))->extractFromAttachments($attachments);
 
             $analyzer = $this->makeAnalyzer($ec);
 
-            $classification = $analyzer->analyze([
+            $classification ??= $analyzer->analyze([
                 'sender_name' => $message->supplier_name ?? null,
                 'sender_email' => $message->from_email ?? null,
                 'subject' => $message->subject ?? null,

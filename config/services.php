@@ -343,6 +343,8 @@ return [
         'batch_limit' => (int) env('EMAILS_ANALYZE_BATCH_LIMIT', 50),
         // Лимит текста вложений в промпте (начало+конец, если длиннее).
         'doc_max_chars' => (int) env('EMAILS_ANALYZE_DOC_MAX_CHARS', 30000),
+        // Пустые письма, автоответы «получили ваше письмо» и повторы — без ИИ (ReplyPrefilter, 21.10.2026).
+        'prefilter' => (bool) env('EMAILS_ANALYZE_PREFILTER', false),
         // 2-шаговый веб-сёрфинг вместо Tavily: если AI вернул fetch_urls и цен нет —
         // грузим страницы и делаем второй прогон AI с их содержимым.
         'fetch_urls' => (bool) env('EMAILS_ANALYZE_FETCH_URLS', true),
