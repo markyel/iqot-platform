@@ -18,7 +18,8 @@ use Illuminate\Support\Facades\DB;
  */
 class RebodyFallbackEmails extends Command
 {
-    protected $signature = 'emails:rebody {--hours=48 : Батчи не старше N часов} {--limit=600 : Батчей за прогон} {--dry-run}';
+    protected $signature = 'emails:rebody {--hours=48 : Батчи не старше N часов} {--limit=600 : Батчей за прогон} {--dry-run}
+        {--batch= : Пересобрать этот батч, даже если текст не запасной (заменяется текущий текст батча)}';
 
     protected $description = 'Пересобрать ещё не отправленные письма с запасным текстом (после сбоя ИИ)';
 
@@ -28,9 +29,14 @@ class RebodyFallbackEmails extends Command
         $since = now()->subHours(max(1, (int) $this->option('hours')));
         $dry = (bool) $this->option('dry-run');
 
-        $q = $db->table('email_batches as b')->where('b.created_at', '>=', $since)
+        $forced = (int) $this->option('batch');
+        $q = $db->table('email_batches as b')->where('b.created_at', '>=', $forced ? now()->subYears(5) : $since)
             ->whereExists(fn ($w) => $w->from('email_queue as eq')->whereColumn('eq.batch_id', 'b.id')->where('eq.status', 'pending'))
-            ->where(function ($w) {
+            ->when($forced > 0, fn ($w) => $w->where('b.id', $forced))
+            ->where(function ($w) use ($forced) {
+                if ($forced > 0) {
+                    return;
+                }
                 $w->where('b.ai_model', 'fallback');
                 foreach (CampaignBodyGenerator::FALLBACKS as $f) {
                     $w->orWhere('b.email_body_text', 'like', '%' . $f['introduction'] . '%');
@@ -81,7 +87,7 @@ class RebodyFallbackEmails extends Command
                 $batch->customerPhone = $first['customer_phone'] ?? null;
             }
 
-            $old = $this->fallbackVariant((string) $b->email_body_text);
+            $old = $forced ? $this->currentParts((string) $b->email_body_text) : $this->fallbackVariant((string) $b->email_body_text);
             if ($old === null) {
                 continue;
             }
@@ -104,7 +110,7 @@ class RebodyFallbackEmails extends Command
                 }
             }
             $db->table('email_batches')->where('id', $b->id)->update([
-                'email_body_text' => trim(implode("\n\n", array_filter([$new['greeting'] ?? '', $new['introduction'] ?? '', $new['closing'] ?? '']))),
+                'email_body_text' => trim(implode("\n\n", array_filter([$new['greeting'] ?? '', $new['introduction'] ?? '', $new['request'] ?? '', $new['closing'] ?? '']))),
                 'ai_model' => (string) $cfg['body_model'],
             ]);
             $done++;
@@ -125,6 +131,19 @@ class RebodyFallbackEmails extends Command
         }
 
         return null;
+    }
+
+    /** Текущий текст батча (email_body_text = приветствие\n\nвступление\n\nзаключение) — для --batch. */
+    private function currentParts(string $bodyText): ?array
+    {
+        $p = array_values(array_filter(array_map('trim', preg_split('/\n\s*\n/u', $bodyText) ?: [])));
+
+        // приветствие, вступление, [просьба,] заключение — как пишет CampaignPersister::bodyText
+        return match (true) {
+            count($p) >= 4 => ['greeting' => $p[0], 'introduction' => $p[1], 'request' => $p[2], 'closing' => $p[3], 'found_intro' => ''],
+            count($p) >= 2 => ['greeting' => $p[0], 'introduction' => $p[1], 'request' => '', 'closing' => $p[2] ?? '', 'found_intro' => ''],
+            default => null,
+        };
     }
 
     /** Замена кусков запасного текста в абзацах письма (`>текст</p>`), без касания остального. */
