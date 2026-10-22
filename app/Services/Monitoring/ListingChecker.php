@@ -279,6 +279,14 @@ class ListingChecker
             && !ListingIdentityVerifier::quoteOnPage((string) $identity['evidence'], $context)) {
             $identity = ['accepted' => false, 'method' => null, 'confidence' => 0.0, 'reason' => 'list_page_no_code', 'evidence' => $identity['evidence']];
         }
+        // Страница-список: цена модели должна стоять в карточке нашего товара (по разметке). M02384: у карточки
+        // «TECHNA/DO2000, правая» на liftcomplete цены нет («Заказать») — модель взяла 9 847 ₽ соседней «Prima 3100RII».
+        if ($identity['accepted'] && $structured === null && ($llm['price'] ?? null) !== null && $this->looksLikeListingPage($window)
+            && !ListingIdentityVerifier::quoteOnPage((string) ($llm['evidence_identity'] ?? ''), $context)
+            && \App\Support\Monitoring\ListCards::priceInOwnCard($html, $codes, (string) ($llm['evidence_identity'] ?? ''), (float) $llm['price']) === false) {
+            $identity = ['accepted' => false, 'method' => null, 'confidence' => 0.0, 'reason' => 'price_other_card',
+                'evidence' => mb_substr((string) ($llm['evidence_price'] ?? ''), 0, 400)];
+        }
         if (!$identity['accepted']) {
             $this->observe($listing, null, MpPriceObservation::STATUS_MISMATCH, $structured ? 'structured' : 'llm', $identity['reason'], $blockHash, $cost);
             if ($listing->price !== null) {
