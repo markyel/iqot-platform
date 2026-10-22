@@ -4,12 +4,14 @@ namespace App\Services\Monitoring\Extract;
 
 use App\Models\Monitoring\MpProduct;
 use App\Support\Monitoring\ArticleNormalizer;
+use App\Support\Monitoring\KeyAttributes;
 
 /**
  * «Это наш товар?» — главный источник ошибок мониторинга (docs/monitoring-f0-spec.md §7.3).
  * Правила (первое сработавшее решает):
  *  1. LLM: аналог / замена → отказ (аналог ≠ наш товар).
- *  2. LLM явно: другой товар (is_same_product=false) → отказ (бренд/тип/параметры).
+ *  2. Ключевой признак наименования расходится (модель или явно по адресу/заголовку/цитатам) → отказ,
+ *     даже при артикуле на странице. Затем LLM явно: другой товар (is_same_product=false) → отказ.
  *  3. Артикул товара есть на странице ТОКЕНОМ (или совпал sku разметки) → oem_exact/structured_sku.
  *  4. Серая зона: числовые признаки наименования (D=240, 6 мм) расходятся со страницей → отказ.
  *  5. Серая зона: только LLM is_same_product=true и её цитата есть на странице → llm_verified; иначе отказ
@@ -38,6 +40,20 @@ class ListingIdentityVerifier
         }
         if ($llm !== null && !empty($llm['is_analog'])) {
             return $this->reject('analog', $llmEvidence);
+        }
+        // Ключевые признаки наименования (сторона, исполнение, этаж, типоразмер, модель, бренд) расходятся —
+        // другой вариант, даже если артикул на странице есть: поставщики по-разному привязывают коды к вариантам
+        // (M02384: у liftcomplete FEA24390C1 — «механическая, левая», у нас — правая; цена левой шла в отчёт).
+        // Признак, о котором страница молчит (часто бренд), — не противоречие.
+        $attrs = (array) ($product->key_attrs ?? []);
+        foreach ((array) ($llm['attrs'] ?? []) as $v) {
+            if (($v['verdict'] ?? null) === 'conflict') {
+                return $this->reject('attr_conflict', trim(($v['key'] ?? '') . ': ' . ($v['page'] ?? '')));
+            }
+        }
+        $attrText = $context . ' ' . (string) ($structured['evidence'] ?? '') . ' ' . $llmEvidence . ' ' . (string) ($llm['evidence_price'] ?? '');
+        if (($hit = KeyAttributes::conflictIn($attrs, $attrText)) !== null) {
+            return $this->reject('attr_conflict', $hit);
         }
         if ($llm !== null && ($llm['is_same_product'] ?? null) === false) {
             return $this->reject('llm_other_product', $llmEvidence);

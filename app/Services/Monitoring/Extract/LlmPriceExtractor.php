@@ -5,6 +5,7 @@ namespace App\Services\Monitoring\Extract;
 use App\Models\Monitoring\MpProduct;
 use App\Services\Api\OpenAIClassifierClient;
 use App\Services\Monitoring\LlmCostCalculator;
+use App\Support\Monitoring\KeyAttributes;
 use App\Support\Monitoring\NonItemPriceEvidence;
 use App\Support\Monitoring\PriceNumberParser;
 use App\Support\Monitoring\UnitNormalizer;
@@ -18,7 +19,7 @@ use Illuminate\Support\Facades\Log;
  */
 class LlmPriceExtractor
 {
-    public const VERSION = 'monitoring-price-extract-v1';
+    public const VERSION = 'monitoring-price-extract-v2';
 
     private const AVAIL = ['in_stock', 'on_order', 'out_of_stock', 'unknown'];
     private const KINDS = ['retail', 'from', 'wholesale_tier', 'on_request'];
@@ -91,6 +92,7 @@ class LlmPriceExtractor
             'evidence_identity' => mb_substr((string) ($json['evidence_identity'] ?? ''), 0, 400),
             'is_same_product' => is_bool($json['is_same_product'] ?? null) ? $json['is_same_product'] : null,
             'is_analog' => (bool) ($json['is_analog'] ?? false),
+            'attrs' => self::attrVerdicts($json['attrs'] ?? []),
             'cost_usd' => $this->lastCost(),
             'error' => null,
         ];
@@ -109,8 +111,26 @@ class LlmPriceExtractor
             'found' => false, 'price' => null, 'currency' => 'RUB', 'price_kind' => null, 'vat_included' => null,
             'price_unit' => null, 'price_unit_qty' => null, 'min_order_qty' => null, 'availability' => null,
             'stock_qty' => null, 'lead_days' => null, 'evidence_price' => '', 'evidence_identity' => '',
-            'is_same_product' => null, 'is_analog' => false, 'cost_usd' => 0.0, 'error' => null,
+            'is_same_product' => null, 'is_analog' => false, 'attrs' => [], 'cost_usd' => 0.0, 'error' => null,
         ];
+    }
+
+    /**
+     * Сверка ключевых признаков моделью: [{key, page, verdict: match|conflict|absent}].
+     *
+     * @return array<int,array{key:string,page:string,verdict:string}>
+     */
+    public static function attrVerdicts(mixed $raw): array
+    {
+        $out = [];
+        foreach (is_array($raw) ? $raw : [] as $a) {
+            if (!is_array($a) || !in_array($a['verdict'] ?? null, ['match', 'conflict', 'absent'], true)) {
+                continue;
+            }
+            $out[] = ['key' => mb_substr((string) ($a['key'] ?? ''), 0, 60), 'page' => mb_substr((string) ($a['page'] ?? ''), 0, 160), 'verdict' => $a['verdict']];
+        }
+
+        return $out;
     }
 
     private function systemPrompt(): string
@@ -123,6 +143,12 @@ class LlmPriceExtractor
 - false — другой товар: другой артикул/модель, другой тип детали (даже той же серии), другие параметры (размер, диаметр, длина, левый/правый, напряжение), другой производитель.
 - null — данных недостаточно, чтобы уверенно сказать.
 - is_analog=true — страница предлагает АНАЛОГ / замену / совместимый товар другого производителя вместо запрошенного.
+
+КЛЮЧЕВЫЕ ПРИЗНАКИ (attrs) — если в запросе есть список «Ключевые признаки», для КАЖДОГО верни, что про него сказано у товара на странице (в его карточке/строке, не у соседних товаров):
+- verdict="match" — на странице то же значение;
+- verdict="conflict" — на странице у этого товара явно ДРУГОЕ значение (левая вместо правой, 550 мм вместо 510, «Подходит для: BLT, Fermator» при бренде OTIS, другая модель привода);
+- verdict="absent" — признак у товара не указан. Неуказанный признак (часто бренд или модель) — НЕ противоречие.
+page — дословно, что написано на странице (или пусто). Хотя бы один conflict → is_same_product=false.
 
 ЦЕНА:
 - Цена именно этого товара. Если на странице несколько товаров и нельзя уверенно определить цену нужного — found=false.
@@ -141,17 +167,20 @@ TXT;
     {
         $codes = implode(', ', $product->articleValues()) ?: '(нет)';
         $brand = $product->brand ?: '(не указан)';
+        $attrs = KeyAttributes::promptLines((array) ($product->key_attrs ?? []));
+        $attrs = $attrs !== '' ? "Ключевые признаки:\n{$attrs}\n" : '';
+        $attrsJson = $attrs !== '' ? '"attrs": [{"key": "…", "page": "…", "verdict": "match|conflict|absent"}], ' : '';
 
         return <<<TXT
 Товар: {$product->name}
 Производитель: {$brand}
 Артикул/модель: {$codes}
-URL: {$url}
+{$attrs}URL: {$url}
 
 Фрагменты страницы:
 {$text}
 
-JSON: {"is_same_product": true|false|null, "is_analog": true|false, "found": true|false, "price": число|null, "currency": "RUB|USD|EUR|CNY", "price_kind": "retail|from|wholesale_tier|on_request|null", "vat_included": true|false|null, "price_unit": "шт|м|кг|л|компл|уп|null", "price_unit_qty": число|null, "min_order_qty": число|null, "availability": "in_stock|on_order|out_of_stock|unknown", "stock_qty": число|null, "lead_days": число|null, "evidence_price": "…", "evidence_identity": "…"}
+JSON: {{$attrsJson}"is_same_product": true|false|null, "is_analog": true|false, "found": true|false, "price": число|null, "currency": "RUB|USD|EUR|CNY", "price_kind": "retail|from|wholesale_tier|on_request|null", "vat_included": true|false|null, "price_unit": "шт|м|кг|л|компл|уп|null", "price_unit_qty": число|null, "min_order_qty": число|null, "availability": "in_stock|on_order|out_of_stock|unknown", "stock_qty": число|null, "lead_days": число|null, "evidence_price": "…", "evidence_identity": "…"}
 TXT;
     }
 }

@@ -16,12 +16,14 @@ class MpProduct extends Model
     protected $fillable = [
         'name', 'brand', 'brand_norm', 'unit_kind', 'product_type_id', 'domain_id',
         'classification_source', 'search_state', 'last_search_at', 'next_search_at', 'search_attempts',
-        'listings_active', 'listings_priced', 'merged_into_id',
+        'listings_active', 'listings_priced', 'merged_into_id', 'key_attrs', 'key_attrs_at',
     ];
 
     protected $casts = [
         'last_search_at' => 'datetime',
         'next_search_at' => 'datetime',
+        'key_attrs' => 'array',
+        'key_attrs_at' => 'datetime',
     ];
 
     public function identifiers(): HasMany

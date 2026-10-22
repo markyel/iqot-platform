@@ -6,6 +6,7 @@ use App\Models\Monitoring\MpListing;
 use App\Models\Monitoring\MpPriceObservation;
 use App\Models\Monitoring\MpSite;
 use App\Services\Analysis\HeadlessPageRenderer;
+use App\Services\Monitoring\Extract\KeyAttributeExtractor;
 use App\Services\Monitoring\Extract\ListingIdentityVerifier;
 use App\Services\Monitoring\Extract\LlmPriceExtractor;
 use App\Services\Monitoring\Extract\StructuredPriceExtractor;
@@ -39,6 +40,7 @@ class ListingChecker
         private readonly ?LlmPriceExtractor $llm = null,
         private readonly ?HeadlessPageRenderer $headless = null,
         ?EgressPool $pool = null,
+        private readonly ?KeyAttributeExtractor $keyAttrs = null,
     ) {
         $this->pool = $pool ?? EgressPool::make();
     }
@@ -54,6 +56,7 @@ class ListingChecker
             app(MonitoringGovernor::class),
             LlmPriceExtractor::make(),
             config('monitoring.fetch.headless') ? HeadlessPageRenderer::fromConfig() : null,
+            keyAttrs: KeyAttributeExtractor::make(),
         );
     }
 
@@ -220,6 +223,13 @@ class ListingChecker
             return $this->result(MpPriceObservation::STATUS_OK, 'unchanged', $listing->price, 'block unchanged');
         }
 
+        // Ключевые признаки товара (сторона, типоразмер, модель…) — один ИИ-вызов на товар, до первой проверки.
+        if ($this->keyAttrs && $product->key_attrs_at === null && $this->governor->hasLlmBudget()) {
+            if (($kaCost = $this->keyAttrs->ensure($product)) > 0) {
+                $this->governor->record('llm_call', 1, $kaCost);
+            }
+        }
+
         $pageTokensHaveCode = $codes !== [] && array_intersect($codes, array_keys(ArticleNormalizer::tokens($window))) !== [];
         $needLlm = $structured === null || (!$structured['sku_matched'] && !$pageTokensHaveCode);
         $llm = null;
@@ -261,6 +271,11 @@ class ListingChecker
         }
 
         $identity = $this->verifier->verify($product, $window, $structured, $llm, $context);
+        // Страница-список без нашего артикула: модель «опознаёт» товар по общему названию среди соседних
+        // карточек (M02384: «Отводка дверей кабины лифта (правая)» китайских BLT принята за отводку OTIS).
+        if ($identity['accepted'] && $identity['method'] === 'llm_verified' && $this->looksLikeListingPage($window)) {
+            $identity = ['accepted' => false, 'method' => null, 'confidence' => 0.0, 'reason' => 'list_page_no_code', 'evidence' => $identity['evidence']];
+        }
         if (!$identity['accepted']) {
             $this->observe($listing, null, MpPriceObservation::STATUS_MISMATCH, $structured ? 'structured' : 'llm', $identity['reason'], $blockHash, $cost);
             if ($listing->price !== null) {
@@ -527,8 +542,10 @@ class ListingChecker
             return false;
         }
         $distinct = array_unique(array_map(fn ($v) => preg_replace('~[\s\x{00A0}]~u', '', $v), $m[1]));
+        // Каталог с карточками «Артикул: … Цена» (liftcomplete, M02384): в окне 2–3 цены, но артикулов много.
+        $cards = preg_match_all('~артикул\s*:~iu', $window);
 
-        return count($distinct) >= 4;
+        return count($distinct) >= 4 || (count($distinct) >= 2 && $cards >= 3);
     }
 
     private function looksLikeCaptcha(string $body): bool
