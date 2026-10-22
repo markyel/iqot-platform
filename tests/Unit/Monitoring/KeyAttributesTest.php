@@ -51,15 +51,22 @@ class KeyAttributesTest extends TestCase
         $this->assertNull(KeyAttributes::conflictIn($a, 'Склад на ул. Левашовской'));
     }
 
-    public function test_verifier_rejects_side_conflict_even_with_article_on_page(): void
+    public function test_side_conflict_with_our_article_on_page_is_noted_not_rejected(): void
     {
         $v = new ListingIdentityVerifier();
         $p = $this->product($this->sideAttrs());
-        $llm = ['is_same_product' => true, 'is_analog' => false, 'attrs' => [],
+        $llm = ['is_same_product' => false, 'is_analog' => false, 'attrs' => [],
             'evidence_identity' => 'Отводка привода ДК, OTIS, L - 510 мм, механическая, левая Доп. артикул: FEA24390C1', 'evidence_price' => '9 847 ₽'];
         $r = $v->verify($p, 'Отводка привода ДК, OTIS, L - 510 мм, механическая, левая Доп. артикул: FEA24390C1 9 847 ₽', null, $llm, 'otvodka sistemy dverej otis');
-        $this->assertFalse($r['accepted']);
-        $this->assertSame('attr_conflict', $r['reason']);
+        $this->assertTrue($r['accepted']);
+        $this->assertSame('oem_exact', $r['method']);
+        $this->assertSame('сторона: левая', $r['attr_note']);
+
+        // Без нашего артикула на странице — отказ.
+        $r2 = $v->verify($p, 'Отводка левая Techna 9 847 ₽', null, ['is_same_product' => true, 'is_analog' => false, 'attrs' => [],
+            'evidence_identity' => 'Отводка левая Techna', 'evidence_price' => '9 847 ₽'], 'otvodka levaja techna');
+        $this->assertFalse($r2['accepted']);
+        $this->assertSame('attr_conflict', $r2['reason']);
     }
 
     public function test_verifier_rejects_llm_reported_brand_conflict_and_ignores_absent(): void

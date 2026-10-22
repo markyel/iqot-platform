@@ -354,7 +354,7 @@ class ListingChecker
             if ($listing->price !== null) {
                 $this->markChanged($listing);
             }
-            $this->observe($listing, null, MpPriceObservation::STATUS_NO_PRICE, $method, 'no price', $blockHash, $cost, $fields);
+            $this->observe($listing, null, MpPriceObservation::STATUS_NO_PRICE, $method, $this->noteWithAttr('no price', $identity), $blockHash, $cost, $fields);
             $this->schedule($listing, $fields + ['price' => null, 'price_method' => $method, 'status' => MpListing::STATUS_ACTIVE, 'fail_count' => 0], $res, $finalHash, $blockHash);
 
             return $this->result(MpPriceObservation::STATUS_NO_PRICE, $method, null, 'no price') + ['cost_usd' => $cost];
@@ -386,7 +386,7 @@ class ListingChecker
             $this->markChanged($listing);
         }
         $this->observe($listing, $price, $status === MpListing::STATUS_ACTIVE ? MpPriceObservation::STATUS_OK : MpPriceObservation::STATUS_SUSPICIOUS,
-            $method, $status === MpListing::STATUS_ACTIVE ? ($via === 'headless' ? 'headless' : null) : 'outlier vs median', $blockHash, $cost, $fields);
+            $method, $this->noteWithAttr($status === MpListing::STATUS_ACTIVE ? ($via === 'headless' ? 'headless' : null) : 'outlier vs median', $identity), $blockHash, $cost, $fields);
         $this->schedule($listing, $fields + [
             'price' => $price,
             'price_method' => $method,
@@ -396,6 +396,17 @@ class ListingChecker
         ], $res, $finalHash, $blockHash);
 
         return $this->result($status === MpListing::STATUS_ACTIVE ? MpPriceObservation::STATUS_OK : MpPriceObservation::STATUS_SUSPICIOUS, $method, $price, $via) + ['cost_usd' => $cost];
+    }
+
+    /**
+     * Расхождение ключевого признака при совпавшем артикуле — в заметку наблюдения («attr≠code: сторона: левая»):
+     * по ним отчёт «проверьте наименование позиции» (решение владельца 22.10.2026).
+     */
+    private function noteWithAttr(?string $note, array $identity): ?string
+    {
+        $attr = $identity['attr_note'] ?? null;
+
+        return $attr ? mb_substr(trim(($note ? $note . '; ' : '') . 'attr≠code: ' . $attr), 0, 250) : $note;
     }
 
     /** Цены позиции изменились — курсор выдачи (GET …/prices?updated_since) их подхватит. */

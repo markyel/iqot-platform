@@ -41,34 +41,48 @@ class ListingIdentityVerifier
         if ($llm !== null && !empty($llm['is_analog'])) {
             return $this->reject('analog', $llmEvidence);
         }
-        // Ключевые признаки наименования (сторона, исполнение, этаж, типоразмер, модель, бренд) расходятся —
-        // другой вариант, даже если артикул на странице есть: поставщики по-разному привязывают коды к вариантам
-        // (M02384: у liftcomplete FEA24390C1 — «механическая, левая», у нас — правая; цена левой шла в отчёт).
+        // Ключевые признаки наименования (сторона, исполнение, этаж, типоразмер, модель, бренд) расходятся со
+        // страницей → другой вариант (M02384: цены китайских отводок BLT/Fermator за отводку OTIS Techna).
         // Признак, о котором страница молчит (часто бренд), — не противоречие.
+        // Если на странице НАШ артикул — пока не отказ, а пометка (решение владельца 22.10.2026): у парных гребёнок
+        // (GAA453BV5/BV6, BM5/BM6, KONE ECO A/B) сторона в наименовании клиента спорит с артикулом, а зубья и длина
+        // совпадают с артикулом на 9 сайтах из 9 — скорее перепутано наименование, цена верная.
         $attrs = (array) ($product->key_attrs ?? []);
+        $attrHit = null;
         foreach ((array) ($llm['attrs'] ?? []) as $v) {
             // Модель путается на страницах-списках: «conflict» с цитатой «правый» при нашем «правая» — не противоречие.
             if (($v['verdict'] ?? null) === 'conflict' && !KeyAttributes::sameValue($attrs, (string) ($v['key'] ?? ''), (string) ($v['page'] ?? ''))) {
-                return $this->reject('attr_conflict', trim(($v['key'] ?? '') . ': ' . ($v['page'] ?? '')));
+                $attrHit = trim(($v['key'] ?? '') . ': ' . ($v['page'] ?? ''));
+                break;
             }
         }
-        $attrText = $context . ' ' . (string) ($structured['evidence'] ?? '') . ' ' . $llmEvidence . ' ' . (string) ($llm['evidence_price'] ?? '');
-        if (($hit = KeyAttributes::conflictIn($attrs, $attrText)) !== null) {
-            return $this->reject('attr_conflict', $hit);
-        }
-        if ($llm !== null && ($llm['is_same_product'] ?? null) === false) {
-            return $this->reject('llm_other_product', $llmEvidence);
-        }
-        if (!empty($structured['sku_matched'])) {
-            return $this->accept('structured_sku', 0.95, 'sku in markup');
-        }
+        $attrHit ??= KeyAttributes::conflictIn($attrs,
+            $context . ' ' . (string) ($structured['evidence'] ?? '') . ' ' . $llmEvidence . ' ' . (string) ($llm['evidence_price'] ?? ''));
+
+        $codeHit = null;
         if ($codes !== []) {
             $tokens = ArticleNormalizer::tokens($pageText);
             foreach ($codes as $code) {
                 if (isset($tokens[$code])) {
-                    return $this->accept('oem_exact', 0.95, $code);
+                    $codeHit = $code;
+                    break;
                 }
             }
+        }
+        if ($attrHit !== null && $codeHit === null && empty($structured['sku_matched'])) {
+            return $this->reject('attr_conflict', $attrHit);
+        }
+        // «Другой товар» от модели при нашем артикуле и расходящемся признаке — то самое расхождение признака
+        // (модели велено ставить false при conflict), а не отдельный довод: тоже пометка, не отказ.
+        $codeOnPage = $codeHit !== null || !empty($structured['sku_matched']);
+        if ($llm !== null && ($llm['is_same_product'] ?? null) === false && !($codeOnPage && $attrHit !== null)) {
+            return $this->reject('llm_other_product', $llmEvidence);
+        }
+        if (!empty($structured['sku_matched'])) {
+            return $this->accept('structured_sku', 0.95, 'sku in markup', $attrHit);
+        }
+        if ($codeHit !== null) {
+            return $this->accept('oem_exact', 0.95, $codeHit, $attrHit);
         }
 
         // Серая зона (артикула на странице нет): типоразмер расходится — точно не он.
@@ -160,13 +174,15 @@ class ListingIdentityVerifier
         return array_values(array_unique(array_map(fn ($v) => str_replace(',', '.', $v), $m[1])));
     }
 
-    private function accept(string $method, float $confidence, string $evidence): array
+    /** @param string|null $attrNote признак, расходящийся при совпавшем артикуле (цену берём, расхождение отмечаем) */
+    private function accept(string $method, float $confidence, string $evidence, ?string $attrNote = null): array
     {
-        return ['accepted' => true, 'method' => $method, 'confidence' => $confidence, 'reason' => 'ok', 'evidence' => mb_substr($evidence, 0, 400)];
+        return ['accepted' => true, 'method' => $method, 'confidence' => $confidence, 'reason' => 'ok', 'evidence' => mb_substr($evidence, 0, 400),
+            'attr_note' => $attrNote];
     }
 
     private function reject(string $reason, string $evidence): array
     {
-        return ['accepted' => false, 'method' => null, 'confidence' => 0.0, 'reason' => $reason, 'evidence' => mb_substr($evidence, 0, 400)];
+        return ['accepted' => false, 'method' => null, 'confidence' => 0.0, 'reason' => $reason, 'evidence' => mb_substr($evidence, 0, 400), 'attr_note' => null];
     }
 }
