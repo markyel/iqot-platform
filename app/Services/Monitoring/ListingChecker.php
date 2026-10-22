@@ -273,7 +273,10 @@ class ListingChecker
         $identity = $this->verifier->verify($product, $window, $structured, $llm, $context);
         // Страница-список без нашего артикула: модель «опознаёт» товар по общему названию среди соседних
         // карточек (M02384: «Отводка дверей кабины лифта (правая)» китайских BLT принята за отводку OTIS).
-        if ($identity['accepted'] && $identity['method'] === 'llm_verified' && $this->looksLikeListingPage($window)) {
+        // Карточка товара с блоком «похожие товары» тоже набирает цены и артикулы — её узнаём по заголовку:
+        // опознанное моделью название и есть заголовок страницы (s-mechanics, M02384).
+        if ($identity['accepted'] && $identity['method'] === 'llm_verified' && $this->looksLikeListingPage($window)
+            && !ListingIdentityVerifier::quoteOnPage((string) $identity['evidence'], $context)) {
             $identity = ['accepted' => false, 'method' => null, 'confidence' => 0.0, 'reason' => 'list_page_no_code', 'evidence' => $identity['evidence']];
         }
         if (!$identity['accepted']) {
