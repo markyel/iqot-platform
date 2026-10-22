@@ -89,6 +89,34 @@ final class KeyAttributes
         return null;
     }
 
+    /**
+     * Значение со страницы — это наше значение признака: есть написание из match и нет из conflict.
+     *
+     * @param array<int,array<string,mixed>> $attrs
+     */
+    public static function sameValue(array $attrs, string $key, string $pageValue): bool
+    {
+        $k = mb_strtolower(trim($key));
+        foreach ($attrs as $a) {
+            if (mb_strtolower((string) ($a['key'] ?? '')) !== $k) {
+                continue;
+            }
+            $hay = ' ' . implode(' ', self::stems($pageValue)) . ' ';
+            foreach ((array) ($a['conflict'] ?? []) as $t) {
+                if (self::contains($hay, (string) $t)) {
+                    return false;
+                }
+            }
+            foreach ((array) ($a['match'] ?? []) as $t) {
+                if (self::contains($hay, (string) $t)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     /** Строки признаков для промпта извлечения цены. @param array<int,array<string,mixed>> $attrs */
     public static function promptLines(array $attrs): string
     {

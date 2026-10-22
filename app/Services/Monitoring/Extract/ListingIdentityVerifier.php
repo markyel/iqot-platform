@@ -47,7 +47,8 @@ class ListingIdentityVerifier
         // Признак, о котором страница молчит (часто бренд), — не противоречие.
         $attrs = (array) ($product->key_attrs ?? []);
         foreach ((array) ($llm['attrs'] ?? []) as $v) {
-            if (($v['verdict'] ?? null) === 'conflict') {
+            // Модель путается на страницах-списках: «conflict» с цитатой «правый» при нашем «правая» — не противоречие.
+            if (($v['verdict'] ?? null) === 'conflict' && !KeyAttributes::sameValue($attrs, (string) ($v['key'] ?? ''), (string) ($v['page'] ?? ''))) {
                 return $this->reject('attr_conflict', trim(($v['key'] ?? '') . ': ' . ($v['page'] ?? '')));
             }
         }

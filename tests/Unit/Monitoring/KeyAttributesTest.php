@@ -81,6 +81,18 @@ class KeyAttributesTest extends TestCase
         $this->assertSame('llm_verified', $ok['method']);
     }
 
+    public function test_llm_conflict_with_our_own_value_is_ignored(): void
+    {
+        $v = new ListingIdentityVerifier();
+        $p = $this->product($this->sideAttrs());
+        $llm = ['is_same_product' => true, 'is_analog' => false, 'evidence_identity' => 'Отводка привода ДК, OTIS, TECHNA/DO2000, L - 510 мм, правая',
+            'attrs' => LlmPriceExtractor::attrVerdicts([['key' => 'сторона', 'page' => 'правый', 'verdict' => 'conflict']])];
+        $r = $v->verify($p, 'Отводка привода ДК, OTIS, TECHNA/DO2000, L - 510 мм, правая 9 738₽', null, $llm, 'otvodka sistemy dverej otis');
+        $this->assertTrue($r['accepted']);
+        $this->assertTrue(KeyAttributes::sameValue($this->sideAttrs(), 'Сторона', 'правый'));
+        $this->assertFalse(KeyAttributes::sameValue($this->sideAttrs(), 'сторона', 'левая'));
+    }
+
     public function test_attr_verdicts_skip_garbage(): void
     {
         $this->assertSame([], LlmPriceExtractor::attrVerdicts('x'));
