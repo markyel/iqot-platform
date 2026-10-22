@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Log;
  */
 class KeyAttributeExtractor
 {
-    public const VERSION = 'monitoring-key-attrs-v1';
+    public const VERSION = 'monitoring-key-attrs-v2';
 
     public function __construct(
         private readonly OpenAIClassifierClient $client,
@@ -100,6 +100,8 @@ class KeyAttributeExtractor
 - kind — один из: side, variant, size, number, electrical, model, brand, other;
 - match — как то же значение пишут на сайтах: рус. формы и сокращения, англ., транслит адресов страниц (правая → правая, правый, прав., right, RH, pravaya, pravaja, pravyj). Не давай однобуквенных («R», «П»);
 - conflict — ТОЛЬКО для перечислимых признаков (side, variant, иногда number): написания взаимоисключающих значений (для «правая»: левая, левый, лев., left, LH, levaya, levaja, levyj). Для size, electrical, model, brand — пустой список.
+
+БРЕНД: один признак brand. Если в наименовании и в поле «Производитель» разные марки (деталь Sematic для лифтов Schindler, Fermator для OTIS) — обе в match: сайты пишут то производителя детали, то марку лифта. Совместимые марки, перечисленные в названии («для OTIS/Sigma»), — тоже в match.
 
 Признаков нет — пустой список. Не выдумывай признаки, которых нет в наименовании.
 Отвечай строго JSON: {"attrs": [{"key": "…", "value": "…", "kind": "…", "match": ["…"], "conflict": ["…"]}]}
