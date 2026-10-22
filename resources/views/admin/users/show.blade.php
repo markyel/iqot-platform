@@ -284,7 +284,7 @@
                                     'top_up' => 'var(--success-600)',
                                     'hold' => 'var(--warning-600)',
                                     'release' => 'var(--info-600)',
-                                    'charge', 'report_access', 'item_purchase', 'subscription' => 'var(--danger-600)',
+                                    'charge', 'report_access', 'item_purchase', 'subscription', 'monitoring' => 'var(--danger-600)',
                                     default => 'var(--neutral-600)'
                                 };
                                 $icon = match($transaction['type']) {
@@ -295,6 +295,7 @@
                                     'report_access' => 'file-text',
                                     'item_purchase' => 'package',
                                     'subscription' => 'zap',
+                                    'monitoring' => 'activity',
                                     default => 'circle'
                                 };
                             @endphp

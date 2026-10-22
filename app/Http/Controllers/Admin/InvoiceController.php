@@ -121,6 +121,11 @@ class InvoiceController extends Controller
             ];
         }
 
+        // Мониторинг цен (mp_billing_charges)
+        foreach (\App\Services\Monitoring\Billing\MonitoringBilling::chargesForFeed((int) $user->id, $invoice->paid_at) as $mc) {
+            $transactions[] = ['date' => $mc['created_at'], 'description' => $mc['description'], 'amount' => $mc['amount']];
+        }
+
         // ReportAccess
         $reportAccesses = \App\Models\ReportAccess::where('user_id', $user->id)
             ->where('accessed_at', '>=', $invoice->paid_at)

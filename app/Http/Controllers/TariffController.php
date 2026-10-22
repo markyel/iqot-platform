@@ -190,6 +190,11 @@ class TariffController extends Controller
             ]);
         }
 
+        // Мониторинг цен — еженедельные списания за покрытые позиции (mp_billing_charges).
+        foreach (\App\Services\Monitoring\Billing\MonitoringBilling::chargesForFeed((int) $user->id) as $mc) {
+            $transactions->push($mc + ['type' => 'monitoring', 'balance_after' => null]);
+        }
+
         // Пополнения баланса (оплаченные счета)
         $paidInvoices = Invoice::where('user_id', $user->id)
             ->where('status', 'paid')

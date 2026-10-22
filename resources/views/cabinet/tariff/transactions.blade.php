@@ -120,6 +120,11 @@
                                     <i data-lucide="calendar" style="width: 0.875rem; height: 0.875rem;"></i>
                                     Абонентская плата
                                 </x-badge>
+                            @elseif($transaction['type'] === 'monitoring')
+                                <x-badge type="cancelled" size="sm">
+                                    <i data-lucide="activity" style="width: 0.875rem; height: 0.875rem;"></i>
+                                    Мониторинг цен
+                                </x-badge>
                             @elseif($transaction['type'] === 'promo_code')
                                 <x-badge type="completed" size="sm">
                                     <i data-lucide="gift" style="width: 0.875rem; height: 0.875rem;"></i>

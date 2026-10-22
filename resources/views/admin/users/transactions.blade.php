@@ -8,6 +8,7 @@
         'report_access' => 'Доступ к отчёту',
         'item_purchase' => 'Покупка позиции',
         'subscription' => 'Абонплата',
+        'monitoring' => 'Мониторинг цен',
         'hold' => 'Заморозка',
         'release' => 'Возврат',
         'top_up' => 'Пополнение',
@@ -21,6 +22,7 @@
         'report_access' => 'file-text',
         'item_purchase' => 'package',
         'subscription' => 'zap',
+        'monitoring' => 'activity',
         'promo_code' => 'ticket',
     ];
     $typeColors = [
@@ -32,6 +34,7 @@
         'report_access' => 'var(--danger-600)',
         'item_purchase' => 'var(--danger-600)',
         'subscription' => 'var(--danger-600)',
+        'monitoring' => 'var(--danger-600)',
     ];
     // ссылка на CSV с текущими параметрами периода/режима
     $exportParams = array_merge(request()->only(['from', 'to', 'all']), ['export' => 'csv']);

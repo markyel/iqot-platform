@@ -44,7 +44,8 @@ class UserController extends Controller
             $itemPurchasesSum = ItemPurchase::where('user_id', $user->id)->sum('amount');
             $subscriptionChargesSum = SubscriptionCharge::where('user_id', $user->id)->sum('amount');
 
-            $user->purchases_sum = $balanceChargesSum + $reportAccessesSum + $itemPurchasesSum + $subscriptionChargesSum;
+            $user->purchases_sum = $balanceChargesSum + $reportAccessesSum + $itemPurchasesSum + $subscriptionChargesSum
+                + \App\Services\Monitoring\Billing\MonitoringBilling::chargedSum((int) $user->id);
         }
 
         return view('admin.users.index', compact('users'));
@@ -61,7 +62,8 @@ class UserController extends Controller
         $itemPurchasesSum = ItemPurchase::where('user_id', $user->id)->sum('amount');
         $subscriptionChargesSum = SubscriptionCharge::where('user_id', $user->id)->sum('amount');
 
-        $user->purchases_sum = $balanceChargesSum + $reportAccessesSum + $itemPurchasesSum + $subscriptionChargesSum;
+        $user->purchases_sum = $balanceChargesSum + $reportAccessesSum + $itemPurchasesSum + $subscriptionChargesSum
+                + \App\Services\Monitoring\Billing\MonitoringBilling::chargedSum((int) $user->id);
 
         // Тариф и лимиты
         $tariff = $user->getActiveTariff();
@@ -200,6 +202,11 @@ class UserController extends Controller
             ]);
         }
 
+        // Мониторинг цен — еженедельные списания за покрытые позиции (mp_billing_charges).
+        foreach (\App\Services\Monitoring\Billing\MonitoringBilling::chargesForFeed((int) $user->id) as $mc) {
+            $transactions->push($mc + ['type' => 'monitoring', 'balance_after' => null]);
+        }
+
         // Пополнения баланса (оплаченные счета)
         $paidInvoices = \App\Models\Invoice::where('user_id', $user->id)
             ->whereIn('status', ['paid', 'closed'])
@@ -316,7 +323,7 @@ class UserController extends Controller
         })->values();
 
         // Типы операций
-        $chargeTypes = ['charge', 'report_access', 'item_purchase', 'subscription'];
+        $chargeTypes = ['charge', 'report_access', 'item_purchase', 'subscription', 'monitoring'];
         $topupTypes = ['top_up', 'promo_code'];
 
         // Сводка за период (стабильна независимо от отображаемого фильтра):

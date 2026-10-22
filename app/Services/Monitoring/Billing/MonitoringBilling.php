@@ -237,6 +237,32 @@ class MonitoringBilling
     }
 
     /** Для API/админки: начислено и не списано, последнее списание, предупреждение. */
+    /**
+     * Списания за мониторинг для лент транзакций и сумм расходов (админка, кабинет, разбивка по счёту) — 22.10.2026
+     * первое списание прошло, но в лентах его не было: они собирали только заявки/абонплату/отчёты/пополнения.
+     *
+     * @return \Illuminate\Support\Collection<int, array{created_at:\Carbon\Carbon, description:string, amount:float}>
+     */
+    public static function chargesForFeed(int $userId, ?\DateTimeInterface $since = null): \Illuminate\Support\Collection
+    {
+        return DB::table('mp_billing_charges as c')->leftJoin('monitoring_programs as p', 'p.id', '=', 'c.program_id')
+            ->where('c.user_id', $userId)->where('c.amount', '>', 0)
+            ->when($since, fn ($q) => $q->where('c.charged_at', '>=', $since))
+            ->orderBy('c.charged_at')
+            ->get(['c.id', 'c.amount', 'c.charged_at', 'c.period_from', 'c.period_to', 'c.days', 'p.name'])
+            ->map(fn ($c) => [
+                'created_at' => \Carbon\Carbon::parse($c->charged_at),
+                'description' => 'Мониторинг цен «' . ($c->name ?? ('программа #' . $c->id)) . '»: покрытые позиции за '
+                    . \Carbon\Carbon::parse($c->period_from)->format('d.m') . '–' . \Carbon\Carbon::parse($c->period_to)->format('d.m.Y') . " ({$c->days} дн.)",
+                'amount' => (float) $c->amount,
+            ]);
+    }
+
+    public static function chargedSum(int $userId): float
+    {
+        return (float) DB::table('mp_billing_charges')->where('user_id', $userId)->sum('amount');
+    }
+
     public function programSummary(MonitoringProgram $p): array
     {
         $unbilled = DB::table('mp_billing_days')->where('program_id', $p->id)->whereNull('charge_id');
