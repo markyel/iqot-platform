@@ -417,10 +417,24 @@ class CampaignEmailBuilder
      * Шаблон строки позиции без количества («{name}» у «Запрос КП» №32 и «Запрос стоимости» №30, 20.10.2026: ~10% писем
      * уходили без количества) — дописываем его: поставщик должен видеть, сколько нужно.
      */
+    /** Рендер «как до 22.10.2026» (шаблон строки без количества) — только для emails:requantity: найти старый список в письме. */
+    public static bool $legacyItemTemplate = false;
+
+    /**
+     * Список позиций письма по шаблону отправителя (тот же, что в build) — для пересборки уже собранных писем.
+     *
+     * @param array<int,array<string,mixed>> $items
+     * @param array<string,mixed> $template email_templates
+     */
+    public function itemsHtml(array $items, array $template): string
+    {
+        return $this->renderItems($items, (string) ($template['items_format'] ?? 'table'), $this->decodeJson($template['items_display_config'] ?? null));
+    }
+
     public static function withQuantity(mixed $tpl, bool $inline = false): string
     {
         $tpl = (string) $tpl;
-        if ($tpl === '' || str_contains($tpl, '{quantity}')) {
+        if ($tpl === '' || self::$legacyItemTemplate || str_contains($tpl, '{quantity}')) {
             return $tpl;
         }
 
