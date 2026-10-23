@@ -145,6 +145,12 @@ final class KeyAttributes
                 if (preg_match('/\d/u', $part) || preg_match('/^[a-z][a-z\-]{2,}$/u', $part)) {
                     $out[$part] = true;
                 }
+                // «FMB130-LS-4A» → «FMB130»: часть через дефис с буквами и цифрами (не «10» из «KD-10»).
+                foreach (explode('-', $part) as $sub) {
+                    if (mb_strlen($sub) >= 4 && preg_match('/\d/u', $sub) && preg_match('/\p{L}/u', $sub)) {
+                        $out[$sub] = true;
+                    }
+                }
             }
         }
         foreach (self::BRANDISH as $b) {
