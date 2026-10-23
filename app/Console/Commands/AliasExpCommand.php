@@ -53,10 +53,10 @@ class AliasExpCommand extends Command
         $this->line("Резерв организаций: {$r['total']} (активных {$r['active']}, не использованных {$r['never_used']}, с живым ящиком {$r['live']})");
         $this->line('Колонка senders.pool: ' . (SenderPool::hasColumn() ? 'есть' : 'НЕТ — ящики не создаются'));
         $this->line('API Beget: ' . (app(BegetMailApi::class)->isConfigured() ? 'ключи заданы' : 'ключей нет'));
-        $this->table(['домен', 'общий ящик', 'катч-олл', 'активен', 'ящиков создано', 'последний'],
+        $this->table(['домен', 'общий ящик', 'катч-олл', 'активен', 'MX в DNS', 'ящиков создано', 'последний'],
             DB::table('alias_domains')->orderBy('domain')->get()->map(fn ($d) => [
                 $d->domain, $d->inbox . '@' . ($d->inbox_password ? '' : ' (нет пароля)'), $d->catch_all ? 'да' : 'нет',
-                $d->active ? 'да' : 'нет', $d->mailboxes_created, $d->last_used_at,
+                $d->active ? 'да' : 'нет', AliasMailboxFactory::mailDnsReady($d->domain) ? 'да' : 'НЕТ — не выдаётся', $d->mailboxes_created, $d->last_used_at,
             ])->all());
         $this->table(['статус', 'ящиков'], DB::table('alias_mailboxes')->selectRaw('status, COUNT(*) n')->groupBy('status')
             ->get()->map(fn ($x) => [$x->status, $x->n])->all());

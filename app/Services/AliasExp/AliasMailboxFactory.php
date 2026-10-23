@@ -35,12 +35,29 @@ class AliasMailboxFactory
         return $byDeadline && $byDeadline->isFuture() ? $byDeadline : now()->addDays((int) $cfg['lifetime_default_days']);
     }
 
-    /** Домен пула для нового ящика: активный, с общим ящиком и катч-оллом, давнее всех использованный. */
+    /**
+     * Домен пула для нового ящика: активный, с общим ящиком и катч-оллом, давнее всех использованный.
+     * Домен без MX в DNS пропускаем: только что купленный (oblzakaz.ru, 23.10.2026) ещё не виден в зоне .ru,
+     * письма с него получатели отклонят, а ответы не дойдут.
+     */
     public function pickDomain(?string $domain = null): ?object
     {
-        return DB::table('alias_domains')->where('active', true)->where('catch_all', true)->whereNotNull('inbox_password')
+        $rows = DB::table('alias_domains')->where('active', true)->where('catch_all', true)->whereNotNull('inbox_password')
             ->when($domain, fn ($q) => $q->where('domain', $domain))
-            ->orderByRaw('last_used_at IS NOT NULL')->orderBy('last_used_at')->orderBy('id')->first();
+            ->orderByRaw('last_used_at IS NOT NULL')->orderBy('last_used_at')->orderBy('id')->get();
+        foreach ($rows as $row) {
+            if (self::mailDnsReady((string) $row->domain)) {
+                return $row;
+            }
+            Log::info('AliasMailboxFactory: домен без MX в DNS пропущен', ['domain' => $row->domain]);
+        }
+
+        return null;
+    }
+
+    public static function mailDnsReady(string $domain): bool
+    {
+        return checkdnsrr($domain, 'MX');
     }
 
     /**
