@@ -90,6 +90,34 @@ final class KeyAttributes
     }
 
     /**
+     * Модель/обозначение из наименования (kind model|number), которых НЕТ в тексте: «модель: KD-10».
+     * Для страниц без нашего артикула: опознанный моделью товар обязан называть нашу модель (M01525, 23.10.2026:
+     * «Плата тормоза эскалатора KLEEMANN» и «Плата LISA 10-X» за «Плату KD-10 6A»). Кириллица-двойники латиницы
+     * («КД-10») сравниваются как латиница.
+     *
+     * @param array<int,array<string,mixed>> $attrs
+     */
+    public static function missingModel(array $attrs, string $text): ?string
+    {
+        $latin = fn (string $t) => mb_strtolower(ArticleNormalizer::homoglyphsToLatin(mb_strtoupper($t)));
+        $hay = ' ' . implode(' ', self::stems($latin($text))) . ' ';
+        foreach ($attrs as $a) {
+            if (!in_array($a['kind'] ?? null, ['model', 'number'], true) || empty($a['match'])) {
+                continue;
+            }
+            foreach ((array) $a['match'] as $t) {
+                if (self::contains($hay, $latin((string) $t))) {
+                    continue 2;
+                }
+            }
+
+            return ($a['key'] ?? '?') . ': ' . ($a['value'] ?? '');
+        }
+
+        return null;
+    }
+
+    /**
      * Значение со страницы — это наше значение признака: есть написание из match и нет из conflict.
      *
      * @param array<int,array<string,mixed>> $attrs

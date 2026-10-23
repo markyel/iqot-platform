@@ -96,6 +96,10 @@ class ListingIdentityVerifier
             if (!self::quoteOnPage($llmEvidence, $pageText)) {
                 return $this->reject('llm_evidence_not_on_page', $llmEvidence);
             }
+            // Артикула нет — модель из наименования должна быть в опознанном названии (цитата, адрес, заголовок).
+            if (($miss = KeyAttributes::missingModel($attrs, $llmEvidence . ' ' . $context)) !== null) {
+                return $this->reject('attr_missing', $miss);
+            }
 
             return $this->accept('llm_verified', 0.80, $llmEvidence);
         }
