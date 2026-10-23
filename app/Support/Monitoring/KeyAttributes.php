@@ -101,6 +101,8 @@ final class KeyAttributes
     {
         $latin = fn (string $t) => mb_strtolower(ArticleNormalizer::homoglyphsToLatin(mb_strtoupper($t)));
         $hay = ' ' . implode(' ', self::stems($latin($text))) . ' ';
+        // «QKS 9» и «QKS9», «KD-10» и «KD10» — одна модель: сравниваем и без пробелов.
+        $compact = str_replace(' ', '', $hay);
         foreach ($attrs as $a) {
             if (($a['kind'] ?? null) !== 'model') {
                 continue;
@@ -110,7 +112,8 @@ final class KeyAttributes
                 continue;
             }
             foreach ($terms as $t) {
-                if (self::contains($hay, $latin($t))) {
+                $st = self::stems($latin($t));
+                if (self::contains($hay, $latin($t)) || ($st !== [] && mb_strlen($c = implode('', $st)) >= 3 && str_contains($compact, $c))) {
                     continue 2;
                 }
             }
@@ -147,13 +150,19 @@ final class KeyAttributes
         foreach (self::BRANDISH as $b) {
             unset($out[$b]);
         }
+        // Модель, которая на деле марка («модель: Sigma»), — не требование.
+        if (in_array(mb_strtolower(trim((string) ($attr['value'] ?? ''))), self::BRANDISH, true)) {
+            return [];
+        }
 
         return array_keys($out);
     }
 
     /** Марки, которые модель «называет» в составном значении («Отис 2000») — сами по себе не модель. */
     private const BRANDISH = ['otis', 'kone', 'schindler', 'thyssen', 'thyssenkrupp', 'tke', 'mitsubishi', 'hyundai', 'sigma',
-        'kleemann', 'orona', 'fermator', 'sematic', 'wittur', 'fuji', 'hitachi', 'toshiba', 'lg', 'sjec', 'blt', 'canny', 'xizi'];
+        'kleemann', 'orona', 'fermator', 'sematic', 'wittur', 'fuji', 'hitachi', 'toshiba', 'lg', 'sjec', 'blt', 'canny', 'xizi',
+        'отис', 'коне', 'шиндлер', 'тиссен', 'тиссенкрупп', 'сигма', 'клееманн', 'климанн', 'мицубиси', 'хендай', 'хюндай', 'орона',
+        'фермато', 'фуджи', 'хитачи', 'тошиба'];
 
     /**
      * Значение со страницы — это наше значение признака: есть написание из match и нет из conflict.
