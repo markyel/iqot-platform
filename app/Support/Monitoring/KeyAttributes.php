@@ -102,11 +102,15 @@ final class KeyAttributes
         $latin = fn (string $t) => mb_strtolower(ArticleNormalizer::homoglyphsToLatin(mb_strtoupper($t)));
         $hay = ' ' . implode(' ', self::stems($latin($text))) . ' ';
         foreach ($attrs as $a) {
-            if (!in_array($a['kind'] ?? null, ['model', 'number'], true) || empty($a['match'])) {
+            if (($a['kind'] ?? null) !== 'model') {
                 continue;
             }
-            foreach ((array) $a['match'] as $t) {
-                if (self::contains($hay, $latin((string) $t))) {
+            $terms = self::modelTerms($a);
+            if ($terms === []) {
+                continue;
+            }
+            foreach ($terms as $t) {
+                if (self::contains($hay, $latin($t))) {
                     continue 2;
                 }
             }
@@ -116,6 +120,40 @@ final class KeyAttributes
 
         return null;
     }
+
+    /**
+     * Написания модели и её значимые части: составные «506NCE/606NCT», «Pegnen T82/T812», «Отис 2000 и GEN2»
+     * считаются названными по любой части с цифрой или латиницей от 3 букв (бренд из частей не берём —
+     * он есть почти на любой странице поставщика).
+     *
+     * @param array<string,mixed> $attr
+     * @return array<int,string>
+     */
+    private static function modelTerms(array $attr): array
+    {
+        $out = [];
+        foreach (array_merge([(string) ($attr['value'] ?? '')], (array) ($attr['match'] ?? [])) as $t) {
+            $t = trim(mb_strtolower((string) $t));
+            if ($t === '') {
+                continue;
+            }
+            $out[$t] = true;
+            foreach (preg_split('~\s*(?:/|,|;|\+|\s+и\s+|\s+or\s+|\s+)\s*~u', $t, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $part) {
+                if (preg_match('/\d/u', $part) || preg_match('/^[a-z][a-z\-]{2,}$/u', $part)) {
+                    $out[$part] = true;
+                }
+            }
+        }
+        foreach (self::BRANDISH as $b) {
+            unset($out[$b]);
+        }
+
+        return array_keys($out);
+    }
+
+    /** Марки, которые модель «называет» в составном значении («Отис 2000») — сами по себе не модель. */
+    private const BRANDISH = ['otis', 'kone', 'schindler', 'thyssen', 'thyssenkrupp', 'tke', 'mitsubishi', 'hyundai', 'sigma',
+        'kleemann', 'orona', 'fermator', 'sematic', 'wittur', 'fuji', 'hitachi', 'toshiba', 'lg', 'sjec', 'blt', 'canny', 'xizi'];
 
     /**
      * Значение со страницы — это наше значение признака: есть написание из match и нет из conflict.
