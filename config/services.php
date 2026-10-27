@@ -118,7 +118,8 @@ return [
         // 100+/день с 80+ ящиков → спам-жалоба → ожог доменов). n8n держал ≤19/день.
         // Это БАЗА; per-адрес cap адаптируется (recipient_mailboxes.daily_cap) командой
         // emails:recompute-recipient-caps. День — по МСК (локальный день получателя). 0 = выкл.
-        'recipient_daily_cap' => (int) env('EMAILS_RECIPIENT_DAILY_CAP', 10),
+        // +25% (решение владельца 27.10.2026): база 10→13, диапазон 5..15 → 6..19.
+        'recipient_daily_cap' => (int) env('EMAILS_RECIPIENT_DAILY_CAP', 13),
         // Изолированные дневные лимиты писем на получателя по каналам (решение владельца 19.10.2026,
         // App\Services\Dispatch\RecipientChannels): заявки — кап адресата (выше), эксперимент «ящик на батч» —
         // доля от него (не меньше 1), мониторинг — доля капа адресата (решение 27.10.2026): есть письма заявок
@@ -131,8 +132,8 @@ return [
             'monitoring_share_free' => (float) env('EMAILS_CAP_MONITORING_SHARE_FREE', 1.0),
         ],
         // Границы и шаг адаптации per-адрес cap (по вовлечённости).
-        'recipient_cap_max' => (int) env('EMAILS_RECIPIENT_CAP_MAX', 15),        // ответил/офферы → к max
-        'recipient_cap_min' => (int) env('EMAILS_RECIPIENT_CAP_MIN', 5),         // нет реакции/баунсы → к min
+        'recipient_cap_max' => (int) env('EMAILS_RECIPIENT_CAP_MAX', 19),        // ответил/офферы → к max
+        'recipient_cap_min' => (int) env('EMAILS_RECIPIENT_CAP_MIN', 6),         // нет реакции/баунсы → к min
         'recipient_cap_step' => (int) env('EMAILS_RECIPIENT_CAP_STEP', 2),       // постепенно, шаг/день
         'recipient_cap_cold_sends' => (int) env('EMAILS_RECIPIENT_CAP_COLD_SENDS', 12), // столько писем без ответа → снижаем
         // Конец рабочего окна рассылки (час + таймзона) — горизонт, по которому
@@ -233,13 +234,14 @@ return [
         'enabled' => (bool) env('EMAILS_WARMUP_ENABLED', false),
         'start' => (int) env('EMAILS_WARMUP_START', 30),            // стартовый дневной лимит ящика
         'step_pct' => (int) env('EMAILS_WARMUP_STEP_PCT', 20),      // +% за успешный день
-        'cap' => (int) env('EMAILS_WARMUP_CAP', 200),               // потолок дневного лимита ящика (зрелый домен)
+        // Потолки +25% (решение владельца 27.10.2026; было 200, ступени 15/25/40/60/90/130, общий 10 000).
+        'cap' => (int) env('EMAILS_WARMUP_CAP', 250),               // потолок дневного лимита ящика (зрелый домен)
         // Потолок дневного лимита ящика ПО ВОЗРАСТУ ДОМЕНА (дней от создания первого ящика
         // на домене). Свежий домен нельзя разгонять до cap за неделю — почтовики видят
         // всплеск с молодого домена и жгут репутацию (кейс wwwsend). Формат «дней:лимит»
         // по возрастанию; действует НИЖНЯЯ подходящая ступень, дальше — общий cap.
-        'age_caps' => env('EMAILS_WARMUP_AGE_CAPS', '3:15,7:25,14:40,21:60,30:90,45:130'),
-        'global_daily_cap' => (int) env('EMAILS_GLOBAL_DAILY_CAP', 10000), // потолок писем/сутки на всю платформу
+        'age_caps' => env('EMAILS_WARMUP_AGE_CAPS', '3:19,7:31,14:50,21:75,30:113,45:163'),
+        'global_daily_cap' => (int) env('EMAILS_GLOBAL_DAILY_CAP', 12500), // потолок писем/сутки на всю платформу
         'max_sub_batches' => (int) env('EMAILS_WARMUP_MAX_SUBBATCHES', 10), // максимум под-батчей на батч (2 AI-вызова каждый)
     ],
 
