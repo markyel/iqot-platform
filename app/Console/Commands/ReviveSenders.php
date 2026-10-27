@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\Senders\DomainHealth;
 use App\Support\Senders\SenderPool;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -87,17 +88,37 @@ class ReviveSenders extends Command
         }
 
         // Ящики живых доменов — первыми (горит домен, не ящик: на чистом домене ящик, отключённый, например, при сбое
-        // Яндекса 12–16.10, почти наверняка годен; решение владельца 27.10.2026), чище домен — раньше; внутри —
-        // дольше всех отсидевшиеся (null = никогда не слал → в начало).
+        // Яндекса 12–16.10, почти наверняка годен; решение владельца 27.10.2026), чище домен — раньше, и ПО КРУГУ по
+        // доменам: прирост объёма размазан, а не пять ящиков одного домена разом (всплеск с домена жжёт его). Внутри
+        // домена — дольше всех отсидевшиеся (null = никогда не слал → в начало).
         $rcfg = (array) config('services.mailbox_replenish', []);
-        $health = \App\Services\Senders\DomainHealth::byDomain(max(1, (int) ($rcfg['health_days'] ?? 7)));
-        $rank = function ($c) use ($health, $rcfg): array {
-            $h = $health[\App\Services\Senders\DomainHealth::domainOf((string) $c->email)] ?? null;
-            $live = $h !== null && \App\Services\Senders\DomainHealth::isLive($h, (float) ($rcfg['max_spam_pct'] ?? 3), (int) ($rcfg['min_sent'] ?? 50));
-
-            return [$live ? 0 : 1, $live ? $h['spam_pct'] : 0, (string) ($c->_lastMass ?? '')];
-        };
-        usort($eligible, static fn ($a, $b) => $rank($a) <=> $rank($b));
+        $health = DomainHealth::byDomain(max(1, (int) ($rcfg['health_days'] ?? 7)));
+        $groups = [];
+        foreach ($eligible as $c) {
+            $d = DomainHealth::domainOf((string) $c->email);
+            $h = $health[$d] ?? null;
+            $live = $h !== null && DomainHealth::isLive($h, (float) ($rcfg['max_spam_pct'] ?? 3), (int) ($rcfg['min_sent'] ?? 50));
+            $groups[$d] ??= ['live' => $live, 'spam' => $live ? $h['spam_pct'] : 0.0, 'items' => []];
+            $groups[$d]['items'][] = $c;
+        }
+        foreach ($groups as $d => $g) {
+            usort($groups[$d]['items'], static fn ($a, $b) => strcmp((string) ($a->_lastMass ?? ''), (string) ($b->_lastMass ?? '')));
+        }
+        uasort($groups, static fn ($a, $b) => [$a['live'] ? 0 : 1, $a['spam']] <=> [$b['live'] ? 0 : 1, $b['spam']]);
+        $eligible = [];
+        foreach ([true, false] as $wantLive) {
+            $round = array_filter($groups, static fn ($g) => $g['live'] === $wantLive);
+            while ($round !== []) {
+                foreach (array_keys($round) as $d) {
+                    $c = array_shift($round[$d]['items']);
+                    if ($c === null) {
+                        unset($round[$d]);
+                        continue;
+                    }
+                    $eligible[] = $c;
+                }
+            }
+        }
         $toRevive = array_slice($eligible, 0, $dailyCap);
 
         $done = 0;
