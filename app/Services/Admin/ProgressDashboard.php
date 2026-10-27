@@ -440,7 +440,7 @@ class ProgressDashboard
         $minSent = max(1, (int) ($rcfg['min_sent'] ?? 50));
         $health = \Illuminate\Support\Facades\Cache::remember('progress:domain-health', 600, fn () => DomainHealth::byDomain($healthDays));
         $live = array_filter($health, fn ($h) => DomainHealth::isLive($h, $maxSpam, $minSent));
-        $pool = [
+        $mailboxPool = [
             'enabled' => (bool) ($rcfg['enabled'] ?? false), 'target' => (int) ($rcfg['target'] ?? 90),
             'working' => array_sum(array_column($health, 'working')), 'revivable' => array_sum(array_column($live, 'disabled')),
             'live_domains' => count($live), 'per_day' => (int) ($rcfg['per_day'] ?? 2), 'per_domain_max' => (int) ($rcfg['per_domain_max'] ?? 8),
@@ -448,7 +448,7 @@ class ProgressDashboard
             'created_7d' => (int) SenderPool::onlyMain($db->table('senders'))->where(fn ($q) => $q->whereNull('is_personal')->orWhere('is_personal', 0))
                 ->where('created_at', '>=', now()->subDays(7))->count(),
         ];
-        $pool['deficit'] = max(0, $pool['target'] - $pool['working'] - $pool['revivable']);
+        $mailboxPool['deficit'] = max(0, $mailboxPool['target'] - $mailboxPool['working'] - $mailboxPool['revivable']);
         $groups = [];
         foreach ($senderRows as $sr) {
             $key = mb_strtolower(substr(strrchr((string) $sr->email, '@') ?: '@?', 1)) . '|' . $sr->smtp_server;
@@ -549,7 +549,7 @@ class ProgressDashboard
         $total = (float) @disk_total_space('/');
 
         return [
-            'senders' => $senders, 's_tot' => $sTot, 'blocked' => $blockedList, 'capacity_left' => $capacity, 'mail' => $mail, 'pool' => $pool,
+            'senders' => $senders, 's_tot' => $sTot, 'blocked' => $blockedList, 'capacity_left' => $capacity, 'mail' => $mail, 'pool' => $mailboxPool,
             'relays' => $relays, 'egress' => $egress, 'ai' => $ai, 'queues' => $queues,
             'failed_jobs_24h' => (int) DB::table('failed_jobs')->where('failed_at', '>=', now()->subDay())->count(),
             'disk' => ['free_gb' => round($free / 1e9, 1), 'total_gb' => round($total / 1e9, 1), 'pct' => $total > 0 ? round(100 * $free / $total) : null],
