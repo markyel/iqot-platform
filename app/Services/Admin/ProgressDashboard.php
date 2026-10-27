@@ -3,8 +3,10 @@
 namespace App\Services\Admin;
 
 use App\Services\Monitoring\Web\EgressPool;
+use App\Services\Senders\DomainHealth;
 use App\Services\Senders\RelayHttpMailer;
 use App\Support\Monitoring\MonitoringSettings;
+use App\Support\Senders\SenderPool;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
@@ -45,7 +47,6 @@ class ProgressDashboard
             }
         }
         $stats = [];
-        $start = null;
         if ($batchIds !== []) {
             $in = implode(',', array_keys($batchIds));
             foreach ($db->select("SELECT batch_id, COUNT(*) total, SUM(status IN " . self::SENT . ") sent, SUM(status='pending') pending,
@@ -53,9 +54,6 @@ class ProgressDashboard
                     MIN(sent_at) first_sent, MAX(sent_at) last_sent, MIN(CASE WHEN status='pending' THEN scheduled_at END) next_at
                 FROM email_queue WHERE batch_id IN ($in) GROUP BY batch_id") as $r) {
                 $stats[(int) $r->batch_id] = (array) $r;
-                if ($r->first_sent && ($start === null || $r->first_sent < $start)) {
-                    $start = $r->first_sent;
-                }
             }
             foreach ($db->select("SELECT ec.batch_id, COUNT(DISTINCT ec.supplier_id) replied FROM email_conversations ec
                     WHERE ec.batch_id IN ($in) AND EXISTS (SELECT 1 FROM email_messages m WHERE m.conversation_id = ec.id AND m.direction = 'incoming')
@@ -77,9 +75,13 @@ class ProgressDashboard
             $itemIds = array_merge($itemIds, (array) json_decode((string) $mb->request_item_ids, true));
         }
         $items = $itemIds === [] ? collect() : $db->table('request_items as ri')->join('requests as r', 'r.id', '=', 'ri.request_id')
-            ->whereIn('ri.id', $itemIds)->get(['ri.id', 'ri.name', 'ri.article', 'r.id as request_id', 'r.request_number'])->keyBy('id');
+            ->whereIn('ri.id', $itemIds)->get(['ri.id', 'ri.name', 'ri.article', 'r.id as request_id', 'r.request_number', 'r.source'])->keyBy('id');
 
+        // Ящики мониторинга (пул КП Гибрида через ветку, с 27.10.2026) — отдельно: другая аудитория и отдача,
+        // в сравнение веток эксперимента по заявкам их не берём.
         $rows = [];
+        $monitoringRows = [];
+        $start = null;
         foreach ($mailboxes as $mb) {
             $bs = array_map('intval', (array) json_decode((string) $mb->batch_ids, true));
             $agg = ['total' => 0, 'sent' => 0, 'pending' => 0, 'err' => 0, 'spam' => 0, 'replied' => 0, 'kp' => 0, 'last_sent' => null, 'next_at' => null];
@@ -92,28 +94,47 @@ class ProgressDashboard
             }
             $s = $senders[$mb->sender_id] ?? null;
             $bn = $bounces[$mb->sender_id] ?? null;
-            $rows[] = $agg + [
+            $mbItems = array_values(array_filter(array_map(fn ($id) => $items[(int) $id] ?? null, (array) json_decode((string) $mb->request_item_ids, true))));
+            $isMonitoring = collect($mbItems)->contains(fn ($it) => $it->source === 'monitoring');
+            if (!$isMonitoring) {
+                foreach ($bs as $b) {
+                    $fs = $stats[$b]['first_sent'] ?? null;
+                    $start = $fs && ($start === null || $fs < $start) ? $fs : $start;
+                }
+            }
+            $row = $agg + [
                 'mailbox' => $mb, 'batch_ids' => $bs, 'persona' => $s->sender_full_name ?? null, 'org' => $s->org ?? null,
                 'state' => !$s ? '—' : ($mb->status !== 'active' ? 'удалён' : ($s->sending_disabled ? 'отключён: ' . $s->block_reason
                     : ($s->blocked_until && $s->blocked_until > now() ? 'блок до ' . $s->blocked_until : 'в работе'))),
                 'bounces' => (int) ($bn->n ?? 0), 'bounce_spam' => (int) ($bn->spam ?? 0),
-                'items' => array_values(array_filter(array_map(fn ($id) => $items[(int) $id] ?? null, (array) json_decode((string) $mb->request_item_ids, true)))),
+                'items' => $mbItems,
             ];
+            if ($isMonitoring) {
+                $monitoringRows[] = $row;
+            } else {
+                $rows[] = $row;
+            }
         }
 
-        // Сравнение веток: письма, отправленные с первого письма эксперимента. Ответ — входящее в беседе
+        // Сравнение веток: письма ЗАЯВОК, отправленные с первого письма эксперимента. Ответ — входящее в беседе
         // (батч, поставщик), КП — цена в request_item_responses по той же паре. Отказ «спам» — ошибка отправки с 554.
+        // Письма мониторинга (тех. заявка, source=monitoring) — в обеих ветках исключены: ~4 000/день пула с отдачей
+        // ~1% утопили бы основную ветку. Заявка письма — по первой позиции батча (поиск по первичным ключам).
         $cmp = null;
         if ($start !== null) {
+            $notMonitoring = "LEFT JOIN email_batches b ON b.id = eq.batch_id
+                LEFT JOIN request_items ri ON ri.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(b.request_items, '$[0]')) AS UNSIGNED)
+                LEFT JOIN requests rq ON rq.id = ri.request_id";
             $branch = fn (string $poolCond) => $db->selectOne("SELECT COUNT(*) letters,
                     SUM(EXISTS (SELECT 1 FROM email_conversations ec JOIN email_messages m ON m.conversation_id = ec.id AND m.direction = 'incoming'
                         WHERE ec.batch_id = eq.batch_id AND ec.supplier_id = eq.supplier_id)) replied,
                     SUM(EXISTS (SELECT 1 FROM request_item_responses rir WHERE rir.batch_id = eq.batch_id AND rir.supplier_id = eq.supplier_id
                         AND (rir.price_per_unit IS NOT NULL OR rir.total_price IS NOT NULL))) kp
-                FROM email_queue eq JOIN senders s ON s.id = eq.sender_id
-                WHERE eq.sent_at >= ? AND eq.status IN " . self::SENT . " AND {$poolCond}", [$start]);
-            $spam = fn (string $poolCond) => (int) $db->selectOne("SELECT COUNT(*) n FROM email_queue eq JOIN senders s ON s.id = eq.sender_id
-                WHERE eq.status = 'error' AND eq.error_message LIKE '%spam%' AND eq.updated_at >= ? AND {$poolCond}", [$start])->n;
+                FROM email_queue eq JOIN senders s ON s.id = eq.sender_id {$notMonitoring}
+                WHERE eq.sent_at >= ? AND eq.status IN " . self::SENT . " AND {$poolCond} AND COALESCE(rq.source, '') <> 'monitoring'", [$start]);
+            $spam = fn (string $poolCond) => (int) $db->selectOne("SELECT COUNT(*) n FROM email_queue eq JOIN senders s ON s.id = eq.sender_id {$notMonitoring}
+                WHERE eq.status = 'error' AND eq.error_message LIKE '%spam%' AND eq.updated_at >= ? AND {$poolCond}
+                    AND COALESCE(rq.source, '') <> 'monitoring'", [$start])->n;
             $cmp = [
                 'since' => $start,
                 'alias' => $branch("s.pool = 'alias'"), 'alias_spam' => $spam("s.pool = 'alias'"),
@@ -128,7 +149,7 @@ class ProgressDashboard
             'budget_left' => \App\Services\AliasExp\AliasBranch::budgetToday(), 'budget' => (int) $cfg['mailboxes_per_day'],
             'reserve' => app(\App\Services\AliasExp\OrgReserve::class)->stats(),
             'domains' => DB::table('alias_domains')->orderBy('domain')->get(),
-            'rows' => $rows, 'cmp' => $cmp,
+            'rows' => $rows, 'monitoring_rows' => $monitoringRows, 'cmp' => $cmp,
         ];
     }
 
@@ -279,30 +300,54 @@ class ProgressDashboard
                 WHEN note LIKE 'HTTP 4%' THEN CONCAT('HTTP ', SUBSTRING(note, 6, 3)) WHEN note LIKE 'HTTP 5%' THEN 'сайт 5xx'
                 WHEN note LIKE '%not html%' THEN 'не HTML' ELSE 'прочее' END reason, COUNT(*) c
             FROM mp_price_observations WHERE observed_at >= NOW() - INTERVAL 24 HOUR AND status = 'failed' GROUP BY reason ORDER BY c DESC");
+        $askLabel = static fn (string $kind, ?string $reason): string => $kind === 'verify' ? 'Проверка цены сайта'
+            : (['pool' => 'КП: пул IQOT', 'low_trust' => 'КП: недоверенный сайт'][$reason] ?? 'КП: «цена по запросу»');
         $asks = DB::table('mp_asks')->selectRaw("kind, COALESCE(reason, '-') reason, status, COUNT(*) c")
             ->groupBy('kind', 'reason', 'status')->get();
         $askMatrix = [];
         foreach ($asks as $a) {
-            $k = $a->kind === 'verify' ? 'Проверка цены сайта' : ($a->reason === 'pool' ? 'КП: пул IQOT' : 'КП: «цена по запросу»');
+            $k = $askLabel($a->kind, $a->reason);
             $askMatrix[$k][$a->status] = ($askMatrix[$k][$a->status] ?? 0) + (int) $a->c;
         }
-        $lettersToday = DB::table('mp_asks')->where('queued_at', '>=', now()->startOfDay())
-            ->selectRaw("CASE WHEN kind='verify' THEN 'Проверка цены сайта' WHEN reason='pool' THEN 'КП: пул IQOT' ELSE 'КП: «цена по запросу»' END k, COUNT(DISTINCT batch_id) c")
-            ->groupBy('k')->pluck('c', 'k')->all();
+        // Письма сегодня (МСК) — по письмам, а не батчам: у ветки «ящик на батч» в батче — товар и все его поставщики.
+        $todayAsks = DB::table('mp_asks')->where('queued_at', '>=', now('Europe/Moscow')->startOfDay()->utc())->whereNotNull('email_queue_id')
+            ->get(['kind', 'reason', 'email_queue_id']);
+        $aliasLetters = [];
+        foreach ($todayAsks->pluck('email_queue_id')->unique()->chunk(1000) as $chunk) {
+            $aliasLetters += DB::connection(self::R)->table('email_queue as eq')->join('senders as s', 's.id', '=', 'eq.sender_id')
+                ->whereIn('eq.id', $chunk->all())->where('s.pool', 'alias')->pluck('eq.id')->flip()->all();
+        }
+        $lettersToday = [];
+        $lettersTodayAlias = [];
+        foreach ($todayAsks->unique('email_queue_id') as $a) {
+            $k = $askLabel($a->kind, $a->reason);
+            $lettersToday[$k] = ($lettersToday[$k] ?? 0) + 1;
+            if (isset($aliasLetters[$a->email_queue_id])) {
+                $lettersTodayAlias[$k] = ($lettersTodayAlias[$k] ?? 0) + 1;
+            }
+        }
         $budget = DB::table('mp_budget_ledger')->where('day', now()->toDateString())
             ->selectRaw('resource, SUM(units) u, SUM(cost_usd) usd, SUM(cost_rub) rub')->groupBy('resource')->get()->keyBy('resource');
+        // Лимит «проверочных писем в сутки» — только проверки цены сайта; в журнале «email» — все письма мониторинга.
+        $budget->put('verify_letters', (object) ['u' => $lettersToday['Проверка цены сайта'] ?? 0, 'usd' => 0, 'rub' => 0]);
         $limits = [
             'yandex_query' => MonitoringSettings::get('yandex_per_day'),
             'fetch_http' => MonitoringSettings::get('fetch_per_day'),
             'fetch_headless' => MonitoringSettings::get('headless_per_day'),
             'fetch_index' => MonitoringSettings::get('index_per_day'),
             'llm_call' => null,
-            'email' => MonitoringSettings::get('verify_letters_per_day'),
+            'verify_letters' => MonitoringSettings::get('verify_letters_per_day'),
+            'email' => null,
         ];
+        $hybrid = (array) config('monitoring.hybrid', []);
 
         return [
             'programs' => $programs, 'listings' => $listings, 'checks' => $checks, 'fails' => $fails,
-            'asks' => $askMatrix, 'letters_today' => $lettersToday,
+            'asks' => $askMatrix, 'letters_today' => $lettersToday, 'letters_today_alias' => $lettersTodayAlias,
+            // Волны запросов КП (RfqPlanner): снимок холостого прогона по расписанию (monitoring:hybrid sync, 30 мин).
+            'waves' => \Illuminate\Support\Facades\Cache::get(\App\Services\Monitoring\Hybrid\RfqPlanner::SNAPSHOT_KEY),
+            'wave_cfg' => ['target' => (int) ($hybrid['target_prices'] ?? 6), 'site' => (bool) ($hybrid['target_counts_site'] ?? true),
+                'max' => (int) ($hybrid['wave_max'] ?? 30), 'wait' => (int) ($hybrid['wave_wait_days'] ?? 5)],
             'kp' => DB::table('mp_kp_offers')->selectRaw('source, COUNT(*) c')->groupBy('source')->pluck('c', 'source')->all(),
             'verifications' => DB::table('mp_verifications')->selectRaw('outcome, COUNT(*) c')->groupBy('outcome')->pluck('c', 'outcome')->all(),
             'trust' => DB::table('mp_sites')->selectRaw('trust_level, COUNT(*) c')->groupBy('trust_level')->pluck('c', 'trust_level')->all(),
@@ -343,14 +388,17 @@ class ProgressDashboard
     public function coverage(int $days = 30): array
     {
         $db = DB::connection(self::R);
-        $db->statement('CREATE TEMPORARY TABLE IF NOT EXISTS adm_mon_ri AS SELECT ri.id FROM request_items ri JOIN requests rq ON rq.id = ri.request_id WHERE rq.source = \'monitoring\'');
         $db->statement('DROP TEMPORARY TABLE IF EXISTS adm_eq');
+        // Без писем мониторинга (тех. заявка, source=monitoring): заявка письма — по первой позиции батча, поиск по
+        // первичным ключам. Раньше — временная таблица всех позиций тех. заявок без индекса и перебор её на каждое
+        // письмо; с волнами (27.10.2026) мониторинг заводит ~4 000 позиций в день — вкладка упёрлась бы в таймаут.
         $db->statement("CREATE TEMPORARY TABLE adm_eq AS
             SELECT q.supplier_id, LOWER(q.to_email) e, DATE(q.sent_at) d, b.items_count k, q.status IN " . self::REPLIED . " rep,
                    EXISTS(SELECT 1 FROM request_item_responses x WHERE x.batch_id = q.batch_id AND x.supplier_id = q.supplier_id AND (x.price_per_unit > 0 OR x.total_price > 0)) kp
             FROM email_queue q JOIN email_batches b ON b.id = q.batch_id
-            WHERE q.sent_at >= NOW() - INTERVAL {$days} DAY AND q.status IN " . self::SENT . "
-              AND NOT EXISTS (SELECT 1 FROM adm_mon_ri m WHERE m.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(b.request_items, '$[0]')) AS UNSIGNED))");
+            LEFT JOIN request_items ri ON ri.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(b.request_items, '$[0]')) AS UNSIGNED)
+            LEFT JOIN requests rq ON rq.id = ri.request_id
+            WHERE q.sent_at >= NOW() - INTERVAL {$days} DAY AND q.status IN " . self::SENT . " AND COALESCE(rq.source, '') <> 'monitoring'");
         $t = $db->selectOne('SELECT COUNT(*) letters, COUNT(DISTINCT supplier_id) sups, SUM(rep) rep, SUM(kp) kp, COUNT(DISTINCT d) days, ROUND(AVG(k), 2) per_letter FROM adm_eq');
         $base = (int) $db->table('suppliers')->where('is_active', 1)->where('notify_email', 1)->count();
         $buckets = $db->select("SELECT CASE WHEN c=1 THEN '1' WHEN c<=5 THEN '2–5' WHEN c<=20 THEN '6–20' WHEN c<=100 THEN '21–100' WHEN c<=300 THEN '101–300' ELSE '300+' END grp,
@@ -385,11 +433,31 @@ class ProgressDashboard
         $errBySender = $db->table('email_queue')->where('status', 'error')->where('updated_at', '>=', now()->subDay())
             ->groupBy('sender_id')->selectRaw('sender_id, COUNT(*) c')->pluck('c', 'sender_id');
         $senderRows = $db->table('senders')->get(['id', 'email', 'smtp_server', 'is_active', 'sending_disabled', 'is_personal', 'daily_limit', 'blocked_until']);
+        // Пул ящиков и здоровье доменов (DomainHealth — как у пополнения и возврата, решение владельца 27.10.2026).
+        $rcfg = (array) config('services.mailbox_replenish', []);
+        $healthDays = max(1, (int) ($rcfg['health_days'] ?? 7));
+        $maxSpam = (float) ($rcfg['max_spam_pct'] ?? 3);
+        $minSent = max(1, (int) ($rcfg['min_sent'] ?? 50));
+        $health = \Illuminate\Support\Facades\Cache::remember('progress:domain-health', 600, fn () => DomainHealth::byDomain($healthDays));
+        $live = array_filter($health, fn ($h) => DomainHealth::isLive($h, $maxSpam, $minSent));
+        $pool = [
+            'enabled' => (bool) ($rcfg['enabled'] ?? false), 'target' => (int) ($rcfg['target'] ?? 90),
+            'working' => array_sum(array_column($health, 'working')), 'revivable' => array_sum(array_column($live, 'disabled')),
+            'live_domains' => count($live), 'per_day' => (int) ($rcfg['per_day'] ?? 2), 'per_domain_max' => (int) ($rcfg['per_domain_max'] ?? 8),
+            'max_spam' => $maxSpam, 'min_sent' => $minSent, 'days' => $healthDays,
+            'created_7d' => (int) SenderPool::onlyMain($db->table('senders'))->where(fn ($q) => $q->whereNull('is_personal')->orWhere('is_personal', 0))
+                ->where('created_at', '>=', now()->subDays(7))->count(),
+        ];
+        $pool['deficit'] = max(0, $pool['target'] - $pool['working'] - $pool['revivable']);
         $groups = [];
         foreach ($senderRows as $sr) {
             $key = mb_strtolower(substr(strrchr((string) $sr->email, '@') ?: '@?', 1)) . '|' . $sr->smtp_server;
-            $g = $groups[$key] ?? ['domain' => explode('|', $key)[0], 'smtp_server' => $sr->smtp_server, 'total' => 0, 'active' => 0, 'usable' => 0, 'disabled' => 0,
-                'blocked_now' => 0, 'inactive' => 0, 'personal' => 0, 'daily_limit' => 0, 'sent_today' => 0, 'errors_24h' => 0];
+            $dom = explode('|', $key)[0];
+            $h = $health[$dom] ?? null;
+            $g = $groups[$key] ?? ['domain' => $dom, 'smtp_server' => $sr->smtp_server, 'total' => 0, 'active' => 0, 'usable' => 0, 'disabled' => 0,
+                'blocked_now' => 0, 'inactive' => 0, 'personal' => 0, 'daily_limit' => 0, 'sent_today' => 0, 'errors_24h' => 0,
+                'sent_window' => $h['sent'] ?? 0, 'spam_pct' => $h['spam_pct'] ?? null,
+                'health' => $h === null ? null : (DomainHealth::isLive($h, $maxSpam, $minSent) ? 'live' : ($h['sent'] >= $minSent ? 'burning' : 'unknown'))];
             $g['total']++;
             // Годный ящик: активен И отправка не отключена (sending_disabled — отключение провайдером/вручную;
             // 15.10.2026 так выключены целиком postserve.ru, mailnex.ru, fastmailr.ru и др. при is_active=1).
@@ -481,7 +549,7 @@ class ProgressDashboard
         $total = (float) @disk_total_space('/');
 
         return [
-            'senders' => $senders, 's_tot' => $sTot, 'blocked' => $blockedList, 'capacity_left' => $capacity, 'mail' => $mail,
+            'senders' => $senders, 's_tot' => $sTot, 'blocked' => $blockedList, 'capacity_left' => $capacity, 'mail' => $mail, 'pool' => $pool,
             'relays' => $relays, 'egress' => $egress, 'ai' => $ai, 'queues' => $queues,
             'failed_jobs_24h' => (int) DB::table('failed_jobs')->where('failed_at', '>=', now()->subDay())->count(),
             'disk' => ['free_gb' => round($free / 1e9, 1), 'total_gb' => round($total / 1e9, 1), 'pct' => $total > 0 ? round(100 * $free / $total) : null],

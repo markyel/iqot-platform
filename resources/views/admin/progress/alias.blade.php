@@ -41,18 +41,20 @@
                     </table>
                 </div>
                 <div class="card-body" style="font-size: var(--text-sm); color: var(--color-text-muted);">
-                    Ответ — входящее письмо в беседе по паре «батч × поставщик», цена — КП по этой паре. На свежих письмах доли занижены: поставщики отвечают в течение нескольких дней.
+                    Только письма заявок: письма мониторинга (пул КП Гибрида) не входят ни в одну ветку. Ответ — входящее письмо в беседе по паре «батч × поставщик», цена — КП по этой паре. На свежих письмах доли занижены: поставщики отвечают в течение нескольких дней.
                 </div>
             </div>
         @endif
 
+        @foreach (['rows' => 'Батчи и ящики — заявки', 'monitoring_rows' => 'Ящики мониторинга — пул КП Гибрида через ящик на батч (в сравнение веток не входят)'] as $listKey => $listTitle)
+        @continue($listKey === 'monitoring_rows' && empty($v['monitoring_rows']))
         <div class="card" style="margin-bottom: var(--space-6);">
-            <div class="card-header"><h3 class="card-title">Батчи и ящики</h3></div>
+            <div class="card-header"><h3 class="card-title">{{ $listTitle }}</h3></div>
             <div class="table-container">
                 <table class="table">
                     <thead><tr><th>Ящик / персона</th><th>Позиции</th><th>Писем</th><th>Отправлено</th><th>Ждут</th><th>Ошибок (спам)</th><th>Отбойников (спам)</th><th>Ответили</th><th>С ценой</th><th>Последнее / следующее</th><th>Состояние</th></tr></thead>
                     <tbody>
-                        @forelse ($v['rows'] as $row)
+                        @forelse ($v[$listKey] ?? [] as $row)
                             @php($mb = $row['mailbox'])
                             <tr>
                                 <td><strong>{{ $mb->email }}</strong><br><span style="font-size: var(--text-sm); color: var(--color-text-muted);">{{ $row['persona'] }} · {{ $row['org'] }}<br>до {{ $msk($mb->expires_at) }} · batch {{ implode(', ', $row['batch_ids']) ?: '—' }}</span></td>
@@ -79,6 +81,7 @@
                 </table>
             </div>
         </div>
+        @endforeach
 
         <div class="card">
             <div class="card-header"><h3 class="card-title">Домены эксперимента</h3></div>

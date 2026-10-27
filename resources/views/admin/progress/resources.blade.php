@@ -19,10 +19,22 @@
     @else
         @php($s = $v['s_tot']) @php($m = $v['mail'])
         <div class="stats-grid" style="margin-bottom: var(--space-6);">
-            <x-stat-card value="{{ $fmt($s->live_domains) }} из {{ $fmt($s->domains) }}" label="Живых доменов (есть годные ящики)" icon="globe" icon-type="primary" />
+            <x-stat-card value="{{ $fmt($s->live_domains) }} из {{ $fmt($s->domains) }}" label="Доменов с годными ящиками" icon="globe" icon-type="primary" />
             <x-stat-card value="{{ $fmt($s->ready) }}" label="Ящиков готовы слать (годных {{ $fmt($s->usable) }}; отправка отключена у {{ $fmt($s->disabled) }})" icon="mail" icon-type="success" />
             <x-stat-card value="{{ $fmt($s->blocked_now) }}" label="Временно заблокированы" icon="pause-circle" icon-type="{{ $s->blocked_now > 0 ? 'warning' : 'primary' }}" />
             <x-stat-card value="{{ $fmt($s->deactivated_7d) }}" label="Отключено за 7 дней (всего отключено {{ $fmt($s->inactive_total) }})" icon="x-circle" icon-type="{{ $s->deactivated_7d > 0 ? 'error' : 'primary' }}" />
+        </div>
+        @php($pl = $v['pool'])
+        <div class="stats-grid" style="margin-bottom: var(--space-2);">
+            <x-stat-card value="{{ $fmt($pl['working']) }} из {{ $fmt($pl['target']) }}" label="Рабочих ящиков основного пула (цель)" icon="inbox" icon-type="{{ $pl['working'] >= $pl['target'] ? 'success' : 'primary' }}" />
+            <x-stat-card value="{{ $fmt($pl['revivable']) }}" label="Ждут возврата на живых доменах" icon="rotate-ccw" icon-type="primary" />
+            <x-stat-card value="{{ $fmt($pl['deficit']) }}" label="Дефицит — создаём новые ящики (≤{{ $pl['per_day'] }}/день)" icon="plus-circle" icon-type="{{ $pl['deficit'] > 0 ? 'warning' : 'success' }}" />
+            <x-stat-card value="{{ $fmt($pl['live_domains']) }}" label="Живых доменов (спам ≤{{ $pl['max_spam'] }}% за {{ $pl['days'] }} дн.)" icon="shield" icon-type="success" />
+        </div>
+        <div style="margin-bottom: var(--space-6); color: var(--color-text-muted); font-size: var(--text-sm);">
+            Пополнение пула {{ $pl['enabled'] ? 'включено' : 'выключено' }}: будни 05:00 МСК, после возврата отключённых (04:00, живые домены первыми, по кругу).
+            Новые ящики — только на живых доменах нашего Beget, не больше {{ $pl['per_domain_max'] }} на домен. Новых ящиков за 7 дней: {{ $fmt($pl['created_7d']) }}.
+            Живой домен — не меньше {{ $fmt($pl['min_sent']) }} отправок и не больше {{ $pl['max_spam'] }}% спам-отказов за {{ $pl['days'] }} дн.
         </div>
         <div class="stats-grid" style="margin-bottom: var(--space-6);">
             <x-stat-card value="{{ $fmt($m->sent_today) }}" label="Писем отправлено сегодня" icon="send" icon-type="success" />
@@ -113,11 +125,18 @@
             <div class="card-header"><h3 class="card-title">Домены и ящики рассылки</h3></div>
             <div class="table-container">
                 <table class="table">
-                    <thead><tr><th>Домен</th><th>SMTP</th><th>Ящиков</th><th>Годных</th><th>Отправка отключена</th><th>Заблок. сейчас</th><th>Неактивны</th><th>Лимит/сутки</th><th>Отправлено сегодня</th><th>Ошибок 24 ч</th></tr></thead>
+                    <thead><tr><th>Домен</th><th>Здоровье ({{ $v['pool']['days'] }} дн.)</th><th>SMTP</th><th>Ящиков</th><th>Годных</th><th>Отправка отключена</th><th>Заблок. сейчас</th><th>Неактивны</th><th>Лимит/сутки</th><th>Отправлено сегодня</th><th>Ошибок 24 ч</th></tr></thead>
                     <tbody>
                         @foreach ($v['senders'] as $d)
                             <tr style="{{ (int) $d->usable === 0 ? 'color: var(--color-text-muted);' : '' }}">
                                 <td><strong>{{ $d->domain }}</strong></td>
+                                <td style="font-size: var(--text-sm); white-space: nowrap;">
+                                    @if ($d->health === 'live') <span class="badge badge-success">живой</span>
+                                    @elseif ($d->health === 'burning') <span class="badge badge-error">горит</span>
+                                    @elseif ($d->health === 'unknown') <span class="badge">мало отправок</span>
+                                    @else — @endif
+                                    @if ($d->spam_pct !== null && $d->sent_window > 0) спам {{ $d->spam_pct }}% из {{ $fmt($d->sent_window) }}@endif
+                                </td>
                                 <td style="font-size: var(--text-sm);">{{ $d->smtp_server }}</td>
                                 <td>{{ $d->total }}</td>
                                 <td><strong>{{ $d->usable }}</strong></td>

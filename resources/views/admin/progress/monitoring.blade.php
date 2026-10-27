@@ -4,7 +4,7 @@
     $v = $data['value'] ?? [];
     $fmt = fn ($n) => number_format((float) $n, 0, '.', ' ');
     $statusRu = ['planned' => 'запланировано', 'queued' => 'в очереди писем', 'sent' => 'отправлено', 'answered' => 'ответ получен', 'expired' => 'без ответа', 'cancelled' => 'отменено'];
-    $resRu = ['yandex_query' => 'Яндекс-запросы', 'fetch_http' => 'Загрузки страниц', 'fetch_headless' => 'Рендер Chrome', 'fetch_index' => 'Индекс каталогов', 'llm_call' => 'Вызовы ИИ', 'email' => 'Письма Гибрида'];
+    $resRu = ['yandex_query' => 'Яндекс-запросы', 'fetch_http' => 'Загрузки страниц', 'fetch_headless' => 'Рендер Chrome', 'fetch_index' => 'Индекс каталогов', 'llm_call' => 'Вызовы ИИ', 'verify_letters' => 'Проверочные письма', 'email' => 'Письма мониторинга, все виды'];
     $checkRu = ['ok' => 'цена получена', 'no_price' => 'цены нет («по запросу»)', 'mismatch' => 'не наш товар', 'failed' => 'сбой', 'suspicious' => 'подозрительно', 'gone' => 'страница пропала', 'blocked' => 'сайт закрыл доступ', 'soft404' => 'мягкий 404', 'unchanged' => 'без изменений'];
 @endphp
 
@@ -159,6 +159,39 @@
             </div>
         </div>
 
+        @php($w = $v['waves']['stats'] ?? null) @php($wc = $v['wave_cfg'])
+        <div class="card" style="margin-bottom: var(--space-6);">
+            <div class="card-header"><h3 class="card-title">Волны запросов КП — цель {{ $wc['target'] }} цен на позицию</h3></div>
+            @if (!$w)
+                <div class="card-body" style="color: var(--color-text-muted);">Снимка ещё нет — считается каждые 30 минут (monitoring:hybrid sync).</div>
+            @else
+                <div class="table-container">
+                    <table class="table">
+                        <thead><tr><th>Программа</th><th>Позиций</th><th>Цель набрана</th><th>Идёт волна</th><th>Готовы к следующей</th><th>Без кандидатов</th></tr></thead>
+                        <tbody>
+                            @foreach ($w['by_program'] ?? [] as $pid => $pw)
+                                <tr>
+                                    <td><strong>{{ \Illuminate\Support\Str::limit($pw['name'], 40) }}</strong> <span style="color: var(--color-text-muted);">#{{ $pid }}</span></td>
+                                    <td>{{ $fmt($pw['positions']) }}</td>
+                                    <td><strong>{{ $fmt($pw['done']) }}</strong> ({{ $pw['positions'] > 0 ? round(100 * $pw['done'] / $pw['positions']) : 0 }}%)</td>
+                                    <td>{{ $fmt($pw['in_wave']) }}</td>
+                                    <td>{{ $fmt($pw['waves']) }}@if ($pw['asks'] > 0) <span style="font-size: var(--text-sm); color: var(--color-text-muted);">· {{ $fmt($pw['asks']) }} запросов</span>@endif</td>
+                                    <td>{{ $fmt($pw['no_candidates']) }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+                <div style="padding: var(--space-3) var(--space-4); color: var(--color-text-muted); font-size: var(--text-sm);">
+                    Цель — {{ $wc['target'] }} цен: {{ $wc['site'] ? 'свежие КП и надёжные цены сайтов' : 'только КП' }}. Волна — до {{ $wc['max'] }} поставщиков по убыванию отдачи,
+                    только со свободной ёмкостью; следующая — когда письма ушли и прошло {{ $wc['wait'] }} дн. без набора цели.
+                    «Идёт волна» — письма ещё не ушли или ждём ответов; «Готовы к следующей» — уйдут в ближайший прогон (будни 08:40 МСК);
+                    «Без кандидатов» — пул позиции исчерпан или все её поставщики сейчас заняты.
+                    Снимок на {{ \Carbon\Carbon::parse($v['waves']['at'])->setTimezone('Europe/Moscow')->format('d.m H:i') }} МСК.
+                </div>
+            @endif
+        </div>
+
         <div class="card">
             <div class="card-header"><h3 class="card-title">Гибрид: письма поставщикам и КП</h3></div>
             <div class="table-container">
@@ -169,7 +202,7 @@
                             <tr>
                                 <td><strong>{{ $kind }}</strong></td>
                                 @foreach ($statusRu as $s => $ru)<td>{{ $fmt($byStatus[$s] ?? 0) }}</td>@endforeach
-                                <td>{{ $fmt($v['letters_today'][$kind] ?? 0) }}</td>
+                                <td>{{ $fmt($v['letters_today'][$kind] ?? 0) }}@if (($v['letters_today_alias'][$kind] ?? 0) > 0) <span style="font-size: var(--text-sm); color: var(--color-text-muted);">· ящик на батч {{ $fmt($v['letters_today_alias'][$kind]) }}</span>@endif</td>
                             </tr>
                         @empty
                             <tr><td colspan="8" style="color: var(--color-text-muted);">Запросов ещё не было.</td></tr>
@@ -178,7 +211,7 @@
                 </table>
             </div>
             <div style="padding: var(--space-3) var(--space-4); font-size: var(--text-sm);">
-                <strong>КП получено:</strong> @forelse ($v['kp'] as $src => $n){{ ['verify' => 'на проверку цены', 'on_request' => '«по запросу»', 'pool' => 'пул'][$src] ?? $src }} — {{ $n }}@if (!$loop->last) · @endif @empty нет @endforelse
+                <strong>КП получено:</strong> @forelse ($v['kp'] as $src => $n){{ ['verify' => 'на проверку цены', 'on_request' => '«по запросу»', 'low_trust' => 'недоверенный сайт', 'pool' => 'пул'][$src] ?? $src }} — {{ $n }}@if (!$loop->last) · @endif @empty нет @endforelse
                 &nbsp;|&nbsp; <strong>Сверки с ценой сайта:</strong> @forelse ($v['verifications'] as $o => $n){{ ['match' => 'совпала', 'price_mismatch' => 'расхождение', 'availability' => 'нет в наличии', 'basis_diff' => 'другая база НДС', 'inconclusive' => 'не сравнить', 'match_error' => 'аналог'][$o] ?? $o }} — {{ $n }}@if (!$loop->last) · @endif @empty нет @endforelse
                 &nbsp;|&nbsp; <strong>Доверие к сайтам:</strong> @foreach ($v['trust'] as $lvl => $n)ур. {{ $lvl }} — {{ $fmt($n) }}@if (!$loop->last) · @endif @endforeach
             </div>

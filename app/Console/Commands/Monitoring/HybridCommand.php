@@ -18,12 +18,13 @@ use Illuminate\Console\Command;
  *   collect     статусы отправки, КП → сверки и доверие, отказы «нет в наличии», просрочка
  *   link-items  позиции обычных заявок ↔ канонические товары
  *   rfq         «бесплатные» сверки из КП обычных заявок
- *   daily       link-sites + plan + plan-kp + send   (будни после plan-day)
- *   sync        collect + link-items + rfq (каждые 30 мин)
+ *   waves       снимок состояния волн (холостой прогон планировщика) — для страницы «Ход выполнения»
+ *   daily       link-sites + plan + plan-kp + send + waves   (будни после plan-day)
+ *   sync        collect + link-items + rfq + waves (каждые 30 мин)
  */
 class HybridCommand extends Command
 {
-    protected $signature = 'monitoring:hybrid {step : link-sites|plan|plan-kp|send|collect|link-items|rfq|daily|sync} {--dry-run} {--force}';
+    protected $signature = 'monitoring:hybrid {step : link-sites|plan|plan-kp|send|collect|link-items|rfq|waves|daily|sync} {--dry-run} {--force}';
 
     protected $description = 'Мониторинг цен, Гибрид: проверочные КП к ценам сайтов и доверие к сайтам (Ф3)';
 
@@ -36,8 +37,8 @@ class HybridCommand extends Command
         }
         $step = (string) $this->argument('step');
         $steps = match ($step) {
-            'daily' => ['link-sites', 'plan', 'plan-kp', 'send'],
-            'sync' => ['collect', 'link-items', 'rfq'],
+            'daily' => ['link-sites', 'plan', 'plan-kp', 'send', 'waves'],
+            'sync' => ['collect', 'link-items', 'rfq', 'waves'],
             default => [$step],
         };
         foreach ($steps as $s) {
@@ -90,6 +91,13 @@ class HybridCommand extends Command
             case 'rfq':
                 $n = (new VerificationCollector())->collectRfq();
                 $this->info("Сверки из КП обычных заявок: {$n}");
+                break;
+            case 'waves':
+                // Холостой прогон: «сколько позиций где сейчас» — ничего не создаёт и не отменяет (~7 с).
+                $r = (new \App\Services\Monitoring\Hybrid\RfqPlanner())->plan(true);
+                \Illuminate\Support\Facades\Cache::put(\App\Services\Monitoring\Hybrid\RfqPlanner::SNAPSHOT_KEY,
+                    ['at' => now()->toIso8601String(), 'stats' => \Illuminate\Support\Arr::except($r, ['pool_by_supplier'])], now()->addHours(3));
+                $this->info("Снимок волн: позиций {$r['positions']}, цель набрана {$r['done']}, идёт волна {$r['in_wave']}, готовы к волне {$r['waves']}, без кандидатов {$r['no_candidates']}");
                 break;
             default:
                 $this->error("Неизвестный шаг: {$step}");

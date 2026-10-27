@@ -37,7 +37,12 @@ class RfqPlanner
 {
     public const EXPIRES_DAYS = 14;
 
+    /** Кеш снимка состояния волн (холостой прогон по расписанию) — для страницы «Ход выполнения → Мониторинг цен». */
+    public const SNAPSHOT_KEY = 'monitoring:waves:snapshot';
+
     private const CONN = 'reports';
+
+    private const COUNTERS = ['positions', 'done', 'in_wave', 'no_candidates', 'waves', 'asks', 'cancelled', 'saturated'];
 
     private const WAITING = [MpAsk::STATUS_PLANNED, MpAsk::STATUS_QUEUED];
 
@@ -90,24 +95,40 @@ class RfqPlanner
     }
 
     /**
+     * Итог и по программам: позиций, цель набрана, идёт волна, без кандидатов, начато волн (в холостом прогоне — готовы
+     * начаться), запросов, по видам, отменено лишних, пропущено занятых поставщиков.
+     *
      * @return array{positions:int, done:int, in_wave:int, no_candidates:int, waves:int, asks:int, by_reason:array<string,int>,
-     *               cancelled:int, saturated:int, pool_by_supplier:array<int,int>}
+     *               cancelled:int, saturated:int, by_program:array<int,array<string,mixed>>, pool_by_supplier:array<int,int>}
      */
     public function plan(bool $dryRun = false): array
     {
         $cfg = (array) config('monitoring.hybrid', []);
-        $stats = ['positions' => 0, 'done' => 0, 'in_wave' => 0, 'no_candidates' => 0, 'waves' => 0, 'asks' => 0,
-            'by_reason' => [], 'cancelled' => 0, 'saturated' => 0];
+        $stats = self::emptyStats() + ['by_program' => []];
         $this->assigned = [];
         $this->slots = [];
         $this->loadHistory(max(30, (int) ($cfg['yield_window_days'] ?? 180)));
         foreach (DB::table('monitoring_programs')->where('status', 'active')->where('price_mode', 'hybrid')->get() as $program) {
-            $this->planProgram($program, $cfg, $dryRun, $stats);
+            $local = self::emptyStats();
+            $this->planProgram($program, $cfg, $dryRun, $local);
+            $stats['by_program'][(int) $program->id] = ['name' => (string) $program->name] + $local;
+            foreach (self::COUNTERS as $k) {
+                $stats[$k] += $local[$k];
+            }
+            foreach ($local['by_reason'] as $reason => $n) {
+                $stats['by_reason'][$reason] = ($stats['by_reason'][$reason] ?? 0) + $n;
+            }
         }
         arsort($this->assigned);
         $stats['pool_by_supplier'] = $this->assigned;
 
         return $stats;
+    }
+
+    /** @return array<string,mixed> */
+    private static function emptyStats(): array
+    {
+        return array_fill_keys(self::COUNTERS, 0) + ['by_reason' => []];
     }
 
     /** @param array<string,mixed> $stats */
