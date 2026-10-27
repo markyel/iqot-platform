@@ -10,6 +10,9 @@ use App\Models\Monitoring\MpSite;
  * Подъём — 3 совпадения подряд. Расхождение ЦЕНЫ на тот же товар — минус 2 уровня, второе подряд —
  * сразу 0. Ошибка сопоставления, разная база цены, наличие, неясное — уровень не трогают.
  * Доверенный сайт проверяется не реже раза в 20 дней.
+ *
+ * Правило 3 (решение владельца 2026-10-27): если из «большого пула» ценовых сверок почти все цены
+ * мимо — мониторинг сайта ставим на паузу на месяц (переоценка позже).
  */
 final class TrustPolicy
 {
@@ -23,10 +26,19 @@ final class TrustPolicy
 
     public const RECHECK_DAYS = 20;
 
+    /** Пауза сайта: пул ценовых сверок (match + price_mismatch) ≥ 5 и доля расхождений ≥ 80% → пауза 30 дней. */
+    public const PAUSE_MIN_POOL = 5;
+
+    public const PAUSE_MISMATCH_SHARE = 0.8;
+
+    public const PAUSE_DAYS = 30;
+
+    public const PAUSE_REASON = 'verify_mismatch';
+
     /**
      * Применить исход сверки к сайту (без сохранения).
      *
-     * @return array{level_before: int, level_after: int}
+     * @return array{level_before: int, level_after: int, paused: bool}
      */
     public static function apply(MpSite $site, string $outcome): array
     {
@@ -60,7 +72,19 @@ final class TrustPolicy
         $site->last_verified_at = now();
         $site->next_verification_due_at = now()->addDays(self::RECHECK_DAYS);
 
-        return ['level_before' => $before, 'level_after' => $level];
+        // Правило 3: большой пул ценовых сверок и почти всё мимо → пауза мониторинга сайта на месяц.
+        $pool = (int) $site->verified_ok + (int) $site->verified_mismatch;
+        $paused = false;
+        if ($pool >= self::PAUSE_MIN_POOL && (int) $site->verified_mismatch / $pool >= self::PAUSE_MISMATCH_SHARE) {
+            $until = now()->addDays(self::PAUSE_DAYS);
+            if ($site->blocked_until === null || $site->blocked_until->lt($until)) {
+                $site->blocked_until = $until;
+                $site->blocked_reason = self::PAUSE_REASON;
+            }
+            $paused = true;
+        }
+
+        return ['level_before' => $before, 'level_after' => $level, 'paused' => $paused];
     }
 
     /**

@@ -55,6 +55,29 @@ class HybridTrustTest extends TestCase
         $this->assertSame(1, $s->sample_every);
     }
 
+    public function test_pause_when_pool_mostly_mismatch(): void
+    {
+        // Правило 3: ≥5 ценовых сверок и ≥80% расхождений → пауза сайта на 30 дней.
+        $s = $this->site(0);
+        $r = [];
+        foreach (range(1, 5) as $_) {
+            $r = TrustPolicy::apply($s, 'price_mismatch');
+        }
+        $this->assertTrue($r['paused']);
+        $this->assertNotNull($s->blocked_until);
+        $this->assertTrue($s->blocked_until->isFuture());
+        $this->assertSame('verify_mismatch', $s->blocked_reason);
+
+        // Пул преимущественно совпадений (4 match + 1 mismatch = 20%) — без паузы.
+        $s2 = $this->site(0);
+        foreach (range(1, 4) as $_) {
+            TrustPolicy::apply($s2, 'match');
+        }
+        $res = TrustPolicy::apply($s2, 'price_mismatch');
+        $this->assertFalse($res['paused']);
+        $this->assertNull($s2->blocked_until);
+    }
+
     public function test_sample_size(): void
     {
         $this->assertSame(5, TrustPolicy::sampleSize($this->site(0), 40));

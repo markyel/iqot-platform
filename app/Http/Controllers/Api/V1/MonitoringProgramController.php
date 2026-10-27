@@ -330,7 +330,7 @@ class MonitoringProgramController extends Controller
                         $s = $p['summary'] ?? null;
                         $base = [$i->client_ref, $i->raw_name, $i->raw_brand, $i->raw_article, $i->match_status,
                             $s['best_price'] ?? null, $s['min'] ?? null, $s['median'] ?? null, $s['max'] ?? null, $s['sources_priced'] ?? 0];
-                        $priced = collect($p['sources'])->filter(fn ($x) => ($x['price'] !== null || $x['kp'] !== null) && $x['status'] === 'active');
+                        $priced = collect($p['sources'])->filter(fn ($x) => ($x['price'] !== null || $x['kp'] !== null) && $x['status'] === 'active' && empty($x['flags']['doubtful']));
                         if ($priced->isEmpty()) {
                             fputcsv($out, array_merge($base, array_fill(0, 13, null)), ';');
                             continue;
@@ -378,6 +378,14 @@ class MonitoringProgramController extends Controller
                 'vat_included' => $o->vat_included, 'at' => $o->received_at]);
         }
         $kp = $kp->sortBy('at')->keyBy('listing_id'); // последнее по времени перекрывает
+        // Исход последней сверки по листингу (Правило 1 — замещение, Правило 2 — пометка «сомнительно»).
+        $verifOutcome = [];
+        foreach (\App\Models\Monitoring\MpVerification::query()->whereIn('listing_id', $listings->pluck('id')->filter())
+            ->orderBy('verified_at')->get(['listing_id', 'outcome']) as $vo) {
+            if ($vo->listing_id) {
+                $verifOutcome[(int) $vo->listing_id] = $vo->outcome;
+            }
+        }
         // «Подозрительно» из-за выброса от медианы ТОВАРА — пересчитывается по ценам позиции (PriceSanity).
         $suspIds = $listings->where('status', \App\Models\Monitoring\MpListing::STATUS_SUSPICIOUS)->pluck('id')->all();
         $outlierIds = $suspIds === [] ? [] : \App\Models\Monitoring\MpPriceObservation::query()
@@ -391,8 +399,16 @@ class MonitoringProgramController extends Controller
                 ->get(['listing_id', 'price', 'currency', 'method', 'observed_at'])->groupBy('listing_id')
             : collect();
 
-        $rows = $listings->map(function ($l) use ($kp, $history, $withHistory, $outlierIds) {
+        $rows = $listings->map(function ($l) use ($kp, $history, $withHistory, $outlierIds, $verifOutcome) {
             $v = $kp[$l->id] ?? null;
+            // Правило 1: последняя сверка листинга price_mismatch при наличии КП → web-цена опровергнута,
+            //   в сводку идёт цена КП (замещение). Правило 2: у сайта непогашенное расхождение
+            //   (consecutive_mismatch > 0, доверие понижено) → все его цены «сомнительные», кроме
+            //   индивидуально подтверждённых (match) и замещённых на КП.
+            $outcome = $verifOutcome[(int) $l->id] ?? null;
+            $siteDoubtful = (int) ($l->site?->consecutive_mismatch ?? 0) > 0;
+            $superseded = $outcome === 'price_mismatch' && $v !== null;
+            $doubtful = $siteDoubtful && $outcome !== 'match' && !$superseded;
             $row = [
                 'source_type' => 'site',
                 'supplier_domain' => $l->site?->domain,
@@ -410,6 +426,8 @@ class MonitoringProgramController extends Controller
                     'web_price' => $l->price !== null,
                     'email_confirmed' => $l->confirmed_at !== null,
                     'kp' => $v !== null,
+                    'doubtful' => $doubtful,
+                    'web_superseded' => $superseded,
                 ],
                 'email_confirmed_at' => $l->confirmed_at?->toIso8601String(),
                 'kp' => $v ? ['price' => $v['price'], 'currency' => $v['currency'], 'vat_included' => $v['vat_included'],
@@ -447,7 +465,8 @@ class MonitoringProgramController extends Controller
                     'price' => null, 'currency' => $o->currency, 'price_kind' => null, 'vat_included' => $o->vat_included,
                     'price_unit' => null, 'price_unit_qty' => null, 'availability' => null,
                     'observed_at' => $o->received_at?->toIso8601String(), 'status' => 'active',
-                    'flags' => ['web_price' => false, 'email_confirmed' => false, 'kp' => true],
+                    'flags' => ['web_price' => false, 'email_confirmed' => false, 'kp' => true,
+                        'doubtful' => false, 'web_superseded' => false],
                     'email_confirmed_at' => null, 'kp' => $kpRow, 'site_trust_level' => null,
                     'product_id' => $o->product_id,
                     // КП пула запрашивалось по позиции конкретной программы (её названию/артикулу).
@@ -518,11 +537,14 @@ class MonitoringProgramController extends Controller
         $sources = $this->scopeSources($i, $sources);
         // Цена источника для сводки: цена сайта, а где её нет («по запросу», пул) — цена КП.
         $priced = collect($sources)->map(function ($s) {
-            $s['_price'] = $s['price'] ?? ($s['kp']['price'] ?? null);
-            $s['_currency'] = $s['price'] !== null ? ($s['currency'] ?? 'RUB') : ($s['kp']['currency'] ?? 'RUB');
+            // Правило 1: у замещённого источника (web_superseded) цена для сводки — из КП, а не опровергнутая web-цена.
+            $fromKp = !empty($s['flags']['web_superseded']) || $s['price'] === null;
+            $s['_price'] = $fromKp ? ($s['kp']['price'] ?? null) : $s['price'];
+            $s['_currency'] = $fromKp ? ($s['kp']['currency'] ?? 'RUB') : ($s['currency'] ?? 'RUB');
 
             return $s;
-        })->filter(fn ($s) => $s['_price'] !== null && $s['status'] === 'active'
+        // Правило 2: «сомнительные» (flags.doubtful) в сводку не идут, но остаются среди источников.
+        })->filter(fn ($s) => $s['_price'] !== null && $s['status'] === 'active' && empty($s['flags']['doubtful'])
             && $s['_currency'] === 'RUB' && $s['price_kind'] !== 'wholesale_tier')->sortBy('_price')->values();
         $prices = $priced->pluck('_price')->all();
         $n = count($prices);
@@ -535,7 +557,8 @@ class MonitoringProgramController extends Controller
             'prices_changed_at' => $i->prices_changed_at?->toIso8601String(),
             'last_priced_at' => $i->last_priced_at?->toIso8601String(),
             'best_price' => $best ? ['price' => $best['_price'], 'currency' => $best['_currency'], 'supplier_domain' => $best['supplier_domain'],
-                'url' => $best['url'], 'price_source' => $best['price'] !== null ? 'web' : 'kp', 'flags' => $best['flags']] : null,
+                'url' => $best['url'], 'price_source' => (!empty($best['flags']['web_superseded']) || $best['price'] === null) ? 'kp' : 'web',
+                'flags' => $best['flags']] : null,
             'summary' => $n === 0 ? null : [
                 'best_price' => $prices[0], 'min' => $prices[0], 'median' => $median, 'max' => $prices[$n - 1],
                 'sources_priced' => $n, 'currency' => 'RUB',
