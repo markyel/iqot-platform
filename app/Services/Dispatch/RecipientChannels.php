@@ -11,7 +11,9 @@ use Illuminate\Support\Facades\DB;
  * Изолированные дневные лимиты писем на получателя по каналам (решение владельца 19.10.2026):
  *  - main       — запросы КП по заявкам: адаптивный кап адресата (recipient_mailboxes.daily_cap, база 10);
  *  - alias      — эксперимент «ящик на батч» (ящики senders.pool='alias'): доля от капа заявок, не меньше 1;
- *  - monitoring — письма мониторинга (батчи mp_asks: проверки цен, «по запросу», пул): фиксированный кап.
+ *  - monitoring — письма мониторинга (батчи mp_asks: проверки цен, «по запросу», пул — с обычных ящиков и с ящиков
+ *                 ветки «ящик на батч»): доля капа адресата (решение владельца 27.10.2026) — есть письма заявок этому
+ *                 адресату сегодня (конкуренция) — до 50%, нет — весь кап; не меньше прежнего фиксированного.
  * Каналы не съедают лимит друг друга; общим остаётся только минимальный интервал между любыми письмами
  * одному адресату (recipient_mailboxes.last_dispatched_at, пол recipient_interval_min_seconds).
  * Расход канала за сутки (МСК) — по email_queue: отправленные сегодня + взятые в работу (sending).
@@ -60,23 +62,39 @@ class RecipientChannels
 
     public function channel(int $senderId, ?int $batchId): string
     {
-        if (isset($this->aliasIds[$senderId])) {
-            return self::ALIAS;
+        // Батч мониторинга — канал мониторинга, с какого бы ящика он ни шёл (в т.ч. с ящика ветки «ящик на батч»).
+        if ($batchId !== null && isset($this->monitoringBatchIds()[$batchId])) {
+            return self::MONITORING;
         }
 
-        return $batchId !== null && isset($this->monitoringBatchIds()[$batchId]) ? self::MONITORING : self::MAIN;
+        return isset($this->aliasIds[$senderId]) ? self::ALIAS : self::MAIN;
     }
 
-    /** Дневной кап канала для адресата (кап заявок — адаптивный кап адресата). */
-    public static function cap(string $channel, int $mainCap): int
+    /**
+     * Дневной кап канала для адресата (кап заявок — адаптивный кап адресата). $contended — у адресата сегодня есть
+     * письма заявок (отправленные или ожидающие): мониторингу тогда до половины капа, иначе весь (решение 27.10.2026).
+     */
+    public static function cap(string $channel, int $mainCap, bool $contended = true): int
     {
         $cfg = (array) config('services.email_dispatch.channels', []);
 
         return match ($channel) {
             self::ALIAS => max(1, (int) ceil($mainCap * (float) ($cfg['alias_share'] ?? 0.2))),
-            self::MONITORING => max(0, (int) ($cfg['monitoring_cap'] ?? 2)),
+            self::MONITORING => max(max(0, (int) ($cfg['monitoring_cap'] ?? 2)), (int) ceil($mainCap * (float) ($contended
+                ? ($cfg['monitoring_share_contended'] ?? 0.5) : ($cfg['monitoring_share_free'] ?? 1.0)))),
             default => $mainCap,
         };
+    }
+
+    /**
+     * Конкуренция за адресата: сегодня ему уже ушли или ждут отправки письма заявок (канал main).
+     *
+     * @param array<string,array<string,array{n:int,last:?string}>> $usage usageToday()
+     * @param array<string,array<string,int>> $pending pending()
+     */
+    public static function contended(array $usage, array $pending, string $email): bool
+    {
+        return (int) ($usage[$email][self::MAIN]['n'] ?? 0) + (int) ($pending[$email][self::MAIN] ?? 0) > 0;
     }
 
     /**
@@ -181,7 +199,7 @@ class RecipientChannels
         $out = [];
         foreach ($emails as $e) {
             $m = $meta[$e];
-            $out[$e] = $m['blocked'] ? 0 : max(0, self::cap($channel, $m['cap'])
+            $out[$e] = $m['blocked'] ? 0 : max(0, self::cap($channel, $m['cap'], self::contended($usage, $pending, $e))
                 - (int) ($usage[$e][$channel]['n'] ?? 0) - (int) ($pending[$e][$channel] ?? 0));
         }
 

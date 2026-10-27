@@ -203,10 +203,10 @@ class DispatchPendingEmails extends Command
                             ->whereColumn('rm.email', DB::raw('LOWER(email_queue.to_email)'))
                             ->where('rm.is_blocked', 1);
                     });
-                // Письма мониторинга и заявок идут с одних и тех же ящиков — разделяем по батчу.
+                // Письма мониторинга идут и с обычных ящиков, и с ящиков ветки «ящик на батч» — разделяем по батчу.
                 if ($channel === RecipientChannels::MONITORING) {
                     $q->whereIn('batch_id', $monitoringBatches);
-                } elseif ($channel === RecipientChannels::MAIN) {
+                } else {
                     $q->where(fn ($q) => $q->whereNull('batch_id')->orWhereNotIn('batch_id', $monitoringBatches));
                 }
 
@@ -219,7 +219,7 @@ class DispatchPendingEmails extends Command
                     ->each(fn ($r) => $r->channel = $channel);
             };
             $rows = $isAlias
-                ? $fetchRows(RecipientChannels::ALIAS)
+                ? $fetchRows(RecipientChannels::ALIAS)->concat($fetchRows(RecipientChannels::MONITORING))
                 : $fetchRows(RecipientChannels::MONITORING)->concat($fetchRows(RecipientChannels::MAIN));
 
             $accum = 0;
@@ -334,7 +334,7 @@ class DispatchPendingEmails extends Command
                 continue;
             }
             foreach ($byChannel as $channel => $n) {
-                $cap = RecipientChannels::cap($channel, $m['cap']);
+                $cap = RecipientChannels::cap($channel, $m['cap'], RecipientChannels::contended($usage, $pending, $recipient));
                 $used = $usage[$recipient][$channel] ?? ['n' => 0, 'last' => null];
                 if ($cap <= 0 || $used['n'] >= $cap) {
                     continue;

@@ -7,6 +7,7 @@ use App\Services\Generate\Batch;
 use App\Services\Generate\CampaignSupplierSelector;
 use App\Support\Monitoring\DomainPolicy;
 use App\Support\Monitoring\ItemScope;
+use App\Support\Monitoring\SiteTrust;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -14,8 +15,11 @@ use Illuminate\Support\Facades\Log;
  * Запросы КП у поставщиков без цены на сайте (Ф3+ «Гибрид», решения владельца 2026-10-15):
  *  1. «По запросу» — ВСЕГДА: каждому поставщику, у которого на сайте найдена страница товара без
  *     цены (товар у него точно есть), независимо от числа цен с других сайтов;
+ *  1a. Недоверенный сайт (пауза TrustPolicy: в основном цены неправдивые, решение 2026-10-27) — всё спрашиваем:
+ *     поставщику сайта запрос КП по каждому товару программы с его сайта (reason low_trust);
  *  2. Пул — потом: если после раунда «по запросу» (нет открытых запросов по товару) у позиции
- *     меньше POOL_TARGET_PRICES цен (сайты + КП), — профильному пулу IQOT по типу/области товара
+ *     меньше POOL_TARGET_PRICES НАДЁЖНЫХ цен (SiteTrust: без сомнительных, опровергнутых КП и сайтов на паузе;
+ *     плюс свежие КП), — профильному пулу IQOT по типу/области товара
  *     (CampaignSupplierSelector — карма, стоп-листы, отписки как в основном режиме), отранжированному
  *     по отдаче (rankPool: доля цен и ответов, карма по типу, явная привязка) без наших/тестовых адресов
  *     и с выравниванием нагрузки внутри прогона — иначе все товары типа уходили одним и тем же первым по id
@@ -46,14 +50,15 @@ class RfqPlanner
         return (string) preg_replace('/^www\./', '', $host);
     }
 
-    /** @return array{on_request: int, pool: int, pool_by_supplier: array<int,int>} */
+    /** @return array{on_request: int, low_trust: int, pool: int, pool_by_supplier: array<int,int>} */
     public function plan(bool $dryRun = false): array
     {
-        $stats = ['on_request' => 0, 'pool' => 0];
+        $stats = ['on_request' => 0, 'low_trust' => 0, 'pool' => 0];
         $this->assigned = [];
         foreach (DB::table('monitoring_programs')->where('status', 'active')->where('price_mode', 'hybrid')->get() as $program) {
             $refresh = max(14, (int) ($program->email_refresh_days ?: 60));
             $stats['on_request'] += $this->onRequest($program, $refresh, $dryRun);
+            $stats['low_trust'] += $this->lowTrust($program, $refresh, $dryRun);
             if (config('monitoring.hybrid.pool_enabled')) {
                 $stats['pool'] += $this->pool($program, $refresh, $dryRun);
             }
@@ -66,14 +71,32 @@ class RfqPlanner
 
     private function onRequest(object $program, int $refresh, bool $dryRun): int
     {
+        // Только страницы, где цена действительно «по запросу» (не сбой извлечения: price_kind NULL); сайт не заблокирован.
+        return $this->askSiteSuppliers($program, $refresh, $dryRun, 'on_request', fn ($q) => $q
+            ->whereNull('l.price')->where('l.price_kind', 'on_request')->whereNotNull('l.checked_at')
+            ->where(fn ($q) => $q->whereNull('s.blocked_until')->orWhere('s.blocked_until', '<', now())));
+    }
+
+    /**
+     * Сайт на паузе из-за расхождений (TrustPolicy, правило 3 — в основном цены неправдивые): его данным не верим,
+     * всё спрашиваем — поставщику сайта запрос КП по каждому товару программы, найденному на его сайте (с ценой
+     * или без), со ссылкой на страницу (решение владельца 2026-10-27).
+     */
+    private function lowTrust(object $program, int $refresh, bool $dryRun): int
+    {
+        return $this->askSiteSuppliers($program, $refresh, $dryRun, 'low_trust', fn ($q) => $q
+            ->where('s.blocked_reason', TrustPolicy::PAUSE_REASON)->where('s.blocked_until', '>', now()));
+    }
+
+    /** Адресные запросы КП поставщику сайта по страницам товаров программы (вид — $reason, отбор страниц — $where). */
+    private function askSiteSuppliers(object $program, int $refresh, bool $dryRun, string $reason, \Closure $where): int
+    {
         $rows = DB::table('mp_listings as l')->join('mp_sites as s', 's.id', '=', 'l.site_id')
             ->join('program_items as pi', 'pi.product_id', '=', 'l.product_id')
             ->where('pi.program_id', $program->id)->where('pi.active', true)
-            // Только страницы, где цена действительно «по запросу» (не сбой извлечения: price_kind NULL).
-            ->where('l.bench', false)->where('l.status', 'active')->whereNull('l.price')
-            ->where('l.price_kind', 'on_request')->whereNotNull('l.checked_at')
+            ->where('l.bench', false)->where('l.status', 'active')
+            ->where($where)
             ->whereNotNull('s.supplier_id')
-            ->where(fn ($q) => $q->whereNull('s.blocked_until')->orWhere('s.blocked_until', '<', now()))
             ->whereNotExists(fn ($q) => $q->from('mp_asks as a')->whereColumn('a.product_id', 'l.product_id')
                 ->whereColumn('a.supplier_id', 's.supplier_id')->where('a.kind', 'rfq')
                 ->where('a.created_at', '>', now()->subDays($refresh))->where('a.status', '!=', MpAsk::STATUS_CANCELLED))
@@ -98,7 +121,7 @@ class RfqPlanner
             if (!$dryRun) {
                 MpAsk::create([
                     'site_id' => $r->site_id, 'listing_id' => $r->id, 'product_id' => $r->product_id, 'program_id' => $program->id,
-                    'supplier_id' => $r->supplier_id, 'kind' => 'rfq', 'reason' => 'on_request',
+                    'supplier_id' => $r->supplier_id, 'kind' => 'rfq', 'reason' => $reason,
                     'status' => MpAsk::STATUS_PLANNED, 'expires_at' => now()->addDays(self::EXPIRES_DAYS),
                 ]);
             }
@@ -120,10 +143,20 @@ class RfqPlanner
         $ids = $products->pluck('id')->all();
         $productCodes = ItemScope::productCodes($ids);
 
-        // Сколько цен у позиции: сайты (активные с ценой, видимые позиции — ItemScope) + свежие КП
-        // (по страницам, видимым позиции, и пула этой программы).
-        $listings = DB::table('mp_listings')->whereIn('product_id', $ids)->where('bench', false)->where('status', 'active')
-            ->get(['id', 'product_id', 'site_id', 'price', 'matched_codes', 'match_method', 'match_evidence'])->groupBy('product_id');
+        // Сколько цен у позиции: сайты (активные с НАДЁЖНОЙ ценой, видимые позиции — ItemScope) + свежие КП
+        // (по страницам, видимым позиции, и пула этой программы). Сомнительные (сайт иногда ошибается),
+        // опровергнутые КП и цены сайтов на паузе позицию не закрывают — по ней спрашиваем пул (SiteTrust).
+        $listings = DB::table('mp_listings as l')->join('mp_sites as s', 's.id', '=', 'l.site_id')
+            ->whereIn('l.product_id', $ids)->where('l.bench', false)->where('l.status', 'active')
+            ->get(['l.id', 'l.product_id', 'l.site_id', 'l.price', 'l.matched_codes', 'l.match_method', 'l.match_evidence',
+                's.supplier_id', 's.domain', 's.consecutive_mismatch', 's.blocked_reason', 's.blocked_until'])->groupBy('product_id');
+        $outcomes = SiteTrust::lastOutcomes($listings->flatten(1)->pluck('id')->all());
+        $reliable = function (object $l) use ($outcomes): bool {
+            $paused = SiteTrust::paused($l->blocked_reason, $l->blocked_until);
+
+            return $l->price !== null && SiteTrust::reliable($outcomes[(int) $l->id] ?? null,
+                SiteTrust::doubtful((int) $l->consecutive_mismatch, $paused), $paused);
+        };
         $offers = DB::table('mp_kp_offers as k')->leftJoin('mp_asks as a', 'a.id', '=', 'k.ask_id')->whereIn('k.product_id', $ids)
             ->where('k.received_at', '>', now()->subDays($refresh))->get(['k.product_id', 'k.supplier_id', 'k.listing_id', 'a.program_id'])->groupBy('product_id');
         $sitePriced = [];
@@ -131,7 +164,7 @@ class RfqPlanner
         foreach ($products as $p) {
             $allowed = ($listings[$p->id] ?? collect())->filter(fn ($l) => ItemScope::allows(ItemScope::itemCodes($p), $productCodes[(int) $p->id] ?? [],
                 ItemScope::listingCodes($l->matched_codes, $l->match_method, $l->match_evidence)));
-            $sitePriced[$p->id] = $allowed->whereNotNull('price')->pluck('site_id')->unique()->count();
+            $sitePriced[$p->id] = $allowed->filter($reliable)->pluck('site_id')->unique()->count();
             $allowedIds = $allowed->pluck('id')->flip();
             $kp[$p->id] = ($offers[$p->id] ?? collect())->filter(fn ($o) => $o->listing_id ? isset($allowedIds[$o->listing_id])
                 : (int) $o->program_id === (int) $program->id)->pluck('supplier_id')->unique()->count();
@@ -168,22 +201,20 @@ class RfqPlanner
             if ($poolCache[$ck] === []) {
                 continue;
             }
-            // Исключить: уже спрошенных по товару этой программой в окне и тех, у кого на сайте есть цена
-            // на ВИДИМОЙ позиции странице (цена чужого варианта — не повод не спросить про наш).
+            // Исключить: уже спрошенных по товару этой программой в окне и тех, у кого на сайте есть НАДЁЖНАЯ цена
+            // на ВИДИМОЙ позиции странице (цена чужого варианта — не повод не спросить про наш). Поставщика с
+            // сомнительной ценой или сайтом на паузе — спрашиваем (его цене не верим).
             $asked = DB::table('mp_asks')->where('product_id', $p->id)->where('program_id', $program->id)
                 ->where('created_at', '>', now()->subDays($refresh))
                 ->where('status', '!=', MpAsk::STATUS_CANCELLED)->pluck('supplier_id')->flip();
-            $withPrice = DB::table('mp_listings as l')->join('mp_sites as s', 's.id', '=', 'l.site_id')
-                ->where('l.product_id', $p->id)->where('l.status', 'active')->whereNotNull('l.price')->whereNotNull('s.supplier_id')
-                ->get(['s.supplier_id', 'l.matched_codes', 'l.match_method', 'l.match_evidence'])
-                ->filter(fn ($l) => ItemScope::allows(ItemScope::itemCodes($p), $productCodes[(int) $p->id] ?? [],
+            $productListings = ($listings[$p->id] ?? collect())->filter($reliable);
+            $withPrice = $productListings->filter(fn ($l) => $l->supplier_id !== null
+                && ItemScope::allows(ItemScope::itemCodes($p), $productCodes[(int) $p->id] ?? [],
                     ItemScope::listingCodes($l->matched_codes, $l->match_method, $l->match_evidence)))
                 ->pluck('supplier_id')->flip();
             // То же по домену: сайт с ценой ещё не связан с карточкой поставщика (mp_sites.supplier_id пуст —
             // 19.10.2026: 93 таких сайта у mzCorp, 2 запроса пула ушли бы поставщику, чья цена уже есть на его сайте).
-            $priceDomains = DB::table('mp_listings as l')->join('mp_sites as s', 's.id', '=', 'l.site_id')
-                ->where('l.product_id', $p->id)->where('l.bench', false)->where('l.status', 'active')->whereNotNull('l.price')
-                ->pluck('s.domain')->map(fn ($d) => self::bareDomain((string) $d))->filter()->flip();
+            $priceDomains = $productListings->pluck('domain')->map(fn ($d) => self::bareDomain((string) $d))->filter()->flip();
             $take = 0;
             // Нагрузка: каждые 5 уже назначенных в прогоне запросов вдвое снижают приоритет поставщика —
             // товары одного типа расходятся по разным сильным поставщикам, а не по одним и тем же.

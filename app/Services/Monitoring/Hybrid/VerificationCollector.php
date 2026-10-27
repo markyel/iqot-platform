@@ -194,7 +194,7 @@ class VerificationCollector
      */
     private function recordKp(MpAsk $ask, float $price, ?bool $vat, ?string $currency, ?string $notes): void
     {
-        $source = $ask->kind === 'verify' ? 'verify' : ($ask->reason === 'pool' ? 'pool' : 'on_request');
+        $source = $ask->kind === 'verify' ? 'verify' : (in_array($ask->reason, ['pool', 'low_trust'], true) ? $ask->reason : 'on_request');
         MpKpOffer::query()->updateOrCreate(
             ['request_item_id' => (int) $ask->request_item_id, 'supplier_id' => (int) $ask->supplier_id],
             [
@@ -204,12 +204,14 @@ class VerificationCollector
                 'notes' => $notes ? mb_substr($notes, 0, 255) : null, 'received_at' => now(),
             ]
         );
-        // КП по листингу «по запросу» — в историю цен листинга (цена сайта не подменяется).
+        // КП по листингу («по запросу», недоверенный сайт) — в историю цен листинга (цена сайта не подменяется;
+        // в выдаче КП заменяет ненадёжную цену сайта — MonitoringProgramController::sourcesFor).
         if ($ask->kind !== 'verify' && $ask->listing_id) {
             MpPriceObservation::create([
                 'listing_id' => $ask->listing_id, 'product_id' => (int) $ask->product_id, 'price' => round($price, 2),
                 'currency' => $currency ? strtoupper(mb_substr($currency, 0, 3)) : 'RUB', 'vat_included' => $vat,
-                'method' => 'kp', 'status' => MpPriceObservation::STATUS_OK, 'note' => 'КП (по запросу)', 'observed_at' => now(),
+                'method' => 'kp', 'status' => MpPriceObservation::STATUS_OK,
+                'note' => $ask->reason === 'low_trust' ? 'КП (недоверенный сайт)' : 'КП (по запросу)', 'observed_at' => now(),
             ]);
         }
         DB::table('program_items')->where('product_id', $ask->product_id)->update(['prices_changed_at' => now()]);

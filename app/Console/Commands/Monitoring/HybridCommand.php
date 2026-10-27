@@ -12,7 +12,7 @@ use Illuminate\Console\Command;
  * Ф3 «Гибрид» (docs/monitoring-design.md §2, решения владельца 2026-10-15):
  *   link-sites  сайты ↔ поставщики IQOT (кому слать проверочный КП)
  *   plan        выборка позиций на проверку → mp_asks (по уровню доверия, бюджет писем в сутки)
- *   plan-kp     запросы КП поставщикам без цены на сайте: «по запросу» (всегда), затем пул IQOT (< 3 цен)
+ *   plan-kp     запросы КП: «по запросу» (всегда), поставщикам сайтов на паузе (всё спрашиваем), затем пул IQOT (< 3 надёжных цен)
  *   send        адресные проверочные письма через тех. заявку программы (флаг MONITORING_HYBRID_SEND)
  *   collect     статусы отправки, КП → сверки и доверие, отказы «нет в наличии», просрочка
  *   link-items  позиции обычных заявок ↔ канонические товары
@@ -60,7 +60,7 @@ class HybridCommand extends Command
                 break;
             case 'plan-kp':
                 $r = (new \App\Services\Monitoring\Hybrid\RfqPlanner())->plan($dry);
-                $this->info("Запросы КП: «по запросу» {$r['on_request']}, пул {$r['pool']}" . ($dry ? ' (dry-run)' : ''));
+                $this->info("Запросы КП: «по запросу» {$r['on_request']}, недоверенным сайтам {$r['low_trust']}, пул {$r['pool']}" . ($dry ? ' (dry-run)' : ''));
                 if ($r['pool_by_supplier'] ?? []) {
                     $top = array_slice($r['pool_by_supplier'], 0, 15, true);
                     $emails = \Illuminate\Support\Facades\DB::connection('reports')->table('suppliers')->whereIn('id', array_keys($top))->pluck('email', 'id');

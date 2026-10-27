@@ -5,6 +5,9 @@ namespace App\Services\Monitoring\Hybrid;
 use App\Support\Senders\SenderPool;
 use App\Models\Monitoring\MpAsk;
 use App\Models\Monitoring\MpProduct;
+use App\Services\AliasExp\AliasBranch;
+use App\Services\AliasExp\AliasMailboxFactory;
+use App\Services\AliasExp\AliasWindow;
 use App\Services\Api\OpenAIClassifierClient;
 use App\Services\Generate\Batch;
 use App\Services\Generate\CampaignBodyGenerator;
@@ -41,10 +44,14 @@ class VerificationMailer
     private const HELD = '2037-01-01';
 
     /**
-     * Три вида писем мониторинга, по очереди (письма разных видов не смешиваются):
+     * Виды писем мониторинга, по очереди (письма разных видов не смешиваются):
      *  verify     — «подтвердите цену с вашего сайта» (бюджет «проверочных писем в сутки»);
      *  on_request — «видели товар у вас на сайте, цены нет — пришлите КП» (адресно, со ссылкой);
-     *  pool       — обычный запрос КП профильному пулу.
+     *  low_trust  — сайт на паузе (в основном цены неправдивые): обычный запрос КП поставщику сайта, со ссылкой;
+     *  pool       — обычный запрос КП профильному пулу; доля товаров (как у заявок, services.alias_exp.share) —
+     *               веткой «ящик на батч» (sendPoolViaAlias), остальное — с обычных ящиков (решение 27.10.2026).
+     * Лимит адресата — канал «мониторинг» (RecipientChannels): до половины его капа, если ему сегодня есть письма
+     * заявок, иначе весь кап.
      * Решения владельца 2026-10-15: письма малопозиционные — размер как у обычной рассылки
      * (services.email_planner.dayplan_max_per_email; анализ 05.09–05.10: в письме на 1 позицию
      * цен на позицию в 4,7 раза больше, чем в письме на 4, у тех же получателей); сколько писем
@@ -79,14 +86,24 @@ class VerificationMailer
         $kinds = [
             'verify' => fn (MpAsk $a) => $a->kind === 'verify',
             'on_request' => fn (MpAsk $a) => $a->kind === 'rfq' && $a->reason === 'on_request',
+            'low_trust' => fn (MpAsk $a) => $a->kind === 'rfq' && $a->reason === 'low_trust',
             'pool' => fn (MpAsk $a) => $a->kind === 'rfq' && $a->reason === 'pool',
         ];
         foreach ($kinds as $kind => $filter) {
+            $kindAsks = $all->filter($filter);
+            if ($kind === 'pool') {
+                // Доля пула — экспериментальным путём (ящик на батч); остальное и не влезшее в бюджет ящиков — классикой.
+                $alias = $this->sendPoolViaAlias($kindAsks, $suppliers, $recipientLeft, $tools, $dryRun);
+                $out['letters'] += $alias['letters'];
+                $out['items'] += $alias['items'];
+                $out['by_kind']['pool_alias'] = $alias['letters'];
+                $kindAsks = $kindAsks->reject(fn (MpAsk $a) => isset($alias['ask_ids'][$a->id]));
+            }
             $budget = $kind === 'verify'
                 ? MonitoringSettings::get('verify_letters_per_day') - $this->lettersToday()
                 : PHP_INT_MAX;
             $sent = 0;
-            foreach ($this->supplierGroups($all->filter($filter), $kind) as [$supplierId, $supplierAsks]) {
+            foreach ($this->supplierGroups($kindAsks, $kind) as [$supplierId, $supplierAsks]) {
                 $sup = $suppliers[$supplierId] ?? null;
                 if (!$sup) {
                     $skip('не годен к рассылке');
@@ -208,6 +225,192 @@ class VerificationMailer
         return max(1, (int) config('services.email_planner.dayplan_max_per_email', 4));
     }
 
+    /** Товар пула в доле ветки «ящик на батч» — стабильно по товару, доля как у заявок (services.alias_exp.share). */
+    public static function poolInAliasShare(int $productId): bool
+    {
+        $pct = (int) round(100 * max(0.0, min(1.0, (float) config('services.alias_exp.share', 0.2))));
+
+        return $pct > 0 && (crc32('alias:mon:' . $productId) % 100) < $pct;
+    }
+
+    /**
+     * Пул — и классическим, и экспериментальным путём (решение владельца 27.10.2026): товары доли ветки
+     * «ящик на батч» уходят с нового ящика на товар — одно письмо без меток каждому поставщику его запланированных
+     * запросов (ответы опознаются по адресу ящика, как в AliasBranch). Батч — один товар: получатели пула у товаров
+     * разные (RfqPlanner выравнивает нагрузку), а запрос мониторинга — пара товар × поставщик. Бюджет ящиков —
+     * общий с планом дня (AliasBranch::budgetToday, план дня раньше); первыми — товары с большим числом получателей.
+     * Не влезшее в бюджет и остальная доля — классикой. Лимит адресата — канал «мониторинг».
+     *
+     * @param \Illuminate\Support\Collection<int,MpAsk> $asks запросы пула
+     * @param array<int,object> $suppliers годные к рассылке поставщики
+     * @param array<string,int> $recipientLeft остаток капа мониторинга по адресам (уменьшается)
+     * @return array{letters:int, items:int, batches:int, ask_ids:array<int,true>}
+     */
+    private function sendPoolViaAlias(\Illuminate\Support\Collection $asks, array $suppliers, array &$recipientLeft, array $tools, bool $dryRun): array
+    {
+        $res = ['letters' => 0, 'items' => 0, 'batches' => 0, 'ask_ids' => []];
+        if (!AliasBranch::enabled() || $asks->isEmpty()) {
+            return $res;
+        }
+        $budget = AliasBranch::budgetToday();
+        $share = $asks->filter(fn (MpAsk $a) => self::poolInAliasShare((int) $a->product_id));
+        if ($budget <= 0 || $share->isEmpty()) {
+            return $res;
+        }
+        $products = MpProduct::query()->with('identifiers')->whereIn('id', $share->pluck('product_id')->unique())->get()->keyBy('id');
+
+        // Получатели товара программы: поставщики его запросов, годные к рассылке, с остатком капа; один адрес — одно письмо.
+        $batches = [];
+        foreach ($share->groupBy(fn (MpAsk $a) => $a->program_id . '|' . $a->product_id) as $productAsks) {
+            $recipients = [];
+            foreach ($productAsks->pluck('supplier_id')->unique() as $sid) {
+                $sup = $suppliers[(int) $sid] ?? null;
+                $email = $sup ? mb_strtolower(trim($sup->email)) : '';
+                if ($email !== '' && !isset($recipients[$email]) && ($recipientLeft[$email] ?? 0) > 0) {
+                    $recipients[$email] = $sup;
+                }
+            }
+            $product = $products[(int) $productAsks->first()->product_id] ?? null;
+            if ($recipients !== [] && $product) {
+                $batches[] = [$productAsks, $recipients, $product];
+            }
+        }
+        usort($batches, fn ($a, $b) => count($b[1]) <=> count($a[1]));
+
+        foreach (array_slice($batches, 0, $budget) as [$productAsks, $recipients, $product]) {
+            $sent = $dryRun
+                ? array_fill_keys(array_map(fn ($s) => (int) $s->id, $recipients), 0)
+                : $this->sendAliasBatch($productAsks, array_values($recipients), $product, $tools);
+            if ($sent === []) {
+                continue;
+            }
+            $res['batches']++;
+            foreach ($recipients as $email => $sup) {
+                if (array_key_exists((int) $sup->id, $sent)) {
+                    $recipientLeft[$email]--;
+                    $res['letters']++;
+                }
+            }
+            foreach ($productAsks as $a) {
+                if (array_key_exists((int) $a->supplier_id, $sent)) {
+                    $res['ask_ids'][$a->id] = true;
+                    $res['items']++;
+                }
+            }
+            if (!$dryRun) {
+                app(MonitoringGovernor::class)->record('email', count($sent), 0.0);
+            }
+        }
+
+        return $res;
+    }
+
+    /**
+     * Батч ветки «ящик на батч» на один товар пула: новый ящик (AliasMailboxFactory), позиция тех. заявки, письмо без
+     * меток каждому получателю по слотам рабочих часов ящика (AliasWindow). Сбой до записи писем — ящик удаляем.
+     *
+     * @param \Illuminate\Support\Collection<int,MpAsk> $asks запросы этого товара
+     * @param object[] $recipients строки поставщиков
+     * @return array<int,int> supplier_id => email_queue_id записанных писем
+     */
+    private function sendAliasBatch(\Illuminate\Support\Collection $asks, array $recipients, MpProduct $product, array $tools): array
+    {
+        $first = $asks->first();
+        $request = $this->techRequest((int) $first->program_id);
+        $factory = app(AliasMailboxFactory::class);
+        $mailbox = null;
+        $itemId = null;
+        try {
+            $mailbox = $factory->create(AliasMailboxFactory::expiresAt(null));
+            [$name, $article] = $this->naming($first, $product);
+            $row = [
+                'request_id' => $request->id,
+                'position_number' => (int) DB::connection(self::CONN)->table('request_items')->where('request_id', $request->id)->max('position_number') + 1,
+                'name' => mb_substr($name, 0, 1000),
+                'brand' => $product->brand ? mb_substr($product->brand, 0, 255) : null,
+                'article' => $article ? mb_substr($article, 0, 255) : null,
+                'quantity' => 1,
+                'unit' => 'шт',
+                'description' => null,
+                'status' => 'pending',
+                'product_type_id' => $product->product_type_id ?: null,
+                'domain_id' => $product->domain_id ?: null,
+                'created_at' => now(),
+            ];
+            $itemId = (int) DB::connection(self::CONN)->table('request_items')->insertGetId($row);
+
+            $batch = new Batch();
+            $batch->purpose = 'alias'; // без меток: ящик и есть метка
+            $batch->items = [['id' => $itemId] + $row + ['request_number' => $request->request_number, 'is_customer_request' => 0,
+                'category' => null, 'subject_name' => $name]];
+            $batch->itemsCount = 1;
+            $batch->useNewRouting = true;
+            $batch->requestIds = [(int) $request->id];
+            $batch->requestNumbers = [$request->request_number];
+            $batch->productTypeIds = $product->product_type_id ? [(int) $product->product_type_id] : [];
+            $batch->domainIds = $product->domain_id ? [(int) $product->domain_id] : [];
+            $batch->category = 'Мониторинг';
+            $batch->targetCategories = ['NEW_ROUTING'];
+            $batch->sender = $tools['assigner']->fullSender($mailbox['sender_id']);
+            $supRows = array_map(fn ($s) => ['id' => (int) $s->id, 'name' => $s->name, 'email' => $s->email,
+                'contact_person' => $s->contact_person, 'categories' => $s->categories], $recipients);
+            $batch->suppliers = $supRows;
+            $batch->supplierIds = array_column($supRows, 'id');
+
+            $tools['token']->generate($batch); // внутренний реф батча (в письмо не попадает)
+            $tools['body']->generate($batch);
+            $slots = AliasWindow::slots(count($supRows));
+            $emails = [];
+            foreach ($supRows as $i => $sup) {
+                $e = $tools['builder']->build($batch, $sup);
+                $e['wave'] = 1;
+                $e['scheduled_at'] = $slots[$i]->toDateTimeString();
+                $emails[] = $e;
+            }
+            $res = $tools['persister']->persist($batch, $emails);
+            if ($res['queue_ids'] === []) {
+                throw new \RuntimeException('письма не записаны');
+            }
+        } catch (\Throwable $e) {
+            Log::error('VerificationMailer: батч «ящик на батч» не собран', ['product_id' => $product->id, 'mailbox' => $mailbox['email'] ?? null, 'error' => $e->getMessage()]);
+            if ($itemId) {
+                DB::connection(self::CONN)->table('request_items')->where('id', $itemId)->delete();
+            }
+            if ($mailbox) {
+                try {
+                    $factory->drop(DB::table('alias_mailboxes')->find($mailbox['mailbox_id']));
+                } catch (\Throwable) {
+                }
+            }
+
+            return [];
+        }
+
+        // Письма записаны — дальше только учёт; ящик не трогаем, даже если учёт споткнётся.
+        $map = array_combine(array_map('intval', $res['supplier_ids']), array_map('intval', $res['queue_ids']));
+        try {
+            DB::table('alias_mailboxes')->where('id', $mailbox['mailbox_id'])->update([
+                'batch_ids' => json_encode([(int) $res['batch_id']]),
+                'request_item_ids' => json_encode([$itemId]),
+                'updated_at' => now(),
+            ]);
+            foreach ($asks as $ask) {
+                if (isset($map[(int) $ask->supplier_id])) {
+                    $ask->forceFill([
+                        'status' => MpAsk::STATUS_QUEUED, 'request_item_id' => $itemId, 'batch_id' => (int) $res['batch_id'],
+                        'email_queue_id' => $map[(int) $ask->supplier_id], 'queued_at' => now(),
+                    ])->save();
+                }
+            }
+            DB::connection(self::CONN)->table('requests')->where('id', $request->id)
+                ->update(['total_items' => DB::raw('total_items + 1'), 'updated_at' => now()]);
+        } catch (\Throwable $e) {
+            Log::error('VerificationMailer: учёт батча «ящик на батч» не записан', ['batch_id' => $res['batch_id'], 'error' => $e->getMessage()]);
+        }
+
+        return $map;
+    }
+
     /** @param \Illuminate\Support\Collection<int, MpAsk> $asks */
     private function sendLetter($asks, object $sup, int $senderId, array $tools, string $kind = 'verify'): bool
     {
@@ -236,6 +439,10 @@ class VerificationMailer
             } elseif ($kind === 'on_request') {
                 $name = $baseName;
                 $description = 'Товар на вашем сайте (цена не указана): ' . ($ask->listing?->url ?? '');
+            } elseif ($kind === 'low_trust') {
+                // Цене сайта не верим (в основном расходится с КП) — в письме её не называем, просим актуальную.
+                $name = $baseName;
+                $description = 'Товар на вашем сайте: ' . ($ask->listing?->url ?? '') . '. Просим актуальную цену и наличие.';
             } else {
                 $name = $baseName;
                 $description = null;

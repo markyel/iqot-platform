@@ -379,13 +379,7 @@ class MonitoringProgramController extends Controller
         }
         $kp = $kp->sortBy('at')->keyBy('listing_id'); // последнее по времени перекрывает
         // Исход последней сверки по листингу (Правило 1 — замещение, Правило 2 — пометка «сомнительно»).
-        $verifOutcome = [];
-        foreach (\App\Models\Monitoring\MpVerification::query()->whereIn('listing_id', $listings->pluck('id')->filter())
-            ->orderBy('verified_at')->get(['listing_id', 'outcome']) as $vo) {
-            if ($vo->listing_id) {
-                $verifOutcome[(int) $vo->listing_id] = $vo->outcome;
-            }
-        }
+        $verifOutcome = \App\Support\Monitoring\SiteTrust::lastOutcomes($listings->pluck('id')->all());
         // «Подозрительно» из-за выброса от медианы ТОВАРА — пересчитывается по ценам позиции (PriceSanity).
         $suspIds = $listings->where('status', \App\Models\Monitoring\MpListing::STATUS_SUSPICIOUS)->pluck('id')->all();
         $outlierIds = $suspIds === [] ? [] : \App\Models\Monitoring\MpPriceObservation::query()
@@ -401,14 +395,18 @@ class MonitoringProgramController extends Controller
 
         $rows = $listings->map(function ($l) use ($kp, $history, $withHistory, $outlierIds, $verifOutcome) {
             $v = $kp[$l->id] ?? null;
-            // Правило 1: последняя сверка листинга price_mismatch при наличии КП → web-цена опровергнута,
-            //   в сводку идёт цена КП (замещение). Правило 2: у сайта непогашенное расхождение
-            //   (consecutive_mismatch > 0, доверие понижено) → все его цены «сомнительные», кроме
-            //   индивидуально подтверждённых (match) и замещённых на КП.
+            // Надёжность web-цены — SiteTrust: опровергнута КП (price_mismatch), сайт с непогашенным расхождением
+            //   (кроме индивидуально подтверждённых — match) или на паузе (в основном неправда) → не надёжна.
+            // Правило 1: ненадёжная web-цена при наличии КП по странице замещается ценой КП (web_superseded) —
+            //   в т.ч. КП, запрошенное у недоверенного сайта. Правило 2: ненадёжная без КП — «сомнительная».
             $outcome = $verifOutcome[(int) $l->id] ?? null;
-            $siteDoubtful = (int) ($l->site?->consecutive_mismatch ?? 0) > 0;
-            $superseded = $outcome === 'price_mismatch' && $v !== null;
-            $doubtful = $siteDoubtful && $outcome !== 'match' && !$superseded;
+            $paused = \App\Support\Monitoring\SiteTrust::paused($l->site?->blocked_reason, $l->site?->blocked_until);
+            $siteDoubtful = \App\Support\Monitoring\SiteTrust::doubtful((int) ($l->site?->consecutive_mismatch ?? 0), $paused);
+            $webReliable = \App\Support\Monitoring\SiteTrust::reliable($outcome, $siteDoubtful, $paused);
+            // КП на аналог (match_error) или в другой базе цены (basis_diff) цену товара не заменяет.
+            $kpUsable = $v !== null && !in_array($outcome, ['match_error', 'basis_diff'], true);
+            $superseded = $l->price !== null && $kpUsable && !$webReliable;
+            $doubtful = $l->price !== null && !$kpUsable && !$webReliable;
             $row = [
                 'source_type' => 'site',
                 'supplier_domain' => $l->site?->domain,

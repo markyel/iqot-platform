@@ -121,10 +121,14 @@ return [
         'recipient_daily_cap' => (int) env('EMAILS_RECIPIENT_DAILY_CAP', 10),
         // Изолированные дневные лимиты писем на получателя по каналам (решение владельца 19.10.2026,
         // App\Services\Dispatch\RecipientChannels): заявки — кап адресата (выше), эксперимент «ящик на батч» —
-        // доля от него (не меньше 1), мониторинг — свой фиксированный. Общий — только пол интервала между письмами.
+        // доля от него (не меньше 1), мониторинг — доля капа адресата (решение 27.10.2026): есть письма заявок
+        // этому адресату сегодня — до monitoring_share_contended, нет — до monitoring_share_free; не меньше
+        // monitoring_cap. Общий — только пол интервала между письмами.
         'channels' => [
             'alias_share' => (float) env('EMAILS_CAP_ALIAS_SHARE', 0.2),
             'monitoring_cap' => (int) env('EMAILS_CAP_MONITORING', 2),
+            'monitoring_share_contended' => (float) env('EMAILS_CAP_MONITORING_SHARE_CONTENDED', 0.5),
+            'monitoring_share_free' => (float) env('EMAILS_CAP_MONITORING_SHARE_FREE', 1.0),
         ],
         // Границы и шаг адаптации per-адрес cap (по вовлечённости).
         'recipient_cap_max' => (int) env('EMAILS_RECIPIENT_CAP_MAX', 15),        // ответил/офферы → к max
