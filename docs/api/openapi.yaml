@@ -925,6 +925,8 @@ components:
         web_price: { type: boolean, description: 'Цена получена со страницы сайта поставщика' }
         email_confirmed: { type: boolean, description: 'Поставщик подтвердил цену сайта по почте' }
         kp: { type: boolean, description: 'Есть КП / счёт поставщика по этому товару' }
+        doubtful: { type: boolean, description: 'Сомнительно: доверие к сайту понижено (поймано расхождение цены) — источник виден, но исключён из summary/best_price' }
+        web_superseded: { type: boolean, description: 'Web-цена опровергнута КП (price_mismatch): в summary/best_price идёт цена из поля kp, а не price' }
 
     MonitoringPriceSource:
       type: object
