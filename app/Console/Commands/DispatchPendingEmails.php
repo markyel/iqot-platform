@@ -6,6 +6,7 @@ use App\Jobs\SendQueuedEmailJob;
 use App\Models\Reports\EmailQueue;
 use App\Models\Reports\RecipientMailbox;
 use App\Services\Dispatch\RecipientChannels;
+use App\Support\Senders\SmtpServerCaps;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -106,8 +107,8 @@ class DispatchPendingEmails extends Command
                     ->whereColumn('rm.email', DB::raw('LOWER(eq.to_email)'))
                     ->where('rm.is_blocked', 1);
             })
-            ->groupBy('s.id', 's.send_delay_seconds', 's.daily_limit', 's.emails_sent_today', 's.last_send_date')
-            ->get(['s.id', 's.send_delay_seconds', 's.daily_limit', 's.emails_sent_today', 's.last_send_date']);
+            ->groupBy('s.id', 's.send_delay_seconds', 's.daily_limit', 's.emails_sent_today', 's.last_send_date', 's.smtp_server')
+            ->get(['s.id', 's.send_delay_seconds', 's.daily_limit', 's.emails_sent_today', 's.last_send_date', 's.smtp_server']);
 
         if ($senders->isEmpty()) {
             $this->info('No pending emails.');
@@ -133,6 +134,9 @@ class DispatchPendingEmails extends Command
             ->groupBy('sender_id')
             ->pluck('n', 'sender_id');
         $dailyLimitHit = 0;
+        // Суточный потолок сервера = аккаунта провайдера (REG.RU: 3000 писем за 24 ч на аккаунт), SmtpServerCaps.
+        $serverLeft = SmtpServerCaps::remaining();
+        $serverCapHit = 0;
         // Ящики ветки «ящик на батч» шлют только в своё окно (будни 9–18 МСК), уже общего окна тика.
         $aliasClosed = !\App\Services\AliasExp\AliasWindow::isOpen() ? $aliasIds : [];
 
@@ -172,6 +176,14 @@ class DispatchPendingEmails extends Command
                     continue;
                 }
                 $perSenderCap = min($perSenderCap, $remainingDaily);
+            }
+            $server = mb_strtolower((string) $sender->smtp_server);
+            if (isset($serverLeft[$server])) {
+                if ($serverLeft[$server] <= 0) {
+                    $serverCapHit++;
+                    continue;
+                }
+                $perSenderCap = min($perSenderCap, $serverLeft[$server]);
             }
             // Берём по ОДНОМУ письму на созревшего получателя (GROUP BY), с буфером
             // +50 на случай, что часть получателей уже заняты другим ящиком в этом
@@ -259,10 +271,13 @@ class DispatchPendingEmails extends Command
             if ($sentThisSender >= $perSenderCap) {
                 $totalCapHit++;
             }
+            if (isset($serverLeft[$server])) {
+                $serverLeft[$server] -= $sentThisSender;
+            }
         }
 
         $this->info("Dispatched: {$dispatched} (senders: {$senders->count()}, получателей: "
-            . count($reserved) . ", на тик-лимите: {$totalCapHit}, на дневном лимите: {$dailyLimitHit}) по каналам: " . json_encode($byChannel));
+            . count($reserved) . ", на тик-лимите: {$totalCapHit}, на дневном лимите: {$dailyLimitHit}, на лимите аккаунта: {$serverCapHit}) по каналам: " . json_encode($byChannel));
         return self::SUCCESS;
     }
 

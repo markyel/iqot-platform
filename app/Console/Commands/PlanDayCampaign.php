@@ -692,7 +692,8 @@ class PlanDayCampaign extends Command
                 $caps[(int) $s->id] = $rem;
             }
         }
-        return $caps;
+        // Суточный потолок аккаунта провайдера (REG.RU 3000/24 ч) — с учётом уже запланированного на сегодня.
+        return array_filter(\App\Support\Senders\SmtpServerCaps::clipByDb($caps, true), fn ($rem) => $rem > 0);
     }
 
     /**

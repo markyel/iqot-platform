@@ -14,7 +14,7 @@ class ReplenishMailboxes extends Command
 {
     protected $signature = 'emails:replenish-mailboxes {--dry-run : Показать план, ничего не создавая} {--force : Запуск при выключенном флаге}';
 
-    protected $description = 'Пополнение основного пула ящиков на живых доменах Beget до цели';
+    protected $description = 'Пополнение основного пула ящиков до цели: живые домены Beget и REG.RU, засев новых доменов REG.RU';
 
     public function handle(MailboxReplenisher $replenisher, OpsAlerter $alerter): int
     {
@@ -28,6 +28,8 @@ class ReplenishMailboxes extends Command
         $live = implode(', ', array_map(fn ($d, $p) => "{$d} {$p}%", array_keys($r['live']), $r['live']));
         $this->info("Пул: рабочих {$r['working']}, ждут возврата на живых доменах {$r['revivable']}, цель {$r['target']}, дефицит {$r['deficit']}");
         $this->line("Живые домены (спам за окно): " . ($live !== '' ? $live : 'нет'));
+        $this->line('Засев новых доменов: ' . ($r['seed'] !== [] ? implode(', ', $r['seed']) : 'нет'));
+        $this->line('Поставщики доменов: ' . ($r['providers'] !== [] ? implode(', ', array_map(fn ($d, $p) => "{$d}→{$p}", array_keys($r['providers']), $r['providers'])) : 'нет'));
         $this->info('План создания: ' . ($r['plan'] === [] ? 'нет' : json_encode($r['plan'], JSON_UNESCAPED_UNICODE)) . ($dry ? ' (dry-run)' : ''));
         foreach ($r['created'] as $email) {
             $this->line("  создан {$email}");

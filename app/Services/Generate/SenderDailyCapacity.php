@@ -3,6 +3,7 @@
 namespace App\Services\Generate;
 
 use App\Support\Senders\SenderPool;
+use App\Support\Senders\SmtpServerCaps;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -48,7 +49,8 @@ class SenderDailyCapacity
             $limit = max(1, (int) ($limits[$id] ?? $start));
             $map[$id] = max(0, $limit - (int) ($used[$id] ?? 0));
         }
-        return $map;
+        // Суточный потолок аккаунта провайдера (REG.RU 3000/24 ч) делят все его ящики.
+        return SmtpServerCaps::clipByDb($map, true);
     }
 
     /**

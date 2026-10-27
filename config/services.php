@@ -75,6 +75,12 @@ return [
         'relay_only' => (bool) env('EMAILS_RELAY_ONLY', true),
         'relay_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env('EMAILS_RELAY_HOSTS', 'smtp.beget.com'))))),
 
+        // Суточный потолок писем на SMTP-сервер = аккаунт провайдера (App\Support\Senders\SmtpServerCaps): у хостинга
+        // REG.RU 3000 писем за 24 ч на весь аккаунт (VIP 9000) — держим с запасом под ответы в беседах. Формат
+        // «host:лимит,…», напр. «server269.hosting.reg.ru:2700». Диспетчер, план дня и ёмкость генерации не берут сверх;
+        // без потолка сервера пополнение пула не создаёт там ящиков.
+        'smtp_server_daily_caps' => \App\Support\Senders\SmtpServerCaps::parse((string) env('EMAILS_SMTP_SERVER_DAILY_CAPS', '')),
+
         // ГЕНЕРИК-ТРАНСПORT ЧЕРЕЗ МИКРОСЕРВИС РЕЛЕЯ (universal-email-service, FastAPI :8000).
         // Вместо Symfony Mailer → socat (per-domain туннель) шлём HTTP POST /send на релей,
         // передавая smtp_server/креды ящика + тело/вложения; SMTP наружу делает релей с
@@ -271,13 +277,15 @@ return [
     // Восстановлено 16.10.2026: секцию и расписание случайно удалили 09.07 (4eb4838, 904004e) —
     // с тех пор отключённые ящики не возвращались (к 16.10 годных 48 из 210).
     // Пополнение основного пула ящиков до цели (решение владельца 27.10.2026, emails:replenish-mailboxes):
-    // новые — только на живых доменах нашего Beget (спам-отказов за health_days ≤ max_spam_pct при ≥ min_sent
-    // отправок), ≤ per_day в сутки, ≤ per_domain_max ящиков на домен; сначала возврат отключённых на живых доменах.
+    // новые — на живых доменах наших поставщиков, Beget и хостинга REG.RU (спам-отказов за health_days ≤ max_spam_pct
+    // при ≥ min_sent отправок), ≤ per_day в сутки, ≤ per_domain_max ящиков на домен; сначала возврат отключённых на
+    // живых доменах. Новый домен REG.RU без истории засевается до seed_per_domain ящиков. smtp/imap — для Beget.
     'mailbox_replenish' => [
         'enabled' => (bool) env('EMAILS_MAILBOX_REPLENISH_ENABLED', true),
         'target' => (int) env('EMAILS_MAILBOX_TARGET', 90),
         'per_day' => (int) env('EMAILS_MAILBOX_PER_DAY', 2),
         'per_domain_max' => (int) env('EMAILS_MAILBOX_PER_DOMAIN_MAX', 8),
+        'seed_per_domain' => (int) env('EMAILS_MAILBOX_SEED_PER_DOMAIN', 2),
         'health_days' => (int) env('EMAILS_MAILBOX_HEALTH_DAYS', 7),
         'max_spam_pct' => (float) env('EMAILS_MAILBOX_MAX_SPAM_PCT', 3),
         'min_sent' => (int) env('EMAILS_MAILBOX_MIN_SENT', 50),
@@ -748,6 +756,18 @@ return [
         'password' => env('BEGET_API_PASSWORD'),
         'url' => env('BEGET_API_URL', 'https://api.beget.com/api'),
         'timeout' => (int) env('BEGET_API_TIMEOUT', 30),
+    ],
+
+    // REG.RU (App\Services\Regru\RegruApi): REG.API (альтернативный пароль API; IP прода — в белом списке в кабинете)
+    // и ISPmanager хостингов (доступы панели отдаёт REG.API). pool_hosting_ids — хостинги, почтовые домены которых
+    // пополняют пул ящиков (рабочие хостинги не включать); exclude_domains — домены на них, которые не трогаем.
+    'regru' => [
+        'api_user' => env('REGRU_API_USER'),
+        'api_password' => env('REGRU_API_PASSWORD'),
+        'api_url' => env('REGRU_API_URL', 'https://api.reg.ru/api/regru2'),
+        'timeout' => (int) env('REGRU_API_TIMEOUT', 30),
+        'pool_hosting_ids' => array_values(array_filter(array_map('intval', explode(',', (string) env('REGRU_POOL_HOSTING_IDS', ''))))),
+        'exclude_domains' => array_values(array_filter(array_map('trim', explode(',', (string) env('REGRU_EXCLUDE_DOMAINS', ''))))),
     ],
 
 ];
