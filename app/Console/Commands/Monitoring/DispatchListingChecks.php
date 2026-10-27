@@ -52,6 +52,10 @@ class DispatchListingChecks extends Command
             ->where(function ($q) {
                 $q->whereNull('s.blocked_until')->orWhere('s.blocked_until', '<=', now());
             })
+            // Только товары, нужные хоть одной АКТИВНОЙ программе: программа на паузе (Пилот, решение владельца
+            // 27.10.2026) не тратит загрузки, рендеры и ИИ на переобход. Товары общие — нужен активной, обходим.
+            ->whereExists(fn ($q) => $q->from('program_items as pi')->join('monitoring_programs as mp', 'mp.id', '=', 'pi.program_id')
+                ->whereColumn('pi.product_id', 'l.product_id')->where('pi.active', true)->where('mp.status', 'active'))
             ->orderByRaw('l.next_check_at IS NULL DESC, l.next_check_at ASC')
             ->limit($limit * 20)
             ->get(['l.id', 'l.site_id']);

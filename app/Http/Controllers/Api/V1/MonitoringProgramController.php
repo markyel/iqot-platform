@@ -89,6 +89,10 @@ class MonitoringProgramController extends Controller
             return $this->error(422, 'validation_error', 'Invalid request.', $rid, $v->errors()->toArray());
         }
         $data = $v->validated();
+        // Остановку оператором (paused_reason=owner) клиент через API не снимает.
+        if (($data['status'] ?? null) === 'active' && $program->status === 'paused' && $program->paused_reason === 'owner') {
+            return $this->error(409, 'program_stopped', 'Program is stopped by the operator.', $rid);
+        }
         if (($data['status'] ?? null) === 'paused') {
             $data['paused_reason'] = 'client';
         } elseif (($data['status'] ?? null) === 'active') {
