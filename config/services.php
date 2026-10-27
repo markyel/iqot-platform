@@ -352,6 +352,10 @@ return [
     'email_receive' => [
         'enabled' => env('EMAILS_RECEIVE_ENABLED', false),
         'per_mailbox_limit' => (int) env('EMAILS_RECEIVE_LIMIT', 20),
+        // IMAP отклоняет вход столько часов подряд (без единого успешного опроса) — ящик снимаем (is_active=0) с
+        // оповещением: неверный/сменённый пароль, нужен пароль приложения (mail.ru). Без этого опрос месяцами писал
+        // отказ каждые 5 минут (david@wwwsend.ru, zakyp77@mail.ru — по 33 тыс. записей, 27.10.2026). 0 = выкл.
+        'auth_fail_deactivate_hours' => (int) env('EMAILS_RECEIVE_AUTH_FAIL_HOURS', 24),
     ],
 
     // AI-анализ ответов поставщиков (замена n8n «Process Email Conversations»).
