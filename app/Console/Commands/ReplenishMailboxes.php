@@ -12,13 +12,30 @@ use Illuminate\Console\Command;
  */
 class ReplenishMailboxes extends Command
 {
-    protected $signature = 'emails:replenish-mailboxes {--dry-run : Показать план, ничего не создавая} {--force : Запуск при выключенном флаге}';
+    protected $signature = 'emails:replenish-mailboxes {--dry-run : Показать план, ничего не создавая} {--force : Запуск при выключенном флаге}
+        {--domain= : Создать ящики на этом домене вне дефицита пула (ручной засев/проверка домена)}
+        {--count=1 : Сколько ящиков создать на --domain}';
 
     protected $description = 'Пополнение основного пула ящиков до цели: живые домены Beget и REG.RU, засев новых доменов REG.RU';
 
     public function handle(MailboxReplenisher $replenisher, OpsAlerter $alerter): int
     {
         $dry = (bool) $this->option('dry-run');
+        if (($domain = (string) $this->option('domain')) !== '') {
+            $r = $replenisher->createOn($domain, max(1, (int) $this->option('count')));
+            $this->info("Домен {$domain}: поставщик " . ($r['provider'] ?? '—') . ($r['room'] !== null ? ", место на аккаунте {$r['room']}" : ''));
+            foreach ($r['created'] as $email) {
+                $this->line("  создан {$email}");
+            }
+            foreach ($r['errors'] as $err) {
+                $this->error("  {$err}");
+            }
+            if ($r['created'] !== []) {
+                $alerter->send('<b>Ящики вне дефицита пула</b> на ' . e($domain) . ': ' . e(implode(', ', $r['created'])));
+            }
+
+            return $r['created'] !== [] || $r['errors'] === [] ? self::SUCCESS : self::FAILURE;
+        }
         if (!$dry && !$this->option('force') && !config('services.mailbox_replenish.enabled')) {
             $this->warn('Пополнение пула выключено (EMAILS_MAILBOX_REPLENISH_ENABLED=false). --force / --dry-run для ручного запуска.');
 

@@ -179,6 +179,55 @@ class MailboxReplenisher
         return $res;
     }
 
+    /**
+     * Ящики на конкретном домене вне дефицита пула (ручной засев/проверка домена): тот же путь создания, но в пределах
+     * потолка домена (засев — seed_per_domain, живой — per_domain_max) и места на аккаунте поставщика.
+     *
+     * @return array{created:string[], errors:string[], provider:?string, room:?int}
+     */
+    public function createOn(string $domain, int $count): array
+    {
+        $cfg = (array) config('services.mailbox_replenish', []);
+        $domain = mb_strtolower(trim($domain));
+        $res = ['created' => [], 'errors' => [], 'provider' => null, 'room' => null];
+        $provider = null;
+        foreach ($this->providers as $p) {
+            if ($p->isConfigured() && $p->manages($domain)) {
+                $provider = $p;
+                break;
+            }
+        }
+        if ($provider === null) {
+            $res['errors'][] = "{$domain}: домен не обслуживает ни один настроенный поставщик";
+
+            return $res;
+        }
+        $res['provider'] = $provider->name();
+        $h = DomainHealth::byDomain(max(1, (int) ($cfg['health_days'] ?? 7)))[$domain] ?? ['sent' => 0, 'spam_pct' => 0.0, 'working' => 0, 'disabled' => 0];
+        $live = DomainHealth::isLive($h, (float) ($cfg['max_spam_pct'] ?? 3), max(1, (int) ($cfg['min_sent'] ?? 50)));
+        $max = $live ? max(1, (int) ($cfg['per_domain_max'] ?? 8)) : max(0, (int) ($cfg['seed_per_domain'] ?? 2));
+        $left = max(0, $max - $h['working'] - $h['disabled']);
+        if (($room = $provider->roomLeft($domain)) !== null) {
+            $res['room'] = $room;
+            $left = min($left, $room);
+        }
+        $n = min(max(0, $count), $left);
+        if ($n < $count) {
+            $res['errors'][] = "{$domain}: можно создать {$n} из {$count} (потолок домена {$max}, занято " . ($h['working'] + $h['disabled'])
+                . ($room !== null ? ", место на аккаунте {$room}" : '') . ')';
+        }
+        for ($i = 0; $i < $n; $i++) {
+            try {
+                $res['created'][] = $this->create($provider, $domain);
+            } catch (\Throwable $e) {
+                $res['errors'][] = "{$domain}: " . $e->getMessage();
+                Log::error('MailboxReplenisher: ящик не создан', ['domain' => $domain, 'provider' => $provider->name(), 'error' => $e->getMessage()]);
+            }
+        }
+
+        return $res;
+    }
+
     private function create(MailboxProvider $provider, string $domain): string
     {
         if (!SenderPool::hasColumn()) {
