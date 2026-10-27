@@ -54,10 +54,24 @@ return [
 
     'hybrid' => [
         'send_enabled' => (bool) env('MONITORING_HYBRID_SEND', false),
-        // Запросы КП профильному пулу (RfqPlanner::pool). Выключено 16.10.2026: подборщик отдавал
-        // одних и тех же 8–9 «универсалов» по возрастанию id (в т.ч. наш liftway.ru) на все товары —
-        // 3 783 запроса. С 19.10.2026 пул ранжируется (RfqPlanner::rankPool) и выравнивается по нагрузке.
+        // Профильный пул IQOT в кандидатах волн RfqPlanner (без него — только поставщики с товаром на сайте).
+        // 16.10.2026 подборщик отдавал одних и тех же первых по id «универсалов» на все товары (3 783 запроса) —
+        // теперь порядок по ожидаемой отдаче и только поставщики со свободной ёмкостью.
         'pool_enabled' => (bool) env('MONITORING_HYBRID_POOL', false),
+        // Волны запросов КП (решение владельца 27.10.2026, RfqPlanner): цель — target_prices цен по позиции
+        // (КП + надёжные цены сайтов, если target_counts_site); волна — по убыванию ожидаемой отдачи, пока ожидаемые
+        // КП не покроют дефицит, не больше wave_max поставщиков; следующая — когда письма волны ушли и прошло
+        // wave_wait_days без набора цели (замер: 93% КП приходят за 5 дней). 1 позиция = 1 письмо.
+        'target_prices' => (int) env('MONITORING_HYBRID_TARGET_PRICES', 6),
+        'target_counts_site' => (bool) env('MONITORING_HYBRID_TARGET_COUNTS_SITE', true),
+        'wave_max' => (int) env('MONITORING_HYBRID_WAVE_MAX', 30),
+        'wave_wait_days' => (int) env('MONITORING_HYBRID_WAVE_WAIT_DAYS', 5),
+        // Ожидаемая отдача поставщика — доля писем с ценой за yield_window_days, подтянутая к средней с весом
+        // yield_prior_weight писем (новичок — средняя); у кого товар найден на сайте — не ниже site_yield
+        // (замер 27.10.2026: «по запросу» — 13% КП, основной режим — 0,89% на письмо).
+        'yield_window_days' => (int) env('MONITORING_HYBRID_YIELD_DAYS', 180),
+        'yield_prior_weight' => (int) env('MONITORING_HYBRID_YIELD_WEIGHT', 20),
+        'site_yield' => (float) env('MONITORING_HYBRID_SITE_YIELD', 0.13),
         // Не спрашивать пул: наши и тестовые адреса (e-mail целиком или домен). Свои ящики владельца — в .env прода.
         // Однотипные позиции пула (HomogeneousKey: тип + бренд + название без цифр) — в одно письмо, до N штук
         // (решение владельца 19.10.2026); разнотипные — по одной, как в обычной рассылке.
