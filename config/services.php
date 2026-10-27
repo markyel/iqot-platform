@@ -270,10 +270,25 @@ return [
     // кулдауна (revival_attempts → base/7/14/30д, потом banned_once). См. ReviveSenders.
     // Восстановлено 16.10.2026: секцию и расписание случайно удалили 09.07 (4eb4838, 904004e) —
     // с тех пор отключённые ящики не возвращались (к 16.10 годных 48 из 210).
+    // Пополнение основного пула ящиков до цели (решение владельца 27.10.2026, emails:replenish-mailboxes):
+    // новые — только на живых доменах нашего Beget (спам-отказов за health_days ≤ max_spam_pct при ≥ min_sent
+    // отправок), ≤ per_day в сутки, ≤ per_domain_max ящиков на домен; сначала возврат отключённых на живых доменах.
+    'mailbox_replenish' => [
+        'enabled' => (bool) env('EMAILS_MAILBOX_REPLENISH_ENABLED', true),
+        'target' => (int) env('EMAILS_MAILBOX_TARGET', 90),
+        'per_day' => (int) env('EMAILS_MAILBOX_PER_DAY', 2),
+        'per_domain_max' => (int) env('EMAILS_MAILBOX_PER_DOMAIN_MAX', 8),
+        'health_days' => (int) env('EMAILS_MAILBOX_HEALTH_DAYS', 7),
+        'max_spam_pct' => (float) env('EMAILS_MAILBOX_MAX_SPAM_PCT', 3),
+        'min_sent' => (int) env('EMAILS_MAILBOX_MIN_SENT', 50),
+        'smtp' => env('EMAILS_MAILBOX_SMTP', 'smtp.beget.com:465'),
+        'imap' => env('EMAILS_MAILBOX_IMAP', 'imap.beget.com:993'),
+    ],
     'email_sender_revival' => [
         'enabled' => (bool) env('EMAILS_REVIVAL_ENABLED', false),
         'probation_limit' => (int) env('EMAILS_REVIVAL_PROBATION_LIMIT', 30),  // стартовый дневной лимит при возврате
-        'daily_cap' => (int) env('EMAILS_REVIVAL_DAILY_CAP', 5),               // сколько ящиков возвращать за прогон
+        // 10/сутки, ящики живых доменов первыми (решение владельца 27.10.2026; было 5).
+        'daily_cap' => (int) env('EMAILS_REVIVAL_DAILY_CAP', 10),              // сколько ящиков возвращать за прогон
         'rest_days' => (int) env('EMAILS_REVIVAL_REST_DAYS', 3),               // мин. дней без МАССОВОЙ отправки («отсидка»)
         'max_attempts' => (int) env('EMAILS_REVIVAL_MAX_ATTEMPTS', 3),         // после стольких провалов пробации — banned_once
         'base_cooldown_days' => (int) env('EMAILS_REVIVAL_BASE_COOLDOWN_DAYS', 3), // отдых после ОБЫЧНОГО (не пробационного) бана

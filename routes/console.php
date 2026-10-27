@@ -95,6 +95,15 @@ Schedule::command('emails:recompute-recipient-caps')
     ->timezone('Europe/Moscow')
     ->withoutOverlapping();
 
+// Пополнение основного пула ящиков до цели на живых доменах Beget (решение владельца 27.10.2026): после возврата
+// (04:00) и прогрева (04:30) — счёт рабочих учитывает вернувшихся; до плана дня (07:30) — новый ящик со стартовым
+// лимитом успевает в план. Флаг EMAILS_MAILBOX_REPLENISH_ENABLED (команда сама проверяет).
+Schedule::command('emails:replenish-mailboxes')
+    ->weekdays()
+    ->dailyAt('05:00')
+    ->timezone('Europe/Moscow')
+    ->withoutOverlapping();
+
 // Выпуск отсрочек по капасити прогрева (Phase 3b): остатки батчей, не влезшие в
 // дневные лимиты (sender_capacity), и адресаты, снятые при бане ящика
 // (ban_containment), — перегенерация другими ящиками, когда лимиты освободились.

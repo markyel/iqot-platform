@@ -86,10 +86,18 @@ class ReviveSenders extends Command
             $eligible[] = $c;
         }
 
-        // Дольше всех отсидевшиеся — первыми (null = никогда не слал → в начало).
-        usort($eligible, static function ($a, $b) {
-            return strcmp((string) ($a->_lastMass ?? ''), (string) ($b->_lastMass ?? ''));
-        });
+        // Ящики живых доменов — первыми (горит домен, не ящик: на чистом домене ящик, отключённый, например, при сбое
+        // Яндекса 12–16.10, почти наверняка годен; решение владельца 27.10.2026), чище домен — раньше; внутри —
+        // дольше всех отсидевшиеся (null = никогда не слал → в начало).
+        $rcfg = (array) config('services.mailbox_replenish', []);
+        $health = \App\Services\Senders\DomainHealth::byDomain(max(1, (int) ($rcfg['health_days'] ?? 7)));
+        $rank = function ($c) use ($health, $rcfg): array {
+            $h = $health[\App\Services\Senders\DomainHealth::domainOf((string) $c->email)] ?? null;
+            $live = $h !== null && \App\Services\Senders\DomainHealth::isLive($h, (float) ($rcfg['max_spam_pct'] ?? 3), (int) ($rcfg['min_sent'] ?? 50));
+
+            return [$live ? 0 : 1, $live ? $h['spam_pct'] : 0, (string) ($c->_lastMass ?? '')];
+        };
+        usort($eligible, static fn ($a, $b) => $rank($a) <=> $rank($b));
         $toRevive = array_slice($eligible, 0, $dailyCap);
 
         $done = 0;
