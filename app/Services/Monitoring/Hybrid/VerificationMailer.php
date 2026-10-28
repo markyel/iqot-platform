@@ -32,7 +32,9 @@ use Illuminate\Support\Facades\Log;
  *  - получатель: поставщик сайта (mp_sites.supplier_id) или пула, с остатком дневного капа,
  *    не заблокирован, не на паузе отписки;
  *  - ящик: активный, не персональный, остаток дневного лимита (SenderDailyCapacity — учитывает
- *    уже поставленное на сегодня), не писал этому получателю 7 дней; шаблон/тон/угол — ящика;
+ *    уже поставленное на сегодня), не писал этому получателю 7 дней; из годных — с наибольшей ДОЛЕЙ
+ *    остатка лимита (pickByShare), чтобы новые и вернувшиеся ящики с малым лимитом тоже писали и
+ *    прогревались; шаблон/тон/угол — ящика;
  *  - письмо: позиций — как в обычной рассылке (itemsPerLetter); у каждой запроса своя позиция тех. заявки (повторно спрашивать ту же
  *    позицию тот же поставщик persister не даст), цена сайта — в названии позиции (видна в любом
  *    формате шаблона и в AI-разборе ответа), страница — в описании.
@@ -42,6 +44,9 @@ class VerificationMailer
     private const CONN = 'reports';
 
     private const HELD = '2037-01-01';
+
+    /** @var array<int,int> sender_id => дневной лимит (для выбора ящика по доле остатка) */
+    private array $senderLimits = [];
 
     /**
      * Виды писем мониторинга, по очереди (письма разных видов не смешиваются):
@@ -609,9 +614,10 @@ class VerificationMailer
             ->where(fn ($q) => $q->whereNull('blocked_until')->orWhere('blocked_until', '<=', now()))
             ->where('daily_limit', '>', 0)
             ->where(fn ($q) => $q->whereNull('is_personal')->orWhere('is_personal', 0))
-            ->pluck('id')->map(fn ($v) => (int) $v)->all();
+            ->pluck('daily_limit', 'id')->map(fn ($v) => (int) $v)->all();
+        $this->senderLimits = $ids;
 
-        return array_filter((new SenderDailyCapacity())->remainingMap($ids), fn ($left) => $left > 0);
+        return array_filter((new SenderDailyCapacity())->remainingMap(array_keys($ids)), fn ($left) => $left > 0);
     }
 
     /** @return array<string,true> "sender_id|email" за 7 дней (ротация ящик × получатель) */
@@ -628,16 +634,32 @@ class VerificationMailer
         return $out;
     }
 
-    /** Ящик с наибольшим остатком, не писавший получателю 7 дней. */
     private function pickSender(array $senders, array $pairs, string $email): ?int
     {
+        return self::pickByShare($senders, $this->senderLimits, $pairs, $email);
+    }
+
+    /**
+     * Ящик с наибольшей ДОЛЕЙ остатка дневного лимита (остаток / лимит), не писавший получателю 7 дней; при равной
+     * доле — случайный. Раньше брался наибольший абсолютный остаток: ящики с лимитом 200+ забирали всё, а новые и
+     * вернувшиеся (лимит ~19–30) не получали писем и поэтому не прогревались (28.10.2026: 11 из 12 таких — 0 писем).
+     *
+     * @param array<int,int> $left sender_id => остаток на сегодня
+     * @param array<int,int> $limits sender_id => дневной лимит
+     * @param array<string,true> $pairs "sender_id|email" — уже писал получателю
+     */
+    public static function pickByShare(array $left, array $limits, array $pairs, string $email): ?int
+    {
         $best = null;
-        foreach ($senders as $id => $left) {
-            if ($left <= 0 || isset($pairs[$id . '|' . $email])) {
+        $bestShare = -1.0;
+        foreach ($left as $id => $n) {
+            if ($n <= 0 || isset($pairs[$id . '|' . $email])) {
                 continue;
             }
-            if ($best === null || $left > $senders[$best] || ($left === $senders[$best] && random_int(0, 1) === 1)) {
-                $best = $id;
+            $share = $n / max(1, (int) ($limits[$id] ?? $n));
+            if ($best === null || $share > $bestShare || ($share === $bestShare && random_int(0, 1) === 1)) {
+                $best = (int) $id;
+                $bestShare = $share;
             }
         }
 
