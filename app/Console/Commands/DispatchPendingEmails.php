@@ -225,6 +225,13 @@ class DispatchPendingEmails extends Command
                             ->from('recipient_mailboxes as rm')
                             ->whereColumn('rm.email', DB::raw('LOWER(email_queue.to_email)'))
                             ->where('rm.is_blocked', 1);
+                    })
+                    // Домен в стоп-листе (blocked_domains: жалобы, домены клиентов) — не шлём, даже если письмо
+                    // попало в очередь в обход фильтров генерации (28.10.2026: myzip.ru / mylift.ru — ящики клиента).
+                    ->whereNotExists(function ($q) {
+                        $q->select(DB::raw(1))
+                            ->from('blocked_domains as bd')
+                            ->whereColumn('bd.domain', DB::raw("SUBSTRING_INDEX(LOWER(email_queue.to_email), '@', -1)"));
                     });
                 // Письма мониторинга идут и с обычных ящиков, и с ящиков ветки «ящик на батч» — разделяем по батчу.
                 if ($channel === RecipientChannels::MONITORING) {
