@@ -107,8 +107,8 @@ class DispatchPendingEmails extends Command
                     ->whereColumn('rm.email', DB::raw('LOWER(eq.to_email)'))
                     ->where('rm.is_blocked', 1);
             })
-            ->groupBy('s.id', 's.send_delay_seconds', 's.daily_limit', 's.emails_sent_today', 's.last_send_date', 's.smtp_server')
-            ->get(['s.id', 's.send_delay_seconds', 's.daily_limit', 's.emails_sent_today', 's.last_send_date', 's.smtp_server']);
+            ->groupBy('s.id', 's.email', 's.send_delay_seconds', 's.daily_limit', 's.emails_sent_today', 's.last_send_date', 's.smtp_server')
+            ->get(['s.id', 's.email', 's.send_delay_seconds', 's.daily_limit', 's.emails_sent_today', 's.last_send_date', 's.smtp_server']);
 
         if ($senders->isEmpty()) {
             $this->info('No pending emails.');
@@ -139,6 +139,13 @@ class DispatchPendingEmails extends Command
         $serverCapHit = 0;
         // Ящики ветки «ящик на батч» шлют только в своё окно (будни 9–18 МСК), уже общего окна тика.
         $aliasClosed = !\App\Services\AliasExp\AliasWindow::isOpen() ? $aliasIds : [];
+        // Паузы по отписке (ящик / наш домен × получатель, SenderPauses): такие письма ждут в очереди конца паузы.
+        $eligibleRecipients = [];
+        foreach ($eligible as $byRecipient) {
+            $eligibleRecipients += $byRecipient;
+        }
+        $pauses = (new \App\Services\Senders\SenderPauses())->active(array_keys($eligibleRecipients));
+        $pausedHeld = 0;
 
         foreach ($senders as $sender) {
             if ($dispatched >= $limit) {
@@ -246,6 +253,10 @@ class DispatchPendingEmails extends Command
                 if ($recipient === '' || !isset($eligible[$row->channel][$recipient]) || isset($reserved[$recipient])) {
                     continue;
                 }
+                if ($pauses !== [] && \App\Services\Senders\SenderPauses::blocks($pauses, $recipient, (int) $sender->id, (string) $sender->email)) {
+                    $pausedHeld++;
+                    continue;
+                }
 
                 $claimed = EmailQueue::where('id', $row->id)
                     ->whereIn('status', ['pending', 'error'])
@@ -277,7 +288,7 @@ class DispatchPendingEmails extends Command
         }
 
         $this->info("Dispatched: {$dispatched} (senders: {$senders->count()}, получателей: "
-            . count($reserved) . ", на тик-лимите: {$totalCapHit}, на дневном лимите: {$dailyLimitHit}, на лимите аккаунта: {$serverCapHit}) по каналам: " . json_encode($byChannel));
+            . count($reserved) . ", на тик-лимите: {$totalCapHit}, на дневном лимите: {$dailyLimitHit}, на лимите аккаунта: {$serverCapHit}, на паузе по отписке: {$pausedHeld}) по каналам: " . json_encode($byChannel));
         return self::SUCCESS;
     }
 

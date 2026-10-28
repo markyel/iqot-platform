@@ -108,6 +108,10 @@ class CampaignPersister
                     && $this->senderEmailedRecently((int) ($email['sender_id'] ?? 0), (string) ($email['to_email'] ?? ''), $senderWindow)) {
                     continue;
                 }
+                // Пауза по отписке: этот ящик или наш домен на паузе для получателя (SenderPauses).
+                if ($this->senderPaused((int) ($email['sender_id'] ?? 0), (string) ($email['to_email'] ?? ''))) {
+                    continue;
+                }
 
                 $token = (string) ($email['tracking_token'] ?? '');
                 // scheduled_at по волне. Диспетчер берёт только scheduled_at <= NOW().
@@ -202,7 +206,27 @@ class CampaignPersister
         $window = max(0, (int) config('services.email_generate.sender_recipient_days', 7));
 
         return array_values(array_filter($suppliers, fn ($s) => !$this->alreadyContacted($itemIds, (int) ($s['id'] ?? 0))
-            && !($window > 0 && $this->senderEmailedRecently($senderId, (string) ($s['email'] ?? ''), $window))));
+            && !($window > 0 && $this->senderEmailedRecently($senderId, (string) ($s['email'] ?? ''), $window))
+            && !$this->senderPaused($senderId, (string) ($s['email'] ?? ''))));
+    }
+
+    /** @var array<int,string> sender_id => адрес (кеш на объект персистера) */
+    private array $senderEmailCache = [];
+
+    /** Ящик или его домен на паузе по отписке для получателя (SenderPauses). */
+    private function senderPaused(int $senderId, string $toEmail): bool
+    {
+        $toEmail = mb_strtolower(trim($toEmail));
+        if ($senderId <= 0 || $toEmail === '') {
+            return false;
+        }
+        $active = (new \App\Services\Senders\SenderPauses())->active([$toEmail]);
+        if ($active === []) {
+            return false;
+        }
+        $this->senderEmailCache[$senderId] ??= \App\Services\Senders\SenderPauses::senderEmails([$senderId])[$senderId] ?? '';
+
+        return \App\Services\Senders\SenderPauses::blocks($active, $toEmail, $senderId, $this->senderEmailCache[$senderId]);
     }
 
     private function alreadyContacted(array $itemIds, int $supplierId): bool

@@ -50,13 +50,16 @@ class SupplierReplyPersister
         ): void {
             $this->saveClassification($messageId, $classification);
 
-            // Отписка от рассылки (релейшеншип-сигнал) → пауза/увеличение интервала,
-            // повторно → отключение. НЕ зависит от email_type (может прийти с offer/rejection).
-            (new SupplierUnsubscribeEscalator())->apply(
-                $supplierId,
-                (bool) ($classification['unsubscribe'] ?? false),
-                $classification['unsubscribe_reason'] ?? null,
-            );
+            // Отписка от рассылки (релейшеншип-сигнал) → пауза с нашего ящика, на который ответили,
+            // повторно на домен → пауза домена. НЕ зависит от email_type (может прийти с offer/rejection).
+            if ((bool) ($classification['unsubscribe'] ?? false)) {
+                (new SupplierUnsubscribeEscalator())->apply(
+                    $supplierId,
+                    true,
+                    $classification['unsubscribe_reason'] ?? null,
+                    $this->replySenderId($messageId),
+                );
+            }
 
             $emailQueueId = $this->resolveEmailQueueId($batchId, $supplierId);
 
@@ -119,6 +122,21 @@ class SupplierReplyPersister
         }
 
         return null;
+    }
+
+    /** Наш ящик, на который пришёл ответ (адрес «Кому» входящего письма), или null. */
+    private function replySenderId(int $messageId): ?int
+    {
+        if ($messageId <= 0) {
+            return null;
+        }
+        $to = DB::connection(self::CONN)->table('email_messages')->where('id', $messageId)->value('to_email');
+        if (!$to) {
+            return null;
+        }
+        $id = DB::connection(self::CONN)->table('senders')->whereRaw('LOWER(email) = ?', [mb_strtolower(trim((string) $to))])->value('id');
+
+        return $id ? (int) $id : null;
     }
 
     private function saveClassification(int $messageId, array $classification): void

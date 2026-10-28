@@ -313,6 +313,10 @@ class PlanDayCampaign extends Command
                 $senderRecent[((int) $r->sender_id) . '|' . (string) $r->e] = true;
             }
         }
+        // Паузы по отписке (ящик / наш домен × получатель) — для назначателя как «ящик писал недавно».
+        $senderRecent += \App\Services\Senders\SenderPauses::pairs(
+            (new \App\Services\Senders\SenderPauses())->active(array_values(array_unique(array_map('mb_strtolower', array_filter($supplierEmail))))),
+            \App\Services\Senders\SenderPauses::senderEmails(array_keys($senderCaps)));
 
         // 7. Распределение позиций по конвертам поставщиков.
         $dropped = 0;

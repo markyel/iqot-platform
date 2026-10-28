@@ -2,30 +2,30 @@
 
 namespace App\Services\Analysis;
 
+use App\Services\Senders\SenderPauses;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
  * Эскалация при обнаружении ОТПИСКИ поставщика (AI-сигнал unsubscribe=true в ответе).
  *
- * Политика (порог настраивается):
- *   1-я отписка   → пауза N дней (suppliers.unsubscribe_until) + увеличенный личный
- *                   интервал отправки (send_interval_override_seconds);
- *   повторная     → полное отключение от рассылки (is_active=0, notify_email=0).
- *
- * Учитывают: CampaignSupplierSelector (пауза/выкл на генерации) и DispatchPendingEmails
- * (пауза + личный интервал на пейсинге). НЕ путать с per-позиция rejection — отписка
- * это релейшеншип-сигнал «не пишите больше». Выполняется в транзакции персистера
- * (коннект reports). Идемпотентность обеспечивает Cache::lock в AnalyzeSupplierReplyJob.
+ * Политика (решение владельца 28.10.2026 — вместо паузы, недельного интервала и отключения поставщика целиком):
+ *   сигнал               → пауза с НАШЕГО ЯЩИКА, на который ответил поставщик (pause_days, 7);
+ *   повторный на домен   → пауза на весь наш почтовый домен (с любого его ящика);
+ *   после паузы — пишем снова; каждое повторение — пауза на неделю длиннее (pause_step_days, +7).
+ * Паузы — SenderPauses (таблица supplier_sender_pauses). Поставщик целиком не отключается; на нём только счётчик
+ * и последняя причина (видимость в админке). НЕ путать с per-позиция rejection. Выполняется в транзакции
+ * персистера (коннект reports). Идемпотентность обеспечивает Cache::lock в AnalyzeSupplierReplyJob.
  */
 class SupplierUnsubscribeEscalator
 {
     private const CONN = 'reports';
 
     /**
-     * @return array{action:string,count:int}|null null — отписки нет или механизм выключен
+     * @param int|null $senderId наш ящик, на который пришёл ответ (null — последний ящик, писавший поставщику)
+     * @return array<string,mixed>|null null — отписки нет или механизм выключен
      */
-    public function apply(int $supplierId, bool $unsubscribe, ?string $reason): ?array
+    public function apply(int $supplierId, bool $unsubscribe, ?string $reason, ?int $senderId = null): ?array
     {
         if (!$unsubscribe || $supplierId <= 0) {
             return null;
@@ -35,71 +35,42 @@ class SupplierUnsubscribeEscalator
             return null;
         }
 
-        $supplier = DB::connection(self::CONN)->table('suppliers')
-            ->where('id', $supplierId)
-            ->first(['id', 'unsubscribe_count', 'is_active']);
+        $db = DB::connection(self::CONN);
+        $supplier = $db->table('suppliers')->where('id', $supplierId)->first(['id', 'email', 'unsubscribe_count']);
         if (!$supplier) {
             return null;
         }
 
-        $count = (int) $supplier->unsubscribe_count + 1;
         $now = now();
         $reason = $reason !== null ? mb_substr($reason, 0, 255) : 'отписка (AI-сигнал)';
-
-        $disableThreshold = max(1, (int) config('services.email_unsubscribe.disable_threshold', 2));
-
-        $data = [
+        $count = (int) $supplier->unsubscribe_count + 1;
+        $db->table('suppliers')->where('id', $supplierId)->update([
             'unsubscribe_count' => $count,
             'last_unsubscribe_at' => $now,
             'unsubscribe_reason' => $reason,
             'updated_at' => $now,
-        ];
+        ]);
 
-        if ($count >= $disableThreshold) {
-            // Повторная отписка → полностью отключаем от рассылки.
-            $data['is_active'] = 0;
-            $data['notify_email'] = 0;
-            $action = 'disabled';
-        } else {
-            // Первая отписка → пауза + увеличенный личный интервал.
-            $pauseDays = max(1, (int) config('services.email_unsubscribe.pause_days', 7));
-            $data['unsubscribe_until'] = $now->copy()->addDays($pauseDays);
-            $data['send_interval_override_seconds'] = max(
-                0,
-                (int) config('services.email_unsubscribe.escalated_interval_seconds', 604800)
-            );
-            $action = 'paused';
+        $senderId = $senderId ?: (int) $db->table('email_queue')->where('supplier_id', $supplierId)->whereNotNull('sent_at')
+            ->orderByDesc('sent_at')->value('sender_id');
+        $senderEmail = $senderId ? (string) $db->table('senders')->where('id', $senderId)->value('email') : '';
+        if (!$senderId || $senderEmail === '') {
+            Log::warning('SupplierUnsubscribeEscalator: ящик ответа не найден — пауза не поставлена', [
+                'supplier_id' => $supplierId, 'reason' => $reason,
+            ]);
+
+            return ['action' => 'no_sender', 'count' => $count];
         }
 
-        DB::connection(self::CONN)->table('suppliers')->where('id', $supplierId)->update($data);
-
-        if ($action === 'disabled') {
-            // Диспетчер не смотрит suppliers.is_active — уже стоящие в очереди письма
-            // этому поставщику ушли бы после его повторной просьбы не писать.
-            $cancelled = DB::connection(self::CONN)->table('email_queue')
-                ->where('supplier_id', $supplierId)
-                ->where(function ($q) {
-                    $q->where('status', 'pending')
-                        ->orWhere(function ($q) {
-                            $q->where('status', 'error')->whereColumn('retry_count', '<', 'max_retries');
-                        });
-                })
-                ->update(['status' => 'cancelled', 'error_message' => 'supplier unsubscribed', 'updated_at' => $now]);
-            if ($cancelled) {
-                Log::info('SupplierUnsubscribeEscalator: queued emails cancelled', [
-                    'supplier_id' => $supplierId,
-                    'cancelled' => $cancelled,
-                ]);
-            }
-        }
+        $pause = (new SenderPauses())->record($supplierId, (string) $supplier->email, $senderId, $senderEmail, $reason);
 
         Log::warning('SupplierUnsubscribeEscalator: applied', [
             'supplier_id' => $supplierId,
-            'action' => $action,
+            'sender_id' => $senderId,
             'count' => $count,
             'reason' => $reason,
-        ]);
+        ] + $pause);
 
-        return ['action' => $action, 'count' => $count];
+        return ['action' => $pause['domain_until'] ? 'paused_domain' : 'paused_mailbox', 'count' => $count] + $pause;
     }
 }

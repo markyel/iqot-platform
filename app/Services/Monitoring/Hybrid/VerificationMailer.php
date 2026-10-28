@@ -80,7 +80,10 @@ class VerificationMailer
         $suppliers = $this->eligibleSuppliers($all->pluck('supplier_id')->unique()->all());
         $recipientLeft = $this->recipientCaps(array_map(fn ($s) => mb_strtolower(trim($s->email)), $suppliers));
         $senders = $this->senders();
-        $pairs = $this->recentPairs();
+        // Ротация ящик × получатель + паузы по отписке (ящик / наш домен × получатель).
+        $pairs = $this->recentPairs() + \App\Services\Senders\SenderPauses::pairs(
+            (new \App\Services\Senders\SenderPauses())->active(array_keys($recipientLeft)),
+            \App\Services\Senders\SenderPauses::senderEmails(array_keys($senders)));
         $perLetter = self::itemsPerLetter();
 
         $tools = $this->tools();

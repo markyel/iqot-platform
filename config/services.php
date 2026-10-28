@@ -337,12 +337,14 @@ return [
     ],
 
     // Реакция на ОТПИСКУ поставщика (AI-сигнал unsubscribe в ответе, см.
-    // SupplierUnsubscribeEscalator). 1-я отписка → пауза + увеличенный личный интервал;
-    // повторная (>= disable_threshold) → отключение от рассылки. enabled=false — только
-    // детект/лог без действий.
+    // SupplierUnsubscribeEscalator + SenderPauses, решение 28.10.2026): пауза с нашего ящика, на который
+    // ответили; повторный сигнал на тот же наш домен → пауза домена; каждое повторение — +pause_step_days.
+    // escalated_interval_seconds / disable_threshold — старая схема (интервал и отключение поставщика),
+    // больше не применяются. enabled=false — только детект/лог без действий.
     'email_unsubscribe' => [
         'enabled' => (bool) env('EMAILS_UNSUBSCRIBE_ENABLED', true),
         'pause_days' => (int) env('EMAILS_UNSUBSCRIBE_PAUSE_DAYS', 7),
+        'pause_step_days' => (int) env('EMAILS_UNSUBSCRIBE_PAUSE_STEP_DAYS', 7),
         'escalated_interval_seconds' => (int) env('EMAILS_UNSUBSCRIBE_INTERVAL', 604800), // 7 дней
         'disable_threshold' => (int) env('EMAILS_UNSUBSCRIBE_DISABLE_THRESHOLD', 2),
     ],
