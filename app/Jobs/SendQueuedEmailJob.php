@@ -165,7 +165,7 @@ class SendQueuedEmailJob implements ShouldQueue
 
         // Жёсткая пауза на ящик: атомарно «занимаем слот». Если рано — переносим
         // письмо на send_delay_seconds, статус остаётся 'sending' (claim не теряем).
-        $delay = max(1, (int) ($senderModel->send_delay_seconds ?: 2));
+        $delay = max(1, (int) ($senderModel->send_delay_seconds ?: 20));
         if (!$this->reserveSlot($senderModel->id, $delay)) {
             // Слишком долго ждём слот (ящик перегружен своими письмами) — возвращаем
             // письмо в очередь БД и завершаем job БЕЗ release(): диспетчер перепланирует

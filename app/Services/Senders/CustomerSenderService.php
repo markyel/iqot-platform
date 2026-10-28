@@ -111,7 +111,7 @@ class CustomerSenderService
                     'email_style' => 'formal',
                     'email_greeting' => 'Здравствуйте',
                     'token_style' => 'technical',
-                    'send_delay_seconds' => 2,
+                    'send_delay_seconds' => 20,
                     'created_at' => $now,
                     'updated_at' => $now,
                 ]);

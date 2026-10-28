@@ -96,7 +96,7 @@ class SendOutgoingReplyJob implements ShouldQueue
         }
 
         // Жёсткая пауза на ящик (общая с массовой рассылкой): атомарно «занимаем слот».
-        $delay = max(1, (int) ($senderModel->send_delay_seconds ?: 2));
+        $delay = max(1, (int) ($senderModel->send_delay_seconds ?: 20));
         if (!$this->reserveSlot($senderModel->id, $delay)) {
             if ($this->attempts() >= self::MAX_SLOT_DEFERRALS) {
                 $reply->update(['status' => 'pending']);

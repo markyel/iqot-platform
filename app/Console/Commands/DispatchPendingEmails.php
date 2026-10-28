@@ -149,7 +149,7 @@ class DispatchPendingEmails extends Command
             }
             $isAlias = isset($aliasIds[(int) $sender->id]);
 
-            $delaySec = max(1, (int) ($sender->send_delay_seconds ?: 2));
+            $delaySec = max(1, (int) ($sender->send_delay_seconds ?: 20));
             // Сколько ящик успеет отправить до следующего тика (+1 в запас от простоя).
             $perSenderCap = (int) ceil($tick / $delaySec) + 1;
             // Уже взятые в работу и ещё не отправленные письма ящика занимают его ближайшие слоты: не берём сверх
