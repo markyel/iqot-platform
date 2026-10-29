@@ -114,19 +114,6 @@ class DispatchPendingEmails extends Command
             $this->info('No pending emails.');
             return self::SUCCESS;
         }
-        // Ящики ветки «ящик на батч» — первыми в обходе (решение владельца 28.10.2026): получателю за тик уходит одно
-        // письмо, и классические ящики (меньшие id) занимали общих с веткой получателей раньше — у ветки с паузой 300 с
-        // и окном 9–18 МСК письма мониторинга стояли весь день (28.10: 8 из 300). Дневные капы получателей те же.
-        $senders = $senders->sortBy(fn ($s) => isset($aliasIds[(int) $s->id]) ? 0 : 1)->values();
-
-        // 4) Round-robin по ящикам: на каждый берём perSenderCap писем, ставим
-        //    с накопительной задержкой по этому ящику (0, delay, 2·delay, …).
-        //    Не более одного письма получателю за тик ($reserved) — во всех каналах вместе.
-        $dispatched = 0;
-        $totalCapHit = 0;
-        $reserved = []; // нормализованный to_email => уже отдали письмо в этом тике
-        $byChannel = [];
-
         // Дневной лимит ящика (прогрев): «1 батч = 1 sender» → весь пул батча может
         // висеть на одном ящике; чтобы он не слал больше daily_limit/сутки, лимит
         // держим ЗДЕСЬ (не в генерации). Учитываем письма «в полёте» (status=sending —
@@ -137,6 +124,16 @@ class DispatchPendingEmails extends Command
             ->selectRaw('sender_id, COUNT(*) as n')
             ->groupBy('sender_id')
             ->pluck('n', 'sender_id');
+
+        $senders = collect(self::orderSenders($senders->all(), $aliasIds, $inFlight->all(), $today));
+
+        // 4) Round-robin по ящикам: на каждый берём perSenderCap писем, ставим
+        //    с накопительной задержкой по этому ящику (0, delay, 2·delay, …).
+        //    Не более одного письма получателю за тик ($reserved) — во всех каналах вместе.
+        $dispatched = 0;
+        $totalCapHit = 0;
+        $reserved = []; // нормализованный to_email => уже отдали письмо в этом тике
+        $byChannel = [];
         $dailyLimitHit = 0;
         // Суточный потолок сервера = аккаунта провайдера (REG.RU: 3000 писем за 24 ч на аккаунт), SmtpServerCaps.
         $serverLeft = SmtpServerCaps::remaining();
@@ -301,6 +298,39 @@ class DispatchPendingEmails extends Command
         $this->info("Dispatched: {$dispatched} (senders: {$senders->count()}, получателей: "
             . count($reserved) . ", на тик-лимите: {$totalCapHit}, на дневном лимите: {$dailyLimitHit}, на лимите аккаунта: {$serverCapHit}, на паузе по отписке: {$pausedHeld}) по каналам: " . json_encode($byChannel));
         return self::SUCCESS;
+    }
+
+    /**
+     * Порядок обхода ящиков в тике. Получателю за тик уходит одно письмо, поэтому общих получателей забирают ящики,
+     * которые обходятся раньше.
+     * 1) Ящики ветки «ящик на батч» — первыми (решение владельца 28.10.2026: у ветки пауза 300 с и окно 9–18 МСК,
+     *    иначе её письма мониторинга стояли весь день — 28.10 ушло 8 из 300).
+     * 2) Остальные — по возрастанию доли дневного лимита, израсходованной сегодня (отправлено + в полёте), равные доли —
+     *    в случайном порядке (решение владельца 29.10.2026). Раньше обход шёл по id, и новые ящики с большими id
+     *    не получали ни одного места у загруженных получателей: 29.10 ящики eespc.ru #276/#277 до вечера не отправили
+     *    ни одного письма и не прогревались. Так же мониторинг выбирает ящик (VerificationMailer::pickByShare).
+     *
+     * @param  array<int,object>  $senders  строки с id, daily_limit, emails_sent_today, last_send_date
+     * @param  array<int,mixed>  $aliasIds  id ящиков ветки => true
+     * @param  array<int,int>  $inFlight  id ящика => писем в статусе sending
+     * @return array<int,object>
+     */
+    public static function orderSenders(array $senders, array $aliasIds, array $inFlight, string $today): array
+    {
+        $keys = [];
+        foreach ($senders as $i => $s) {
+            $sent = (substr((string) $s->last_send_date, 0, 10) === $today) ? (int) $s->emails_sent_today : 0;
+            $used = $sent + (int) ($inFlight[$s->id] ?? 0);
+            $limit = (int) $s->daily_limit;
+            $keys[$i] = [
+                isset($aliasIds[(int) $s->id]) ? 0 : 1,
+                $limit > 0 ? $used / $limit : (float) $used,
+                random_int(0, PHP_INT_MAX),
+            ];
+        }
+        uksort($keys, fn ($a, $b) => $keys[$a] <=> $keys[$b]);
+
+        return array_values(array_map(fn ($i) => $senders[$i], array_keys($keys)));
     }
 
     /**
