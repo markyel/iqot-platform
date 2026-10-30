@@ -25,28 +25,32 @@
             <x-stat-card value="{{ $fmt($r['active']) }}" label="Организаций в резерве (не использованы {{ $fmt($r['never_used']) }}, с живым ящиком {{ $fmt($r['live']) }})" icon="building-2" icon-type="primary" />
         </div>
 
-        @if ($v['cmp'])
-            @php($a = $v['cmp']['alias']) @php($m = $v['cmp']['main'])
+        @foreach (['cmp' => ['Заявки', 'Письма заявок без именных заявок клиентов (их шлёт персональный ящик от реальной организации клиента — ветке такие не достаются) и без мониторинга.'],
+                   'cmp_monitoring' => ['Мониторинг — запросы КП пулу', 'Основная ветка — только запросы КП профильному пулу, как у ветки; проверки цен с сайта и запросы «по запросу» отдают заметно больше цен и в сравнение не входят.']] as $cmpKey => [$cmpTitle, $cmpNote])
+            @continue(empty($v[$cmpKey]))
+            @php($c = $v[$cmpKey])
             <div class="card" style="margin-bottom: var(--space-6);">
-                <div class="card-header"><h3 class="card-title">Сравнение веток — письма с {{ $msk($v['cmp']['since']) }} МСК</h3></div>
+                <div class="card-header"><h3 class="card-title">Сравнение веток: {{ $cmpTitle }} — письма с {{ $msk($c['since']) }} МСК, общие адресаты: {{ $fmt($c['recipients']) }} из {{ $fmt($c['alias_all_recipients']) }}</h3></div>
                 <div class="table-container">
                     <table class="table">
                         <thead><tr><th>Ветка</th><th>Отправлено</th><th>Ответили</th><th>Доля ответов</th><th>С ценой</th><th>Доля с ценой</th><th>Отказов «спам»</th></tr></thead>
                         <tbody>
-                            <tr><td><strong>Ящик на батч</strong></td><td>{{ $fmt($a->letters) }}</td><td>{{ $fmt($a->replied) }}</td><td>{{ $pct($a->replied, $a->letters) }}</td>
-                                <td>{{ $fmt($a->kp) }}</td><td>{{ $pct($a->kp, $a->letters) }}</td><td>{{ $fmt($v['cmp']['alias_spam']) }} ({{ $pct($v['cmp']['alias_spam'], $a->letters + $v['cmp']['alias_spam']) }})</td></tr>
-                            <tr><td><strong>Основная</strong></td><td>{{ $fmt($m->letters) }}</td><td>{{ $fmt($m->replied) }}</td><td>{{ $pct($m->replied, $m->letters) }}</td>
-                                <td>{{ $fmt($m->kp) }}</td><td>{{ $pct($m->kp, $m->letters) }}</td><td>{{ $fmt($v['cmp']['main_spam']) }} ({{ $pct($v['cmp']['main_spam'], $m->letters + $v['cmp']['main_spam']) }})</td></tr>
+                            @foreach (['alias' => 'Ящик на батч', 'main' => 'Основная'] as $bk => $bt)
+                                @php($b = $c[$bk])
+                                <tr><td><strong>{{ $bt }}</strong></td><td>{{ $fmt($b['letters']) }}</td><td>{{ $fmt($b['replied']) }}</td><td>{{ $pct($b['replied'], $b['letters']) }}</td>
+                                    <td>{{ $fmt($b['kp']) }}</td><td>{{ $pct($b['kp'], $b['letters']) }}</td><td>{{ $fmt($b['spam']) }} ({{ $pct($b['spam'], $b['letters'] + $b['spam']) }})</td></tr>
+                            @endforeach
                         </tbody>
                     </table>
                 </div>
                 <div class="card-body" style="font-size: var(--text-sm); color: var(--color-text-muted);">
-                    Только письма заявок: письма мониторинга (пул КП Гибрида) не входят ни в одну ветку. Ответ — входящее письмо в беседе по паре «батч × поставщик», цена — КП по этой паре. На свежих письмах доли занижены: поставщики отвечают в течение нескольких дней.
+                    Считаются только поставщики, которым за период писали обе ветки: ветка пишет всему пулу, основная — по лимитам и релевантности, поэтому общие доли по разным адресатам несравнимы. {{ $cmpNote }}
+                    Ответ — входящее письмо в беседе по паре «батч × поставщик», цена — КП по этой паре. На свежих письмах доли занижены: поставщики отвечают в течение нескольких дней; при десятках писем с ценой разница в 1–2 п.п. — в пределах случайности.
                 </div>
             </div>
-        @endif
+        @endforeach
 
-        @foreach (['rows' => 'Батчи и ящики — заявки', 'monitoring_rows' => 'Ящики мониторинга — пул КП Гибрида через ящик на батч (в сравнение веток не входят)'] as $listKey => $listTitle)
+        @foreach (['rows' => 'Батчи и ящики — заявки', 'monitoring_rows' => 'Ящики мониторинга — пул КП Гибрида через ящик на батч'] as $listKey => $listTitle)
         @continue($listKey === 'monitoring_rows' && empty($v['monitoring_rows']))
         <div class="card" style="margin-bottom: var(--space-6);">
             <div class="card-header"><h3 class="card-title">{{ $listTitle }}</h3></div>

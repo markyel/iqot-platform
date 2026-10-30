@@ -82,6 +82,7 @@ class ProgressDashboard
         $rows = [];
         $monitoringRows = [];
         $start = null;
+        $monStart = null;
         foreach ($mailboxes as $mb) {
             $bs = array_map('intval', (array) json_decode((string) $mb->batch_ids, true));
             $agg = ['total' => 0, 'sent' => 0, 'pending' => 0, 'err' => 0, 'spam' => 0, 'replied' => 0, 'kp' => 0, 'last_sent' => null, 'next_at' => null];
@@ -96,9 +97,11 @@ class ProgressDashboard
             $bn = $bounces[$mb->sender_id] ?? null;
             $mbItems = array_values(array_filter(array_map(fn ($id) => $items[(int) $id] ?? null, (array) json_decode((string) $mb->request_item_ids, true))));
             $isMonitoring = collect($mbItems)->contains(fn ($it) => $it->source === 'monitoring');
-            if (!$isMonitoring) {
-                foreach ($bs as $b) {
-                    $fs = $stats[$b]['first_sent'] ?? null;
+            foreach ($bs as $b) {
+                $fs = $stats[$b]['first_sent'] ?? null;
+                if ($isMonitoring) {
+                    $monStart = $fs && ($monStart === null || $fs < $monStart) ? $fs : $monStart;
+                } else {
                     $start = $fs && ($start === null || $fs < $start) ? $fs : $start;
                 }
             }
@@ -116,30 +119,23 @@ class ProgressDashboard
             }
         }
 
-        // Сравнение веток: письма ЗАЯВОК, отправленные с первого письма эксперимента. Ответ — входящее в беседе
-        // (батч, поставщик), КП — цена в request_item_responses по той же паре. Отказ «спам» — ошибка отправки с 554.
-        // Письма мониторинга (тех. заявка, source=monitoring) — в обеих ветках исключены: ~4 000/день пула с отдачей
-        // ~1% утопили бы основную ветку. Заявка письма — по первой позиции батча (поиск по первичным ключам).
+        // Сравнение веток — только по ОБЩИМ адресатам (поставщики, которым за период писали обе ветки): ветка пишет всему
+        // пулу, основная — по капам и релевантности, состав адресатов разный. Заявки: без именных заявок клиентов
+        // (персональный ящик от реальной организации, ~23% ответов — ветке такие не достаются), без мониторинга.
+        // Мониторинг: ветка против писем основной по тем же запросам КП пулу (mp_asks kind=rfq, reason=pool);
+        // проверки цен с сайта и «по запросу» отдают заметно больше цен и ветке не достаются.
         $cmp = null;
         if ($start !== null) {
-            $notMonitoring = "LEFT JOIN email_batches b ON b.id = eq.batch_id
-                LEFT JOIN request_items ri ON ri.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(b.request_items, '$[0]')) AS UNSIGNED)
-                LEFT JOIN requests rq ON rq.id = ri.request_id";
-            $branch = fn (string $poolCond) => $db->selectOne("SELECT COUNT(*) letters,
-                    SUM(EXISTS (SELECT 1 FROM email_conversations ec JOIN email_messages m ON m.conversation_id = ec.id AND m.direction = 'incoming'
-                        WHERE ec.batch_id = eq.batch_id AND ec.supplier_id = eq.supplier_id)) replied,
-                    SUM(EXISTS (SELECT 1 FROM request_item_responses rir WHERE rir.batch_id = eq.batch_id AND rir.supplier_id = eq.supplier_id
-                        AND (rir.price_per_unit IS NOT NULL OR rir.total_price IS NOT NULL))) kp
-                FROM email_queue eq JOIN senders s ON s.id = eq.sender_id {$notMonitoring}
-                WHERE eq.sent_at >= ? AND eq.status IN " . self::SENT . " AND {$poolCond} AND COALESCE(rq.source, '') <> 'monitoring'", [$start]);
-            $spam = fn (string $poolCond) => (int) $db->selectOne("SELECT COUNT(*) n FROM email_queue eq JOIN senders s ON s.id = eq.sender_id {$notMonitoring}
-                WHERE eq.status = 'error' AND eq.error_message LIKE '%spam%' AND eq.updated_at >= ? AND {$poolCond}
-                    AND COALESCE(rq.source, '') <> 'monitoring'", [$start])->n;
-            $cmp = [
-                'since' => $start,
-                'alias' => $branch("s.pool = 'alias'"), 'alias_spam' => $spam("s.pool = 'alias'"),
-                'main' => $branch("(s.pool IS NULL OR s.pool = 'main')"), 'main_spam' => $spam("(s.pool IS NULL OR s.pool = 'main')"),
-            ];
+            $cmp = $this->branchCompare($start, "COALESCE(rq.source, '') <> 'monitoring' AND COALESCE(b.is_customer_request, 0) = 0");
+        }
+        $cmpMonitoring = null;
+        if ($monStart !== null) {
+            $poolAskIds = [];
+            foreach (DB::table('mp_asks')->where('kind', 'rfq')->where('reason', 'pool')->whereNotNull('email_queue_id')
+                ->where('created_at', '>=', \Illuminate\Support\Carbon::parse($monStart)->subDays(3))->pluck('email_queue_id') as $id) {
+                $poolAskIds[(int) $id] = true;
+            }
+            $cmpMonitoring = $this->branchCompare($monStart, "rq.source = 'monitoring'", $poolAskIds);
         }
 
         return [
@@ -149,8 +145,68 @@ class ProgressDashboard
             'budget_left' => \App\Services\AliasExp\AliasBranch::budgetToday(), 'budget' => (int) $cfg['mailboxes_per_day'],
             'reserve' => app(\App\Services\AliasExp\OrgReserve::class)->stats(),
             'domains' => DB::table('alias_domains')->orderBy('domain')->get(),
-            'rows' => $rows, 'monitoring_rows' => $monitoringRows, 'cmp' => $cmp,
+            'rows' => $rows, 'monitoring_rows' => $monitoringRows, 'cmp' => $cmp, 'cmp_monitoring' => $cmpMonitoring,
         ];
+    }
+
+    /**
+     * Ветка «ящик на батч» против основной по общим адресатам за период с $since. Ответ — входящее в беседе
+     * (батч, поставщик), КП — цена в request_item_responses по той же паре, отказ «спам» — ошибка отправки с 554.
+     * Заявка письма — по первой позиции батча (поиск по первичным ключам).
+     *
+     * @param string $cond доп. условие на письмо (алиасы eq, s, b, rq)
+     * @param array<int,true>|null $mainIds письма основной ветки только из этого набора (null — все)
+     * @return array{since:string, recipients:int, alias:array<string,int>, main:array<string,int>, alias_all_recipients:int}
+     */
+    private function branchCompare(string $since, string $cond, ?array $mainIds = null): array
+    {
+        $db = DB::connection(self::R);
+        $letters = fn (string $poolCond, string $extra = '', array $bind = []) => $db->select("SELECT eq.id, LOWER(TRIM(eq.to_email)) rcpt,
+                eq.status = 'error' spam,
+                EXISTS (SELECT 1 FROM email_conversations ec JOIN email_messages m ON m.conversation_id = ec.id AND m.direction = 'incoming'
+                    WHERE ec.batch_id = eq.batch_id AND ec.supplier_id = eq.supplier_id) replied,
+                EXISTS (SELECT 1 FROM request_item_responses rir WHERE rir.batch_id = eq.batch_id AND rir.supplier_id = eq.supplier_id
+                    AND (rir.price_per_unit IS NOT NULL OR rir.total_price IS NOT NULL)) kp
+            FROM email_queue eq JOIN senders s ON s.id = eq.sender_id
+            LEFT JOIN email_batches b ON b.id = eq.batch_id
+            LEFT JOIN request_items ri ON ri.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(b.request_items, '$[0]')) AS UNSIGNED)
+            LEFT JOIN requests rq ON rq.id = ri.request_id
+            WHERE ((eq.status IN " . self::SENT . " AND eq.sent_at >= ?) OR (eq.status = 'error' AND eq.error_message LIKE '%spam%' AND eq.updated_at >= ?))
+                AND {$poolCond} AND {$cond} {$extra}", array_merge([$since, $since], $bind));
+
+        $alias = $letters("s.pool = 'alias'");
+        $main = [];
+        $aliasRcpts = array_values(array_unique(array_map(fn ($r) => (string) $r->rcpt, $alias)));
+        foreach (array_chunk($aliasRcpts, 300) as $chunk) {
+            $in = implode(',', array_fill(0, count($chunk), '?'));
+            foreach ($letters("(s.pool IS NULL OR s.pool = 'main')", "AND LOWER(TRIM(eq.to_email)) IN ({$in})", $chunk) as $r) {
+                if ($mainIds === null || isset($mainIds[(int) $r->id])) {
+                    $main[] = $r;
+                }
+            }
+        }
+        $common = array_flip(array_intersect($aliasRcpts, array_map(fn ($r) => (string) $r->rcpt, $main)));
+
+        $agg = function (array $rows) use ($common): array {
+            $a = ['letters' => 0, 'replied' => 0, 'kp' => 0, 'spam' => 0];
+            foreach ($rows as $r) {
+                if (!isset($common[$r->rcpt])) {
+                    continue;
+                }
+                if ($r->spam) {
+                    $a['spam']++;
+                    continue;
+                }
+                $a['letters']++;
+                $a['replied'] += (int) $r->replied;
+                $a['kp'] += (int) $r->kp;
+            }
+
+            return $a;
+        };
+
+        return ['since' => $since, 'recipients' => count($common), 'alias' => $agg($alias), 'main' => $agg($main),
+            'alias_all_recipients' => count($aliasRcpts)];
     }
 
     // ─────────────────────────── Карточка заявки ───────────────────────────
