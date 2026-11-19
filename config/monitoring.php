@@ -116,6 +116,8 @@ return [
         'gpt-4.1-nano' => [0.10, 0.40],
         'gpt-5-nano' => [0.05, 0.40],
         'gpt-5-mini' => [0.25, 2.00],
+        // RouterAI (₽ за токен из их /models, по 81,79 ₽/$ — как в mzCorp). Фактический расход — usage.cost в ₽ (ai_usage_daily).
+        'qwen/qwen3.8-27b' => [0.23, 1.37],
     ],
 
     'sanity' => [

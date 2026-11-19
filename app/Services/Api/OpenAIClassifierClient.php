@@ -6,11 +6,11 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Тонкий HTTP-клиент к OpenAI-совместимому прокси (nginx ai3.lazylift.ru:8443, Алматы KZ;
- * ранее ai2.lazylift.ru, Cloudflare Worker, ai.lazylift.ru).
+ * Тонкий HTTP-клиент к OpenAI-совместимому API. С 19.11.2026 — RouterAI (routerai.ru/api/v1, оплата в рублях,
+ * Qwen и др.); до потери Beget — прокси OpenAI ai3.lazylift.ru:8443.
  *
  * Выдаёт JSON-структурированный результат (через `response_format: json_object`)
- * и валидирует корректность структуры на стороне вызывающего сервиса.
+ * и валидирует корректность структуры на стороне вызывающего сервиса. Модель провайдера — resolveModel().
  */
 class OpenAIClassifierClient
 {
@@ -108,17 +108,81 @@ class OpenAIClassifierClient
         }
 
         $data = $response->json();
-        $this->rememberUsage($data, $model);
+        $this->rememberUsage($data, $this->resolveModel($model));
         $content = $data['choices'][0]['message']['content'] ?? null;
         if (!is_string($content) || $content === '') {
             throw new \RuntimeException('OpenAIClassifier: empty completion content.');
         }
 
-        $decoded = json_decode($content, true);
+        $decoded = self::decodeJson($content);
         if (!is_array($decoded)) {
             throw new \RuntimeException('OpenAIClassifier: completion is not valid JSON.');
         }
         return $decoded;
+    }
+
+    /**
+     * JSON из ответа модели. Не-OpenAI модели (Qwen и др.) и при json_object иногда оборачивают ответ в ```json …```
+     * или добавляют рассуждение <think>…</think> — срезаем, иначе берём текст от первой «{» до последней «}».
+     */
+    public static function decodeJson(string $content): ?array
+    {
+        $decoded = json_decode($content, true);
+        if (is_array($decoded)) {
+            return $decoded;
+        }
+        $s = trim((string) preg_replace('~<think>.*?</think>~s', '', $content));
+        $s = (string) preg_replace('~^```(?:json)?\s*|\s*```$~i', '', $s);
+        $decoded = json_decode($s, true);
+        if (is_array($decoded)) {
+            return $decoded;
+        }
+        $from = strpos($s, '{');
+        $to = strrpos($s, '}');
+        if ($from !== false && $to !== false && $to > $from) {
+            $decoded = json_decode(substr($s, $from, $to - $from + 1), true);
+        }
+
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    /**
+     * Модель у провайдера для запрошенной задачей: по задаче (класс, вызвавший клиент), затем по нашей модели,
+     * затем default_model; ничего не задано — как есть. См. services.openai_classifier.
+     */
+    public function resolveModel(string $model): string
+    {
+        $cfg = (array) config('services.openai_classifier', []);
+        $byCaller = (array) ($cfg['by_caller'] ?? []);
+        if ($byCaller !== []) {
+            $task = self::callerTask();
+            if (isset($byCaller[$task])) {
+                return (string) $byCaller[$task];
+            }
+        }
+        $map = (array) ($cfg['models'] ?? []);
+        if (isset($map[$model])) {
+            return (string) $map[$model];
+        }
+        $default = trim((string) ($cfg['default_model'] ?? ''));
+
+        return $default !== '' ? $default : $model;
+    }
+
+    /** Задача — первый класс вне клиента в стеке вызова; стенды сравнения моделей — «Bench». */
+    private static function callerTask(): string
+    {
+        $task = 'unknown';
+        foreach (debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 14) as $f) {
+            if (isset($f['class']) && str_contains($f['class'], '\\Bench')) {
+                return 'Bench';
+            }
+            if ($task === 'unknown' && isset($f['class']) && $f['class'] !== self::class) {
+                $task = class_basename($f['class']);
+            }
+        }
+
+        return $task;
     }
 
     /**
@@ -194,10 +258,22 @@ class OpenAIClassifierClient
     /**
      * «Рассуждающие» модели (gpt-5*, o1/o3/o4, gpt-6*, модели шлюза Beget): без низкого усилия max_tokens уходит на
      * рассуждения и ответ пустой; у OpenAI gpt-5/o* вместо max_tokens — max_completion_tokens и только temperature=1.
+     * Провайдерские модели (qwen/…, google/… у RouterAI) — рассуждения выключены, max_tokens не ниже min_max_tokens.
      */
     private function adaptPayload(array $payload): array
     {
-        $model = (string) ($payload['model'] ?? '');
+        $payload['model'] = $this->resolveModel((string) ($payload['model'] ?? ''));
+        $model = $payload['model'];
+        $cfg = (array) config('services.openai_classifier', []);
+        if (str_contains($model, '/') && !str_starts_with($model, 'openai/')) {
+            if (!($cfg['reasoning'] ?? false) && !isset($payload['reasoning'])) {
+                $payload['reasoning'] = ['enabled' => false];
+            }
+            $min = (int) ($cfg['min_max_tokens'] ?? 0);
+            if ($min > 0 && isset($payload['max_tokens'])) {
+                $payload['max_tokens'] = max((int) $payload['max_tokens'], $min);
+            }
+        }
         if (preg_match('/^(gpt-5|gpt-6|o[134]\b|o[134]-)/', $model) || str_contains($this->baseUrl, 'api-llm.beget.com')) {
             $payload['reasoning_effort'] = $payload['reasoning_effort'] ?? 'low';
             if (str_starts_with($model, 'gpt-5') || preg_match('/^o[134]/', $model)) {
@@ -249,6 +325,7 @@ class OpenAIClassifierClient
         $payload['model'] = self::backupModel($backup, (string) ($payload['model'] ?? ''));
         // Модели шлюза «рассуждающие»: без низкого усилия бюджет max_tokens уходит на рассуждения, ответ пустой.
         $payload['reasoning_effort'] = $backup['effort'];
+        unset($payload['reasoning']); // параметр RouterAI, шлюз Beget его не знает
         $payload['max_tokens'] = max(300, (int) ($payload['max_tokens'] ?? 0));
         try {
             return Http::withHeaders(['Authorization' => 'Bearer ' . $backup['api_key'], 'Content-Type' => 'application/json'])
@@ -287,7 +364,7 @@ class OpenAIClassifierClient
         // connectTimeout отдельно от общего timeout: наблюдали вечный SYN-SENT к прокси
         // (коннект не устанавливается и не рвётся) — общий timeout его не оборвал,
         // рендер вставал навсегда. Коннект дольше 15с = мёртвая точка, рвём сразу.
-        $response = $this->post($headers, [
+        $response = $this->post($headers, $this->adaptPayload([
             'model' => $model,
             'messages' => [
                 ['role' => 'system', 'content' => $systemPrompt],
@@ -295,7 +372,7 @@ class OpenAIClassifierClient
             ],
             'temperature' => $temperature,
             'max_tokens' => $maxTokens,
-        ]);
+        ]));
 
         if (!$response->successful()) {
             $body = $response->body();
@@ -307,12 +384,12 @@ class OpenAIClassifierClient
         }
 
         $data = $response->json();
-        $this->rememberUsage($data, $model);
+        $this->rememberUsage($data, $this->resolveModel($model));
         $content = $data['choices'][0]['message']['content'] ?? null;
         if (!is_string($content) || $content === '') {
             throw new \RuntimeException('OpenAIClassifier: empty text completion content.');
         }
-        return $content;
+        return trim((string) preg_replace('~<think>.*?</think>~s', '', $content));
     }
 
     /**
@@ -334,7 +411,7 @@ class OpenAIClassifierClient
             'prompt_tokens' => (int) ($usage['prompt_tokens'] ?? 0),
             'completion_tokens' => (int) ($usage['completion_tokens'] ?? 0),
             'cached_tokens' => (int) ($usage['prompt_tokens_details']['cached_tokens'] ?? 0),
-            'cost_rub' => (float) ($usage['cost_rub'] ?? 0),
+            'cost_rub' => self::costRub(is_array($usage) ? $usage : []),
         ];
         $this->recordUsage(is_array($usage) ? $usage : []);
     }
@@ -342,29 +419,30 @@ class OpenAIClassifierClient
     /** Где сейчас был ответ: основной прокси или резерв (Beget). */
     private string $lastProvider = 'primary';
 
+    /** Стоимость вызова в ₽: у Beget — usage.cost_rub, у RouterAI (оплата в рублях) — usage.cost. */
+    private static function costRub(array $usage): float
+    {
+        if (isset($usage['cost_rub'])) {
+            return (float) $usage['cost_rub'];
+        }
+
+        return str_contains((string) config('services.openai_classifier.base_url'), 'routerai.ru') ? (float) ($usage['cost'] ?? 0) : 0.0;
+    }
+
     /**
      * Учёт расхода по задачам за МСК-сутки (ai_usage_daily, 21.10.2026). Задача — класс, вызвавший клиент.
-     * Цена OpenAI — по monitoring.llm_prices (закэшированный вход — половина цены входа), у Beget — его cost_rub.
-     * Сбой учёта вызов не роняет.
+     * Цена в $ — по monitoring.llm_prices (закэшированный вход — половина цены входа); в ₽ — что вернул провайдер
+     * (RouterAI, резерв Beget). Сбой учёта вызов не роняет.
      */
     private function recordUsage(array $usage): void
     {
         try {
-            $task = 'unknown';
-            foreach (debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 12) as $f) {
-                if (isset($f['class']) && str_contains($f['class'], '\\Bench')) {
-                    $task = 'Bench'; // стенды сравнения моделей — отдельно от боевого расхода
-                    break;
-                }
-                if ($task === 'unknown' && isset($f['class']) && $f['class'] !== self::class) {
-                    $task = class_basename($f['class']);
-                }
-            }
+            $task = self::callerTask();
             $model = mb_substr((string) ($this->lastUsage['model'] ?? ''), 0, 60);
             $prompt = (int) ($usage['prompt_tokens'] ?? 0);
             $completion = (int) ($usage['completion_tokens'] ?? 0);
             $cached = (int) ($usage['prompt_tokens_details']['cached_tokens'] ?? 0);
-            $rub = (float) ($usage['cost_rub'] ?? 0);
+            $rub = self::costRub($usage);
             $usd = 0.0;
             if ($this->lastProvider === 'primary') {
                 $price = (new \App\Services\Monitoring\LlmCostCalculator())->priceFor($model);

@@ -679,6 +679,17 @@ return [
         'model_mini' => env('OPENAI_CLASSIFIER_MODEL_MINI', 'gpt-4o-mini'),
         'model_full' => env('OPENAI_CLASSIFIER_MODEL_FULL', 'gpt-4o'),
         'timeout' => (int) env('OPENAI_CLASSIFIER_TIMEOUT', 30),
+        // Модель у провайдера (с 19.11.2026 — RouterAI, routerai.ru/api/v1): задачи по-прежнему просят «свою» модель
+        // (gpt-4o, gpt-4o-mini…), клиент подменяет: сначала по задаче — классу, вызвавшему клиент
+        // ({"SupplierReplyAnalyzer":"…"}), затем по нашей модели ({"gpt-4o":"…"}), затем default_model; пусто — как есть.
+        'by_caller' => json_decode((string) env('OPENAI_CLASSIFIER_BY_CALLER', '{}'), true) ?: [],
+        'models' => json_decode((string) env('OPENAI_CLASSIFIER_MODEL_MAP', '{}'), true) ?: [],
+        'default_model' => (string) env('OPENAI_CLASSIFIER_DEFAULT_MODEL', ''),
+        // Рассуждения у провайдерских моделей (qwen/…, google/…) выключены: Qwen с ними отвечал 20–270 с вместо 2 с
+        // (опыт mzCorp). В запрос уходит reasoning: {enabled: false}; модели openai/… параметр не принимают.
+        'reasoning' => (bool) env('OPENAI_CLASSIFIER_REASONING', false),
+        // Нижняя граница max_tokens: рассуждающая модель при лимите 20–550 тратит его на рассуждение и отвечает пусто.
+        'min_max_tokens' => (int) env('OPENAI_CLASSIFIER_MIN_MAX_TOKENS', 0),
         // Резерв на отказ основного (бюджет, 429, 5xx, нет связи) — ИИ-Шлюз Beget (с 21.10.2026).
         'backup' => [
             'enabled' => (bool) env('BEGET_LLM_BACKUP', true),

@@ -588,8 +588,9 @@ class ProgressDashboard
         $ai = ['url' => (string) config('services.openai_classifier.base_url'), 'health' => null, 'ms' => null];
         try {
             $t = microtime(true);
-            $base = preg_replace('~/v1/?$~', '', $ai['url']);
-            $res = Http::timeout(4)->connectTimeout(3)->get($base . '/health');
+            // /models есть у любого OpenAI-совместимого API (RouterAI отдаёт его и без ключа); /health был только у прокси.
+            $res = Http::timeout(4)->connectTimeout(3)->withToken((string) config('services.openai_classifier.api_key'))
+                ->get(rtrim($ai['url'], '/') . '/models');
             $ai['health'] = $res->successful() ? 'ok' : 'HTTP ' . $res->status();
             $ai['ms'] = (int) round((microtime(true) - $t) * 1000);
         } catch (\Throwable $e) {
