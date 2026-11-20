@@ -19,12 +19,13 @@ use Illuminate\Console\Command;
  *   link-items  позиции обычных заявок ↔ канонические товары
  *   rfq         «бесплатные» сверки из КП обычных заявок
  *   waves       снимок состояния волн (холостой прогон планировщика) — для страницы «Ход выполнения»
+ *   discover-sites  сайты с ценой без поставщика IQOT → проверка как кандидата в поставщики (SiteSupplierDiscovery)
  *   daily       link-sites + plan + plan-kp + send + waves   (будни после plan-day)
- *   sync        collect + link-items + rfq + waves (каждые 30 мин)
+ *   sync        collect + link-items + rfq + discover-sites + waves (каждые 30 мин)
  */
 class HybridCommand extends Command
 {
-    protected $signature = 'monitoring:hybrid {step : link-sites|plan|plan-kp|send|collect|link-items|rfq|waves|daily|sync} {--dry-run} {--force}';
+    protected $signature = 'monitoring:hybrid {step : link-sites|plan|plan-kp|send|collect|link-items|rfq|waves|discover-sites|daily|sync} {--dry-run} {--force}';
 
     protected $description = 'Мониторинг цен, Гибрид: проверочные КП к ценам сайтов и доверие к сайтам (Ф3)';
 
@@ -38,7 +39,7 @@ class HybridCommand extends Command
         $step = (string) $this->argument('step');
         $steps = match ($step) {
             'daily' => ['link-sites', 'plan', 'plan-kp', 'send', 'waves'],
-            'sync' => ['collect', 'link-items', 'rfq', 'waves'],
+            'sync' => ['collect', 'link-items', 'rfq', 'discover-sites', 'waves'],
             default => [$step],
         };
         foreach ($steps as $s) {
@@ -91,6 +92,18 @@ class HybridCommand extends Command
             case 'rfq':
                 $n = (new VerificationCollector())->collectRfq();
                 $this->info("Сверки из КП обычных заявок: {$n}");
+                break;
+            case 'discover-sites':
+                $limit = (int) config('monitoring.hybrid.site_discovery_per_run', 20);
+                if ($limit <= 0) {
+                    $this->line('Сайты → поставщики: выключено (MONITORING_SITE_DISCOVERY_PER_RUN=0)');
+                    break;
+                }
+                // Сначала привязать сайты к уже известным поставщикам — проверяем только оставшиеся.
+                $l = (new SiteSupplierLinker())->linkAll();
+                $r = (new \App\Services\Monitoring\Hybrid\SiteSupplierDiscovery())->dispatch($limit, $dry);
+                $this->info("Сайты → поставщики: связано с известными {$l['linked']}, кандидатов {$r['candidates']}, "
+                    . "на проверку {$r['dispatched']}, исключено {$r['excluded']}" . ($dry ? ' (dry-run)' : ''));
                 break;
             case 'waves':
                 // Холостой прогон: «сколько позиций где сейчас» — ничего не создаёт и не отменяет (~7 с).
