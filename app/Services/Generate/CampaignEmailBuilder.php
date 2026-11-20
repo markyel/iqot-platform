@@ -485,16 +485,39 @@ class CampaignEmailBuilder
         }
 
         $parts = [];
-        if (!$brandUsed && $hasBrand) {
+        if (!$brandUsed && $hasBrand && !self::mentions($name, $brand)) {
             $parts[] = $brand;
         }
-        if (!$articleUsed && $hasArticle) {
+        if (!$articleUsed && $hasArticle && !self::mentions($name, $article)) {
             $parts[] = $article;
         }
         if (count($parts) === 0) {
             return $name;
         }
         return trim($name . ' ' . implode(' ', $parts));
+    }
+
+    /**
+     * Название уже содержит бренд/артикул (целым словом, без учёта регистра): «… FAA307G1 Otis» + {brand} {article}
+     * давало «… FAA307G1 Otis Otis FAA307G1» (превью 20.11.2026). Граница — не буква/цифра, иначе бренд «KM»
+     * нашёлся бы внутри артикула «KM804342».
+     */
+    public static function mentions(string $name, string $value): bool
+    {
+        $value = trim($value);
+        if ($value === '' || trim($name) === '') {
+            return false;
+        }
+
+        return (bool) preg_match('/(?<![\p{L}\p{N}])' . preg_quote($value, '/') . '(?![\p{L}\p{N}])/iu', $name);
+    }
+
+    /** Значение {brand}/{article} для строки позиции: пусто, если название его уже содержит. */
+    private function fieldUnlessInName(array $item, string $field): string
+    {
+        $value = $this->cleanValue($item[$field] ?? null, '');
+
+        return self::mentions($this->cleanValue($item['name'] ?? null, ''), $value) ? '' : $value;
     }
 
     /**
@@ -624,16 +647,16 @@ class CampaignEmailBuilder
             $line = $this->replaceFirst($line, '{name}', $displayName);
             $line = $this->replaceFirst($line, '{quantity}', $displayQty);
             $line = $this->replaceFirst($line, '{unit}', $this->cleanValue($item['unit'] ?? null, 'шт'));
-            $line = $this->replaceFirst($line, '{brand}', $this->cleanValue($item['brand'] ?? null, ''));
-            $line = $this->replaceFirst($line, '{article}', $this->cleanValue($item['article'] ?? null, ''));
+            $line = $this->replaceFirst($line, '{brand}', $this->fieldUnlessInName($item, 'brand'));
+            $line = $this->replaceFirst($line, '{article}', $this->fieldUnlessInName($item, 'article'));
 
-            if ($this->hasValue($item['brand'] ?? null)) {
+            if ($this->fieldUnlessInName($item, 'brand') !== '') {
                 $line = $this->replaceFirst($line, '{brand_suffix}', $this->replaceFirst((string) $brandSuffix, '{brand}', (string) ($item['brand'] ?? '')));
             } else {
                 $line = $this->replaceFirst($line, '{brand_suffix}', '');
             }
 
-            $line = preg_replace('/\{[a-z_]+\}/i', '', $line) ?? $line;
+            $line = preg_replace(['/\{[a-z_]+\}/i', '/\(\s*\)/u'], '', $line) ?? $line;
             $line = trim((string) preg_replace('/\s+/', ' ', $line));
             // Маркер списка даёт сам <li> (нативный «•»); ведущий буллет/дефис в
             // item_template или в названии → двойной маркер («• • …»). Срезаем.
@@ -733,10 +756,10 @@ class CampaignEmailBuilder
             $line = $this->replaceFirst($line, '{name}', $displayName);
             $line = $this->replaceFirst($line, '{quantity}', $displayQty);
             $line = $this->replaceFirst($line, '{unit}', $displayUnit);
-            $line = $this->replaceFirst($line, '{brand}', $this->cleanValue($item['brand'] ?? null, ''));
-            $line = $this->replaceFirst($line, '{article}', $this->cleanValue($item['article'] ?? null, ''));
+            $line = $this->replaceFirst($line, '{brand}', $this->fieldUnlessInName($item, 'brand'));
+            $line = $this->replaceFirst($line, '{article}', $this->fieldUnlessInName($item, 'article'));
 
-            $line = preg_replace('/\{[a-z_]+\}/i', '', $line) ?? $line;
+            $line = preg_replace(['/\{[a-z_]+\}/i', '/\(\s*\)/u'], '', $line) ?? $line;
             $line = preg_replace('/,\s*,/', ',', $line) ?? $line;
             $line = preg_replace('/,\s*$/', '', $line) ?? $line;
             $line = preg_replace('/^\s*,/', '', $line) ?? $line;
@@ -786,9 +809,11 @@ class CampaignEmailBuilder
             $line = $this->replaceFirst($line, '{name}', $displayName);
             $line = $this->replaceFirst($line, '{quantity}', $this->formatQty($item['quantity'] ?? null, ''));
             $line = $this->replaceFirst($line, '{unit}', $this->cleanValue($item['unit'] ?? null, 'шт'));
-            $line = $this->replaceFirst($line, '{brand}', $this->cleanValue($item['brand'] ?? null, ''));
+            $line = $this->replaceFirst($line, '{brand}', $this->fieldUnlessInName($item, 'brand'));
 
             $line = preg_replace('/\{[a-z_]+\}/i', '', $line) ?? $line;
+            // Пустой {brand} оставлял «()» / двойные пробелы.
+            $line = trim((string) preg_replace(['/\(\s*\)/u', '/\s{2,}/u'], ['', ' '], $line));
 
             $parts[] = trim($line);
         }
