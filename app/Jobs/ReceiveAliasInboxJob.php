@@ -44,7 +44,9 @@ class ReceiveAliasInboxJob implements ShouldQueue
             if (!$dom || !$dom->inbox_password) {
                 return;
             }
-            [$host, $port] = array_pad(explode(':', (string) config('services.alias_exp.imap', 'imap.beget.com:993')), 2, '993');
+            // IMAP — свой у поставщика домена (alias_domains.imap); пусто — Beget по умолчанию.
+            $imap = (string) (($dom->imap ?? null) ?: config('services.alias_exp.imap', 'imap.beget.com:993'));
+            [$host, $port] = array_pad(explode(':', $imap), 2, '993');
             $inbox = new Sender([
                 'email' => "{$dom->inbox}@{$dom->domain}", 'imap_server' => $host, 'imap_port' => (int) $port,
                 'imap_user' => "{$dom->inbox}@{$dom->domain}", 'imap_password' => AliasMailboxFactory::inboxPassword($dom),

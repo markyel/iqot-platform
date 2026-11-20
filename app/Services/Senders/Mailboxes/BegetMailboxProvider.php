@@ -8,7 +8,7 @@ use App\Services\AliasExp\BegetMailApi;
  * Beget: домен наш, если почтовое API отвечает по нему. Домены без ящиков API не перечисляет — засева нет,
  * новые домены Beget входят в пул вручную. Лимита на аккаунт нет (троттл по серверу — в отправке).
  */
-class BegetMailboxProvider implements MailboxProvider
+class BegetMailboxProvider implements AliasMailboxProvider
 {
     /** @var array<string,string[]|false> домен => ящики (false — не наш) */
     private array $cache = [];
@@ -57,6 +57,26 @@ class BegetMailboxProvider implements MailboxProvider
     public function password(): string
     {
         return BegetMailApi::password();
+    }
+
+    public function mailboxExists(string $domain, string $local): bool
+    {
+        return $this->api->mailboxExists($domain, $local);
+    }
+
+    public function setPassword(string $domain, string $local, string $password): void
+    {
+        $this->api->changePassword($domain, $local, $password);
+    }
+
+    public function forwardAndDelete(string $domain, string $local, string $target): void
+    {
+        $this->api->forwardAndDelete($domain, $local, $target);
+    }
+
+    public function setCatchAll(string $domain, string $inbox): void
+    {
+        $this->api->setCatchAll($domain, $inbox);
     }
 
     public function smtp(string $domain): string

@@ -791,6 +791,8 @@ return [
         'timeout' => (int) env('REGRU_API_TIMEOUT', 30),
         'pool_hosting_ids' => array_values(array_filter(array_map('intval', explode(',', (string) env('REGRU_POOL_HOSTING_IDS', ''))))),
         'exclude_domains' => array_values(array_filter(array_map('trim', explode(',', (string) env('REGRU_EXCLUDE_DOMAINS', ''))))),
+        // Хостинги доменов ветки «ящик на батч» сверх хостингов пула (RegruMailboxProvider::forAlias).
+        'alias_hosting_ids' => array_values(array_filter(array_map('intval', explode(',', (string) env('REGRU_ALIAS_HOSTING_IDS', ''))))),
     ],
 
 ];

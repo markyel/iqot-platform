@@ -3,7 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\AliasExp\AliasMailboxFactory;
-use App\Services\AliasExp\BegetMailApi;
+use App\Services\AliasExp\AliasProviders;
 use App\Services\AliasExp\OrgReserve;
 use App\Support\Senders\SenderPool;
 use Carbon\Carbon;
@@ -14,9 +14,10 @@ use Illuminate\Support\Facades\DB;
 /**
  * Управление алгоритмом «ящик на батч» (docs/alias-mailbox-design.md).
  *   status                                  — резерв, домены, ящики
- *   api-check {домен}                       — живость ключей Beget (только чтение: список ящиков)
- *   domain-add {домен} [--inbox=info] [--inbox-password=] [--reset-inbox-password]
- *                                           — домен в пул: общий ящик (создаётся, если нет) + катч-олл на него
+ *   api-check {домен}                       — живость API поставщика домена (только чтение: список ящиков)
+ *   domain-add {домен} [--provider=regru|beget] [--inbox=info] [--inbox-password=] [--reset-inbox-password]
+ *                                           — домен в пул: общий ящик (создаётся, если нет) + катч-олл на него;
+ *                                             поставщик — кто обслуживает домен (Beget или хостинг REG.RU)
  *   mailbox-create [--domain=] [--deadline=Y-m-d]
  *                                           — ручной ящик под батч (в Ф3 их создаёт план дня)
  *   drop-expired [--dry-run]                — удалить ящики с истёкшим сроком
@@ -27,16 +28,16 @@ use Illuminate\Support\Facades\DB;
  */
 class AliasExpCommand extends Command
 {
-    protected $signature = 'alias-exp {action} {domain?} {--inbox=info} {--inbox-password=} {--reset-inbox-password} {--domain=} {--deadline=} {--dry-run}';
+    protected $signature = 'alias-exp {action} {domain?} {--provider=} {--inbox=info} {--inbox-password=} {--reset-inbox-password} {--domain=} {--deadline=} {--dry-run}';
 
-    protected $description = 'Алгоритм «ящик на батч»: домены, ящики, проверка API Beget';
+    protected $description = 'Алгоритм «ящик на батч»: домены, ящики, проверка API поставщиков ящиков (Beget, REG.RU)';
 
-    public function handle(BegetMailApi $beget, OrgReserve $reserve, AliasMailboxFactory $factory): int
+    public function handle(AliasProviders $providers, OrgReserve $reserve, AliasMailboxFactory $factory): int
     {
         return match ($this->argument('action')) {
-            'status' => $this->status($reserve),
-            'api-check' => $this->apiCheck($beget),
-            'domain-add' => $this->domainAdd($beget),
+            'status' => $this->status($reserve, $providers),
+            'api-check' => $this->apiCheck($providers),
+            'domain-add' => $this->domainAdd($providers),
             'mailbox-create' => $this->mailboxCreate($factory),
             'drop-expired' => $this->dropExpired($factory),
             'reserve-filter' => $this->reserveFilter($reserve),
@@ -47,15 +48,17 @@ class AliasExpCommand extends Command
         };
     }
 
-    private function status(OrgReserve $reserve): int
+    private function status(OrgReserve $reserve, AliasProviders $providers): int
     {
         $r = $reserve->stats();
         $this->line("Резерв организаций: {$r['total']} (активных {$r['active']}, не использованных {$r['never_used']}, с живым ящиком {$r['live']})");
         $this->line('Колонка senders.pool: ' . (SenderPool::hasColumn() ? 'есть' : 'НЕТ — ящики не создаются'));
-        $this->line('API Beget: ' . (app(BegetMailApi::class)->isConfigured() ? 'ключи заданы' : 'ключей нет'));
-        $this->table(['домен', 'общий ящик', 'катч-олл', 'активен', 'MX в DNS', 'ящиков создано', 'последний'],
+        foreach (AliasProviders::NAMES as $name) {
+            $this->line("API {$name}: " . ($providers->get($name)->isConfigured() ? 'настроено' : 'не настроено'));
+        }
+        $this->table(['домен', 'поставщик', 'общий ящик', 'катч-олл', 'активен', 'MX в DNS', 'ящиков создано', 'последний'],
             DB::table('alias_domains')->orderBy('domain')->get()->map(fn ($d) => [
-                $d->domain, $d->inbox . '@' . ($d->inbox_password ? '' : ' (нет пароля)'), $d->catch_all ? 'да' : 'нет',
+                $d->domain, $d->provider ?? 'beget', $d->inbox . '@' . ($d->inbox_password ? '' : ' (нет пароля)'), $d->catch_all ? 'да' : 'нет',
                 $d->active ? 'да' : 'нет', AliasMailboxFactory::mailDnsReady($d->domain) ? 'да' : 'НЕТ — не выдаётся', $d->mailboxes_created, $d->last_used_at,
             ])->all());
         $this->table(['статус', 'ящиков'], DB::table('alias_mailboxes')->selectRaw('status, COUNT(*) n')->groupBy('status')
@@ -64,39 +67,54 @@ class AliasExpCommand extends Command
         return self::SUCCESS;
     }
 
-    private function apiCheck(BegetMailApi $beget): int
+    private function apiCheck(AliasProviders $providers): int
     {
-        $domain = (string) $this->argument('domain');
+        $domain = mb_strtolower(trim((string) $this->argument('domain')));
         if ($domain === '') {
             $this->error('Укажите домен: alias-exp api-check example.ru');
 
             return self::FAILURE;
         }
-        $list = $beget->listMailboxes($domain);
-        $this->info("Ключи Beget работают: на {$domain} ящиков " . count($list));
-        foreach ($list as $m) {
-            $this->line("  {$m['mailbox']}@{$domain}  пересылка: " . ($m['forward_mail_status'] ?? '?'));
+        $name = $this->option('provider') ?: $providers->detect($domain);
+        if (!$name) {
+            $this->error("{$domain} не обслуживает ни один настроенный поставщик (" . implode(', ', AliasProviders::NAMES) . ')');
+
+            return self::FAILURE;
+        }
+        $list = $providers->get($name)->mailboxes($domain);
+        $this->info("API {$name} работает: на {$domain} ящиков " . count($list));
+        foreach ($list as $local) {
+            $this->line("  {$local}@{$domain}");
         }
 
         return self::SUCCESS;
     }
 
-    private function domainAdd(BegetMailApi $beget): int
+    private function domainAdd(AliasProviders $providers): int
     {
         $domain = mb_strtolower(trim((string) $this->argument('domain')));
         $inbox = mb_strtolower(trim((string) $this->option('inbox')));
         if ($domain === '' || $inbox === '') {
-            $this->error('Укажите домен: alias-exp domain-add example.ru [--inbox=info] [--inbox-password=…]');
+            $this->error('Укажите домен: alias-exp domain-add example.ru [--provider=regru|beget] [--inbox=info] [--inbox-password=…]');
 
             return self::FAILURE;
         }
+        $name = $this->option('provider') ?: $providers->detect($domain);
+        if (!$name || !in_array($name, AliasProviders::NAMES, true)) {
+            $this->error("Поставщик для {$domain} не найден: домен должен быть почтовым доменом Beget или хостинга REG.RU (--provider=…)");
+
+            return self::FAILURE;
+        }
+        $provider = $providers->get($name);
+        $this->line("Поставщик ящиков: {$name}");
         $password = (string) $this->option('inbox-password');
-        if ($beget->mailboxExists($domain, $inbox) && $this->option('reset-inbox-password')) {
+        $exists = $provider->mailboxExists($domain, $inbox);
+        if ($exists && $this->option('reset-inbox-password')) {
             // Только для своего, только что созданного ящика: владелец им не пользуется.
-            $password = BegetMailApi::password();
-            $beget->changePassword($domain, $inbox, $password);
+            $password = $provider->password();
+            $provider->setPassword($domain, $inbox, $password);
             $this->info("Пароль {$inbox}@{$domain} сброшен и сохранён зашифрованным");
-        } elseif ($beget->mailboxExists($domain, $inbox)) {
+        } elseif ($exists) {
             if ($password === '') {
                 // Чужой пароль не меняем: им может пользоваться владелец.
                 $this->error("{$inbox}@{$domain} уже есть — передайте его пароль: --inbox-password=…");
@@ -105,17 +123,19 @@ class AliasExpCommand extends Command
             }
             $this->line("{$inbox}@{$domain} уже есть — используем");
         } else {
-            $password = $password !== '' ? $password : BegetMailApi::password();
-            $beget->createMailbox($domain, $inbox, $password);
+            $password = $password !== '' ? $password : $provider->password();
+            $provider->createMailbox($domain, $inbox, $password);
             $this->info("Создан общий ящик {$inbox}@{$domain} (пароль сохранён зашифрованным)");
         }
-        $beget->setCatchAll($domain, $inbox);
+        $provider->setCatchAll($domain, $inbox);
         $this->info("Катч-олл {$domain} → {$inbox}@{$domain}");
 
         DB::table('alias_domains')->updateOrInsert(['domain' => $domain], [
+            'provider' => $name, 'smtp' => $provider->smtp($domain), 'imap' => $provider->imap($domain),
             'inbox' => $inbox, 'inbox_password' => Crypt::encryptString($password), 'catch_all' => true,
             'active' => true, 'updated_at' => now(), 'created_at' => now(),
         ]);
+        $this->info("Домен {$domain} в пуле ветки: SMTP {$provider->smtp($domain)}, IMAP {$provider->imap($domain)}");
 
         return self::SUCCESS;
     }

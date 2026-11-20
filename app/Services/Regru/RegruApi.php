@@ -125,6 +125,45 @@ class RegruApi
         $this->isp($serviceId, 'email.delete', ['elid' => $local . '@' . $domain]);
     }
 
+    public function setMailboxPassword(int $serviceId, string $domain, string $local, string $password): void
+    {
+        $this->isp($serviceId, 'email.edit', [
+            'sok' => 'ok', 'elid' => $local . '@' . $domain, 'name' => $local, 'passwd' => $password, 'confirm' => $password,
+        ]);
+    }
+
+    /** Пересылка всей почты ящика на $target без копии в ящике (поля формы email.edit: forward, dontsave). */
+    public function forwardAndDelete(int $serviceId, string $domain, string $local, string $target): void
+    {
+        $this->isp($serviceId, 'email.edit', [
+            'sok' => 'ok', 'elid' => $local . '@' . $domain, 'name' => $local, 'forward' => $target, 'dontsave' => 'on',
+        ]);
+    }
+
+    /** Катч-олл домена: письма на несуществующие адреса — на $target (emaildomain.edit: defaction=redirect, redirval). */
+    public function setCatchAll(int $serviceId, string $domain, string $target): void
+    {
+        $this->isp($serviceId, 'emaildomain.edit', [
+            'sok' => 'ok', 'elid' => $domain, 'name' => $domain, 'defaction' => 'redirect', 'redirval' => $target,
+        ]);
+    }
+
+    /** @return array{forward:string, dontsave:bool} текущая пересылка ящика (форма email.edit без sok — только чтение) */
+    public function mailboxForward(int $serviceId, string $domain, string $local): array
+    {
+        $doc = $this->isp($serviceId, 'email.edit', ['elid' => $local . '@' . $domain]);
+
+        return ['forward' => self::value($doc['forward'] ?? ''), 'dontsave' => self::value($doc['dontsave'] ?? '') === 'on'];
+    }
+
+    /** @return array{defaction:string, redirval:string} действие домена для несуществующих адресов (только чтение) */
+    public function domainDefaultAction(int $serviceId, string $domain): array
+    {
+        $doc = $this->isp($serviceId, 'emaildomain.edit', ['elid' => $domain]);
+
+        return ['defaction' => self::value($doc['defaction'] ?? ''), 'redirval' => self::value($doc['redirval'] ?? '')];
+    }
+
     /**
      * Почтовый домен на хостинге (DKIM 2048, DMARC; письма на несуществующие адреса — ошибкой, не тихим сбросом).
      *

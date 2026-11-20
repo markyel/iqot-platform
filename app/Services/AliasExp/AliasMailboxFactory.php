@@ -12,14 +12,15 @@ use RuntimeException;
 
 /**
  * Фабрика ящика под батч (docs/alias-mailbox-design.md, Ф2): организация из резерва (самая давно
- * использованная) → вымышленная персона (PersonaFactory: ФИО = адрес = подпись, телефон с изменённой цифрой) → ящик в Beget с пересылкой всей почты в info@ домена (сам ящик
+ * использованная) → вымышленная персона (PersonaFactory: ФИО = адрес = подпись, телефон с изменённой цифрой) → ящик у поставщика домена
+ * (Beget или хостинг REG.RU, alias_domains.provider — AliasProviders) с пересылкой всей почты в info@ домена (сам ящик
  * её не хранит) → отправитель reports.senders (пул alias, 1 письмо в 5 мин) → карта alias_mailboxes.
- * Любой сбой после создания ящика в Beget откатывает ящик (dropMailbox), чтобы не копить сирот.
+ * Любой сбой после создания ящика откатывает ящик (dropMailbox), чтобы не копить сирот.
  */
 class AliasMailboxFactory
 {
     public function __construct(
-        private readonly BegetMailApi $beget,
+        private readonly AliasProviders $providers,
         private readonly OrgReserve $reserve,
         private readonly PersonaFactory $personas,
         private readonly BulkSenderImporter $importer,
@@ -71,10 +72,11 @@ class AliasMailboxFactory
         $dom = $this->pickDomain($domain) ?? throw new RuntimeException('Нет готового домена в пуле (alias:domain add)');
         $org = $this->reserve->pickLeastRecentlyUsed() ?? throw new RuntimeException('Резерв организаций пуст');
 
-        // Занятые адреса: ящики домена в Beget (включая заведённые вручную) и вся история карты.
+        $provider = $this->providers->forDomain($dom);
+        // Занятые адреса: ящики домена у поставщика (включая заведённые вручную) и вся история карты.
         $taken = [];
-        foreach ($this->beget->listMailboxes($dom->domain) as $m) {
-            $taken[mb_strtolower($m['mailbox'] . '@' . $dom->domain)] = true;
+        foreach ($provider->mailboxes($dom->domain) as $local) {
+            $taken[mb_strtolower($local . '@' . $dom->domain)] = true;
         }
         foreach (DB::table('alias_mailboxes')->pluck('email') as $e) {
             $taken[mb_strtolower($e)] = true;
@@ -82,17 +84,17 @@ class AliasMailboxFactory
         // Полный набор персоны сразу: одно вымышленное ФИО — в адресе, имени отправителя и подписи.
         $persona = $this->personas->make($dom->domain, $taken);
         ['email' => $email, 'local' => $local] = $persona;
-        $password = BegetMailApi::password();
+        $password = $provider->password();
         $phone = PersonaFactory::legendPhone($org->phone, (string) $org->inn);
 
-        $this->beget->createMailbox($dom->domain, $local, $password);
+        $provider->createMailbox($dom->domain, $local, $password);
         try {
-            $this->beget->forwardAndDelete($dom->domain, $local, $dom->inbox . '@' . $dom->domain);
+            $provider->forwardAndDelete($dom->domain, $local, $dom->inbox . '@' . $dom->domain);
 
             $cfg = config('services.alias_exp');
             $res = $this->importer->importBlocks([[
                 'email' => $email, 'password' => $password, 'user' => $email,
-                'smtp' => $cfg['smtp'], 'imap' => $cfg['imap'],
+                'smtp' => $dom->smtp ?? null ?: $cfg['smtp'], 'imap' => $dom->imap ?? null ?: $cfg['imap'],
                 'name' => $persona['display_name'], 'fullname' => $persona['full_name'], 'phone' => $phone,
                 'company' => OrgReserve::displayName((string) $org->name), 'inn' => $org->inn, 'kpp' => $org->kpp, 'ogrn' => $org->ogrn,
                 'address' => $org->legal_address, 'company_phone' => $phone, 'director' => $org->director_name,
@@ -108,7 +110,7 @@ class AliasMailboxFactory
             }
         } catch (\Throwable $e) {
             try {
-                $this->beget->dropMailbox($dom->domain, $local);
+                $provider->dropMailbox($dom->domain, $local);
             } catch (\Throwable $drop) {
                 Log::warning('AliasMailboxFactory: откат ящика не удался', ['email' => $email, 'error' => $drop->getMessage()]);
             }
@@ -130,16 +132,17 @@ class AliasMailboxFactory
             'organization' => (string) ($row['organization'] ?? $org->name), 'expires_at' => $expiresAt->toDateTimeString()];
     }
 
-    /** Удалить ящик в Beget и выключить отправителя; строка карты остаётся (поздние ответы — через катч-олл). */
+    /** Удалить ящик у поставщика и выключить отправителя; строка карты остаётся (поздние ответы — через катч-олл). */
     public function drop(object $mb): void
     {
         $dom = DB::table('alias_domains')->find($mb->domain_id);
         $local = strstr($mb->email, '@', true);
+        $provider = $this->providers->forDomain($dom);
         try {
-            $this->beget->dropMailbox($dom->domain, $local);
+            $provider->dropMailbox($dom->domain, $local);
         } catch (\Throwable $e) {
             // Ящика уже нет (удалён руками) — не ошибка; остальное — пробуем снова завтра.
-            if ($this->beget->mailboxExists($dom->domain, $local)) {
+            if ($provider->mailboxExists($dom->domain, $local)) {
                 throw $e;
             }
         }

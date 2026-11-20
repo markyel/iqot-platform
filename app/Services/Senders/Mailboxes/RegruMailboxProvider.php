@@ -12,14 +12,22 @@ use Illuminate\Support\Facades\Log;
  * хостинги туда не входят: на sm21 живёт partleader.ru). Почтовый домен заводится заранее (emails:regru-domain), здесь
  * только ящики. Отправка — через сервер хостинга (его IP в SPF), у аккаунта суточный лимит писем (SmtpServerCaps):
  * ящиков держим не больше, чем лимит / потолок прогрева ящика, а без заданного лимита сервера новых не создаём вовсе.
+ *
+ * Два режима: основной пул (домены ветки «ящик на батч» из alias_domains ему не выдаются — там свои ящики и катч-олл)
+ * и ветка (forAlias: хостинги пула + services.regru.alias_hosting_ids, только домены ветки).
  */
-class RegruMailboxProvider implements MailboxProvider
+class RegruMailboxProvider implements AliasMailboxProvider
 {
     /** @var array<string,int>|null домен => id услуги хостинга */
     private ?array $domains = null;
 
-    public function __construct(private readonly RegruApi $api)
+    public function __construct(private readonly RegruApi $api, private readonly bool $alias = false)
     {
+    }
+
+    public static function forAlias(RegruApi $api): self
+    {
+        return new self($api, true);
     }
 
     public function name(): string
@@ -62,6 +70,26 @@ class RegruMailboxProvider implements MailboxProvider
         return RegruApi::password();
     }
 
+    public function mailboxExists(string $domain, string $local): bool
+    {
+        return in_array(mb_strtolower($local), array_map('mb_strtolower', $this->mailboxes($domain)), true);
+    }
+
+    public function setPassword(string $domain, string $local, string $password): void
+    {
+        $this->api->setMailboxPassword($this->service($domain), $domain, $local, $password);
+    }
+
+    public function forwardAndDelete(string $domain, string $local, string $target): void
+    {
+        $this->api->forwardAndDelete($this->service($domain), $domain, $local, $target);
+    }
+
+    public function setCatchAll(string $domain, string $inbox): void
+    {
+        $this->api->setCatchAll($this->service($domain), $domain, $inbox . '@' . $domain);
+    }
+
     public function smtp(string $domain): string
     {
         return $this->host($domain) . ':465';
@@ -99,7 +127,22 @@ class RegruMailboxProvider implements MailboxProvider
     /** @return int[] */
     private function hostingIds(): array
     {
-        return array_values(array_filter(array_map('intval', (array) config('services.regru.pool_hosting_ids', []))));
+        $ids = (array) config('services.regru.pool_hosting_ids', []);
+        if ($this->alias) {
+            $ids = array_merge($ids, (array) config('services.regru.alias_hosting_ids', []));
+        }
+
+        return array_values(array_unique(array_filter(array_map('intval', $ids))));
+    }
+
+    /** @return string[] домены ветки «ящик на батч» (основному пулу не выдаются) */
+    private static function aliasDomains(): array
+    {
+        try {
+            return array_map('mb_strtolower', DB::table('alias_domains')->pluck('domain')->all());
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /** @return array<string,int> */
@@ -108,6 +151,9 @@ class RegruMailboxProvider implements MailboxProvider
         if ($this->domains === null) {
             $this->domains = [];
             $exclude = array_map('mb_strtolower', (array) config('services.regru.exclude_domains', []));
+            if (!$this->alias) {
+                $exclude = array_merge($exclude, self::aliasDomains());
+            }
             foreach ($this->hostingIds() as $sid) {
                 try {
                     foreach ($this->api->mailDomains($sid) as $d) {
