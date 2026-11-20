@@ -233,7 +233,11 @@ class ListingChecker
         }
 
         $pageTokensHaveCode = $codes !== [] && array_intersect($codes, array_keys(ArticleNormalizer::tokens($window))) !== [];
-        $needLlm = $strict || $structured === null || (!$structured['sku_matched'] && !$pageTokensHaveCode);
+        // Первая проверка страницы — всегда с ИИ (решение владельца 20.11.2026): совпавший код не гарантирует товар
+        // (armtek: «468881» в артикуле тормозных колодок; snab-lift: наш код в описании блока БУАД — цена блока;
+        // nlp-group: наша качалка упомянута на странице замка). Дальше при переобходе — как раньше, по коду.
+        $firstCheck = $listing->checked_at === null;
+        $needLlm = $strict || $firstCheck || $structured === null || (!$structured['sku_matched'] && !$pageTokensHaveCode);
         $llm = null;
         $cost = 0.0;
         if ($needLlm && $this->llm) {
@@ -258,8 +262,10 @@ class ListingChecker
             $llm = $this->llm->extract($product, $listing->url, $window);
             $cost = (float) $llm['cost_usd'];
             $this->governor->record('llm_call', 1, $cost);
-            // На перепроверке выброса без ответа ИИ решать нельзя — сбой ИИ и при разметке.
-            if ($llm['error'] !== null && ($structured === null || $strict)) {
+            // На перепроверке выброса без ответа ИИ решать нельзя — сбой ИИ и при разметке; перегрузка ИИ-прокси
+            // на любой проверке — повтор (иначе первая проверка прошла бы по одному коду без ИИ).
+            $transientLlm = $llm['error'] !== null && preg_match('/HTTP (429|5\d\d)/', (string) $llm['error']);
+            if ($llm['error'] !== null && ($structured === null || $strict || $transientLlm)) {
                 // Отказ ИИ-прокси по перегрузке (nginx limit_req → 503, 429, 5xx) — не про страницу:
                 // повтор через 30–60 мин без счётчика неудач (иначе 5 отказов подряд = листинг failed навсегда).
                 if (preg_match('/HTTP (429|5\d\d)/', (string) $llm['error'])) {
