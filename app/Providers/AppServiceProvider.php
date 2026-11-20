@@ -28,5 +28,23 @@ class AppServiceProvider extends ServiceProvider
 
         // Регистрируем Observer для автоматического обновления offers_count при создании/удалении предложений
         ExternalOffer::observe(ExternalOfferObserver::class);
+
+        // Тестовый режим почты: письмо Laravel Mail с получателем не из EMAILS_TEST_RECIPIENTS не отправляется
+        // (false из слушателя MessageSending отменяет отправку).
+        \Illuminate\Support\Facades\Event::listen(\Illuminate\Mail\Events\MessageSending::class, static function ($event) {
+            if (!\App\Support\Mail\TestMode::active()) {
+                return null;
+            }
+            $to = array_merge($event->message->getTo(), $event->message->getCc(), $event->message->getBcc());
+            foreach ($to as $address) {
+                if (!\App\Support\Mail\TestMode::allows($address->getAddress())) {
+                    \Illuminate\Support\Facades\Log::info('TestMode: письмо Laravel Mail отменено', ['to' => $address->getAddress()]);
+
+                    return false;
+                }
+            }
+
+            return null;
+        });
     }
 }

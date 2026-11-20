@@ -40,6 +40,7 @@ class OutgoingReplySender
         if (!$reply->to_email || !$reply->subject) {
             throw new \RuntimeException('Missing reply data (to/subject) for outgoing_replies id: ' . $reply->id);
         }
+        \App\Support\Mail\TestMode::assertAllowed((string) $reply->to_email); // последний рубеж тестового режима
 
         $encryption = $sender->smtp_encryption ?: 'ssl';
         $isBeget = ($sender->smtp_server === 'smtp.beget.com');

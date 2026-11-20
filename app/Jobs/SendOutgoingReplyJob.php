@@ -70,6 +70,12 @@ class SendOutgoingReplyJob implements ShouldQueue
             return;
         }
 
+        // Тестовый режим: адрес не из EMAILS_TEST_RECIPIENTS — не шлём, без штрафа ящику и получателю.
+        if (!\App\Support\Mail\TestMode::allows((string) $reply->to_email)) {
+            $reply->update(['status' => 'failed', 'error_message' => \App\Support\Mail\TestMode::BLOCKED]);
+            return;
+        }
+
         $senderModel = $reply->sender;
 
         // Отправитель недоступен — возвращаем ответ в очередь, заберёт следующий тик.

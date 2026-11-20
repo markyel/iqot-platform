@@ -85,6 +85,7 @@ class SendCampaign extends Command
                     ->subject($campaign->subject)
                     ->html($html);
 
+                \App\Support\Mail\TestMode::assertAllowed((string) $recipient->email);
                 $mailer->send($email);
 
                 // Помечаем как отправленное

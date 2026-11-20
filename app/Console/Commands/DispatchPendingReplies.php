@@ -33,6 +33,9 @@ class DispatchPendingReplies extends Command
 
     public function handle(): int
     {
+        if (\App\Support\Mail\TestMode::active()) {
+            $this->warn('ТЕСТОВЫЙ РЕЖИМ: ответы уходят только на ' . implode(', ', \App\Support\Mail\TestMode::recipients()));
+        }
         if (!$this->option('force') && !config('services.email_replies.enabled')) {
             $this->warn('emails:dispatch-replies выключен (EMAILS_REPLIES_ENABLED=false). Используйте --force для ручного запуска.');
             return self::SUCCESS;

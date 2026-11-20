@@ -680,6 +680,7 @@ class CampaignController extends Controller
             }
         }
 
+        \App\Support\Mail\TestMode::assertAllowed((string) $to);
         $mailer->send($email);
     }
 }

@@ -156,6 +156,7 @@ class SendCampaignEmail implements ShouldQueue
             $email->html($html);
 
             // Отправляем
+            \App\Support\Mail\TestMode::assertAllowed((string) $recipient->email);
             $mailer->send($email);
 
             // Помечаем как отправленное

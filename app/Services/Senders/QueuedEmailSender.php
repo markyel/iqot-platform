@@ -30,6 +30,7 @@ class QueuedEmailSender
         if (!$email->to_email || !$email->subject) {
             throw new \RuntimeException('Missing email data (to/subject) for email_queue id: ' . $email->id);
         }
+        \App\Support\Mail\TestMode::assertAllowed((string) $email->to_email); // последний рубеж тестового режима
 
         $encryption = $sender->smtp_encryption ?: 'ssl';
         $isBeget = ($sender->smtp_server === 'smtp.beget.com');

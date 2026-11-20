@@ -43,6 +43,9 @@ class DispatchPendingEmails extends Command
 
     public function handle(): int
     {
+        if (\App\Support\Mail\TestMode::active()) {
+            $this->warn('ТЕСТОВЫЙ РЕЖИМ: письма уходят только на ' . implode(', ', \App\Support\Mail\TestMode::recipients()));
+        }
         // Предохранитель для фазового перехода с n8n: по расписанию команда
         // молчит, пока не включён флаг. Ручной прогон — через --force.
         if (!$this->option('force') && !config('services.email_dispatch.enabled')) {

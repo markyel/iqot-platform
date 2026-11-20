@@ -75,6 +75,12 @@ class SendQueuedEmailJob implements ShouldQueue
             return;
         }
 
+        // Тестовый режим: адрес не из EMAILS_TEST_RECIPIENTS — не шлём, без штрафа ящику и получателю.
+        if (!\App\Support\Mail\TestMode::allows((string) $email->to_email)) {
+            $email->update(['status' => 'cancelled', 'error_message' => \App\Support\Mail\TestMode::BLOCKED]);
+            return;
+        }
+
         // Ящик получателя заблокирован (N ошибок подряд) — не шлём, не переотправляем.
         // Диспетчер такие письма не клеймит, это страховка от гонки claim→block.
         if (RecipientMailbox::isBlocked((string) $email->to_email)) {

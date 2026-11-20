@@ -40,6 +40,12 @@ return [
         'system_user_id' => (int) env('REQUESTS_SYSTEM_USER_ID', env('N8N_SYSTEM_USER_ID', 1)),
     ],
 
+    // Тестовый режим почты (App\Support\Mail\TestMode): адреса через запятую — письма уходят только им,
+    // остальные отменяются без штрафа ящику и получателю. Пусто — обычная работа.
+    'email_test' => [
+        'recipients' => array_values(array_filter(array_map('trim', explode(',', (string) env('EMAILS_TEST_RECIPIENTS', ''))))),
+    ],
+
     // Диспетчер рассылки (замена n8n «Send Emails»). По умолчанию выключен —
     // включается флагом после сверки и отключения n8n-воркфлоу.
     'email_dispatch' => [
