@@ -22,6 +22,21 @@ class OrgReserve
         . '|администраци\p{L}*|министерств\p{L}*|департамент\p{L}*|комитет\p{L}*|правительств\p{L}*|префектур\p{L}*'
         . '|некоммерческ\p{L}*|региональный оператор)($|[^\p{L}])/iu';
 
+    /**
+     * Крупные и известные компании, их «дочки» и коммунальщики — не легенда (решение владельца 20.11.2026: письмо от
+     * несуществующего сотрудника «Газпром межрегионгаза» поставщик проверит или ответит в настоящую компанию).
+     * Ищется началом слова в кратком и полном наименовании.
+     */
+    private const LARGE_COMPANY_RE = '/(^|[^\p{L}])(газпром\p{L}*|\p{L}*регионгаз\p{L}*|\p{L}*облгаз\p{L}*|горгаз\p{L}*|мосгаз\p{L}*'
+        . '|роснефт\p{L}*|лукойл\p{L}*|транснефт\p{L}*|татнефт\p{L}*|сургутнефтегаз\p{L}*|новатэк\p{L}*|сибур\p{L}*|башнефт\p{L}*'
+        . '|ржд|российские железные дороги|аэрофлот\p{L}*|почта росси\p{L}*|росатом\p{L}*|ростех\p{L}*|роскосмос\p{L}*|рособоронэкспорт\p{L}*'
+        . '|россет\p{L}*|мрск|интер рао|русгидро\p{L}*|мосэнерго\p{L}*|моэк|тгк|огк|\p{L}*энергосбыт\p{L}*|\p{L}*электросет\p{L}*'
+        . '|\p{L}*водоканал\p{L}*|теплосет\p{L}*|тепловые сети|теплоэнерго\p{L}*'
+        . '|сбер\p{L}*|втб|банк\p{L}*|альфа-банк|т-банк|тинькофф\p{L}*|газпромбанк\p{L}*|россельхозбанк\p{L}*|совкомбанк\p{L}*'
+        . '|ростелеком\p{L}*|мтс|мегафон\p{L}*|вымпелком\p{L}*|билайн\p{L}*|т2 мобайл|теле2'
+        . '|норильск\p{L}*|норникел\p{L}*|северстал\p{L}*|нлмк|ммк|евраз\p{L}*|алроса\p{L}*|уралкали\p{L}*|фосагро\p{L}*|полюс золото'
+        . '|магнит|x5|пят[её]рочк\p{L}*|перекр[её]ст\p{L}*|ашан\p{L}*|леруа\p{L}*|яндекс\p{L}*)($|[^\p{L}])/iu';
+
     public static function isPublicSector(?string ...$names): bool
     {
         foreach ($names as $n) {
@@ -31,6 +46,23 @@ class OrgReserve
         }
 
         return false;
+    }
+
+    public static function isLargeCompany(?string ...$names): bool
+    {
+        foreach ($names as $n) {
+            if ($n !== null && preg_match(self::LARGE_COMPANY_RE, $n)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Не годится в легенду: госсектор или крупная/известная компания. */
+    public static function isExcluded(?string ...$names): bool
+    {
+        return self::isPublicSector(...$names) || self::isLargeCompany(...$names);
     }
 
     public function __construct(private readonly OrganizationExcelParser $parser)
@@ -54,8 +86,8 @@ class OrgReserve
                 continue;
             }
             $seen[$inn] = true;
-            // Госсектор хранится выключенным (видно, сколько отсеяно; повторная загрузка не вернёт).
-            $public = self::isPublicSector($name, $r['full_name'] ?? null);
+            // Госсектор и крупные компании хранятся выключенными (видно, сколько отсеяно; повторная загрузка не вернёт).
+            $public = self::isExcluded($name, $r['full_name'] ?? null);
             $stats['excluded'] += (int) $public;
             $data = [
                 'kpp' => $this->digits($r['kpp'] ?? null, [9]),
@@ -101,11 +133,11 @@ class OrgReserve
         return $name;
     }
 
-    /** Выключить госсектор среди уже загруженных. @return int выключено */
+    /** Выключить госсектор и крупные компании среди уже загруженных. @return int выключено */
     public function excludePublicSector(): int
     {
         $ids = DB::table('alias_org_reserve')->where('active', true)->get(['id', 'name', 'full_name'])
-            ->filter(fn ($r) => self::isPublicSector($r->name, $r->full_name))->pluck('id')->all();
+            ->filter(fn ($r) => self::isExcluded($r->name, $r->full_name))->pluck('id')->all();
         if ($ids !== []) {
             DB::table('alias_org_reserve')->whereIn('id', $ids)->update(['active' => false, 'updated_at' => now()]);
         }

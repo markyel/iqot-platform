@@ -63,6 +63,19 @@ class PersonaAndReserveTest extends TestCase
         $this->assertTrue(OrgReserve::isPublicSector('Водоканал', 'Муниципальное унитарное предприятие Водоканал'));
     }
 
+    public function test_large_companies_are_not_legends(): void
+    {
+        foreach (['Газпром межрегионгаз', 'Астрводоканал', 'ПАО Сбербанк', 'АО «Мосэнерго»', 'Тамбовская теплосеть', 'ООО «РЖД-Сервис»',
+            'Банк Левобережный', 'Россети Центр', 'ПАО «Магнит»', 'Ростелеком', 'Мосгаз', 'Лукойл-Пермь', 'Красноярскэнергосбыт'] as $n) {
+            $this->assertTrue(OrgReserve::isLargeCompany($n), $n);
+            $this->assertTrue(OrgReserve::isExcluded($n), $n);
+        }
+        foreach (['Монтаж Автоматики', 'ООО «Лифтсервис»', 'Магнитогорский лифтовый завод', 'Жилищная инициатива', 'Втулка-Центр',
+            'Сервис-Мтсенск', 'Газоэлектромонтаж'] as $n) {
+            $this->assertFalse(OrgReserve::isLargeCompany($n), $n);
+        }
+    }
+
     public function test_display_name_drops_activity_tail(): void
     {
         $this->assertSame('К-электро', OrgReserve::displayName('К-электро, Компания'));
