@@ -160,6 +160,9 @@ max_allowed_packet        = 256M
 log_bin                   = /var/lib/mysql/binlog
 binlog_expire_logs_seconds = 172800
 binlog_row_image          = MINIMAL
+# Хранимые функции reports (calculate_request_completion для триггера) создаёт миграция под пользователем базы,
+# а при включённом бинлоге без этого MySQL требует SUPER.
+log_bin_trust_function_creators = 1
 CNF
 systemctl restart mysql
 
