@@ -40,6 +40,13 @@ return [
         'system_user_id' => (int) env('REQUESTS_SYSTEM_USER_ID', env('N8N_SYSTEM_USER_ID', 1)),
     ],
 
+    // Контрольный ящик проверки доставки (emails:delivery-probe): письма с ящиков ищутся в нём по IMAP («Входящие»/«Спам»).
+    'delivery_probe' => [
+        'imap_user' => env('DELIVERY_PROBE_IMAP_USER'),
+        'imap_password' => env('DELIVERY_PROBE_IMAP_PASSWORD'),
+        'imap' => env('DELIVERY_PROBE_IMAP', 'imap.yandex.ru:993'),
+    ],
+
     // Тестовый режим почты (App\Support\Mail\TestMode): адреса через запятую — письма уходят только им,
     // остальные отменяются без штрафа ящику и получателю. Пусто — обычная работа.
     'email_test' => [
