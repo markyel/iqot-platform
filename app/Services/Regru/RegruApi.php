@@ -140,11 +140,14 @@ class RegruApi
         ]);
     }
 
-    /** Катч-олл домена: письма на несуществующие адреса — на $target (emaildomain.edit: defaction=redirect, redirval). */
+    /**
+     * Катч-олл домена: письма на несуществующие адреса — на $target (emaildomain.edit: defaction=redir_email, redirval;
+     * варианты поля: ignore | error | redir_email | redir_domain).
+     */
     public function setCatchAll(int $serviceId, string $domain, string $target): void
     {
         $this->isp($serviceId, 'emaildomain.edit', [
-            'sok' => 'ok', 'elid' => $domain, 'name' => $domain, 'defaction' => 'redirect', 'redirval' => $target,
+            'sok' => 'ok', 'elid' => $domain, 'name' => $domain, 'defaction' => 'redir_email', 'redirval' => $target,
         ]);
     }
 
