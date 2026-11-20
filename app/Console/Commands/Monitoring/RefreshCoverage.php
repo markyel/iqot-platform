@@ -33,6 +33,12 @@ class RefreshCoverage extends Command
         //    такие цены снимаются с листингов, позиции помечаются изменёнными (синхронизация API).
         $this->placeholderPrices();
 
+        // 0b. Выбросы по всем ценам товара → строгая перепроверка страницы (OutlierRecheck), а не выброс в сводку.
+        $o = (new \App\Services\Monitoring\OutlierRecheck())->sweep();
+        if ($o['flagged'] > 0) {
+            $this->info("Выбросы цен: на перепроверку {$o['flagged']} страниц по {$o['products']} товарам");
+        }
+
         // 1. Счётчики листингов по товарам (без стенда).
         DB::statement("
             UPDATE mp_products p

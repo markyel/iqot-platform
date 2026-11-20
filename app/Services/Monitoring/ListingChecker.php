@@ -101,7 +101,9 @@ class ListingChecker
             return $this->result(MpPriceObservation::STATUS_BLOCKED, null, null, 'all egress channels banned');
         }
 
-        $useConditional = $listing->price !== null && $listing->status === MpListing::STATUS_ACTIVE;
+        // Перепроверка выброса (OutlierRecheck): страницу грузим заново и без поблажек — ИИ обязателен.
+        $strict = $listing->recheck_reason !== null;
+        $useConditional = !$strict && $listing->price !== null && $listing->status === MpListing::STATUS_ACTIVE;
         $res = $this->fetcher->fetch($listing->url, [
             'etag' => $useConditional ? $listing->etag : null,
             'last_modified' => $useConditional ? $listing->last_modified : null,
@@ -214,7 +216,7 @@ class ListingChecker
         $matchedCodes = $this->matchedCodes($codes, $window . ' ' . $context . ' ' . (string) ($structured['evidence'] ?? ''));
 
         // Блок товара не изменился и разметки нет — цена та же, LLM не нужен.
-        if ($structured === null && $listing->content_hash === $blockHash && $listing->checked_at !== null
+        if (!$strict && $structured === null && $listing->content_hash === $blockHash && $listing->checked_at !== null
             && $listing->status === MpListing::STATUS_ACTIVE) {
             $this->observe($listing, $listing->price, MpPriceObservation::STATUS_OK, 'unchanged', null, $blockHash);
             $this->schedule($listing, ['observed_at' => $listing->price !== null ? now() : $listing->observed_at, 'fail_count' => 0,
@@ -231,7 +233,7 @@ class ListingChecker
         }
 
         $pageTokensHaveCode = $codes !== [] && array_intersect($codes, array_keys(ArticleNormalizer::tokens($window))) !== [];
-        $needLlm = $structured === null || (!$structured['sku_matched'] && !$pageTokensHaveCode);
+        $needLlm = $strict || $structured === null || (!$structured['sku_matched'] && !$pageTokensHaveCode);
         $llm = null;
         $cost = 0.0;
         if ($needLlm && $this->llm) {
@@ -256,7 +258,8 @@ class ListingChecker
             $llm = $this->llm->extract($product, $listing->url, $window);
             $cost = (float) $llm['cost_usd'];
             $this->governor->record('llm_call', 1, $cost);
-            if ($llm['error'] !== null && $structured === null) {
+            // На перепроверке выброса без ответа ИИ решать нельзя — сбой ИИ и при разметке.
+            if ($llm['error'] !== null && ($structured === null || $strict)) {
                 // Отказ ИИ-прокси по перегрузке (nginx limit_req → 503, 429, 5xx) — не про страницу:
                 // повтор через 30–60 мин без счётчика неудач (иначе 5 отказов подряд = листинг failed навсегда).
                 if (preg_match('/HTTP (429|5\d\d)/', (string) $llm['error'])) {
@@ -287,6 +290,11 @@ class ListingChecker
             $identity = ['accepted' => false, 'method' => null, 'confidence' => 0.0, 'reason' => 'price_other_card',
                 'evidence' => mb_substr((string) ($llm['evidence_price'] ?? ''), 0, 400)];
         }
+        // Перепроверка выброса: совпадения кода мало — ИИ обязан признать товар своим, а его цена — сойтись с ценой
+        // разметки (armtek M00183: код в разметке совпал, на странице тормозные колодки за 6 804 ₽).
+        if ($strict && $identity['accepted'] && $this->llm) {
+            $identity = self::confirmOnRecheck($identity, $llm, $structured);
+        }
         if (!$identity['accepted']) {
             $this->observe($listing, null, MpPriceObservation::STATUS_MISMATCH, $structured ? 'structured' : 'llm', $identity['reason'], $blockHash, $cost);
             if ($listing->price !== null) {
@@ -299,7 +307,7 @@ class ListingChecker
                 'matched_codes' => $matchedCodes,
                 'checked_at' => now(),
                 'next_check_at' => null,
-            ])->save();
+            ] + ($strict ? ['recheck_reason' => null, 'outlier_checked_at' => now()] : []))->save();
 
             return $this->result(MpPriceObservation::STATUS_MISMATCH, null, null, $identity['reason']) + ['cost_usd' => $cost];
         }
@@ -343,6 +351,9 @@ class ListingChecker
             'match_evidence' => $identity['evidence'],
             'matched_codes' => $matchedCodes,
         ];
+        if ($strict) {
+            $fields += ['recheck_reason' => null, 'outlier_checked_at' => now(), 'outlier_checked_price' => $price];
+        }
         $siteFlags = ['publishes_prices' => $price !== null ? true : $site->publishes_prices];
         if (($fields['availability'] ?? null) && $fields['availability'] !== 'unknown') {
             $siteFlags['publishes_stock'] = true;
@@ -364,7 +375,8 @@ class ListingChecker
         $reference = $listing->price;
         $markupFixesLlm = $method === 'structured' && $listing->price_method === 'llm';
         $ratio = (float) config('monitoring.sanity.jump_ratio', 3.0);
-        if (!$markupFixesLlm && $reference && $reference > 0 && ($price / $reference > $ratio || $reference / $price > $ratio)) {
+        // На перепроверке выброса цена только что подтверждена ИИ — повтор «скачка» через 1–2 дня не нужен.
+        if (!$strict && !$markupFixesLlm && $reference && $reference > 0 && ($price / $reference > $ratio || $reference / $price > $ratio)) {
             $prev = MpPriceObservation::query()->where('listing_id', $listing->id)->orderByDesc('observed_at')->orderByDesc('id')->first();
             $tol = (float) config('monitoring.sanity.jump_confirm_tolerance', 0.05);
             $confirmed = $prev && $prev->status === MpPriceObservation::STATUS_SUSPICIOUS && $prev->price
@@ -402,6 +414,31 @@ class ListingChecker
      * Расхождение ключевого признака при совпавшем артикуле — в заметку наблюдения («attr≠code: сторона: левая»):
      * по ним отчёт «проверьте наименование позиции» (решение владельца 22.10.2026).
      */
+    /**
+     * Перепроверка выброса: принятую страницу подтверждаем ИИ — товар тот же (is_same_product=true) и цена ИИ
+     * (если он её видит) сходится с ценой разметки в пределах 25% (НДС, округления). Иначе — «чужой товар».
+     *
+     * @param array{accepted: bool, method: ?string, confidence: float, reason: string, evidence: string} $identity
+     * @param array<string,mixed>|null $llm
+     * @param array<string,mixed>|null $structured
+     * @return array{accepted: bool, method: ?string, confidence: float, reason: string, evidence: string}
+     */
+    public static function confirmOnRecheck(array $identity, ?array $llm, ?array $structured): array
+    {
+        $reject = fn (string $reason, string $evidence) => ['accepted' => false, 'method' => null, 'confidence' => 0.0,
+            'reason' => $reason, 'evidence' => mb_substr($evidence, 0, 400)];
+        if ($llm === null || ($llm['is_same_product'] ?? null) !== true) {
+            return $reject('recheck_unconfirmed', (string) ($llm['evidence_identity'] ?? ''));
+        }
+        $llmPrice = isset($llm['price']) ? (float) $llm['price'] : 0.0;
+        $markupPrice = isset($structured['price']) ? (float) $structured['price'] : 0.0;
+        if ($llmPrice > 0 && $markupPrice > 0 && abs($llmPrice - $markupPrice) / max($llmPrice, $markupPrice) > 0.25) {
+            return $reject('recheck_price_unconfirmed', "markup {$markupPrice} vs llm {$llmPrice}: " . (string) ($llm['evidence_price'] ?? ''));
+        }
+
+        return $identity;
+    }
+
     private function noteWithAttr(?string $note, array $identity): ?string
     {
         $attr = $identity['attr_note'] ?? null;
