@@ -31,8 +31,11 @@ class SearchQueryBuilder
         return new self($client->isConfigured() ? $client : null, app(MonitoringGovernor::class), new LlmCostCalculator());
     }
 
-    /** @return array<int,string> не больше $count запросов, самые точные первыми */
-    public function build(MpProduct $product, int $count): array
+    /**
+     * @param array<int,string> $exclude уже заданные запросы («дожим») — не повторяем
+     * @return array<int,string> не больше $count запросов, самые точные первыми
+     */
+    public function build(MpProduct $product, int $count, array $exclude = []): array
     {
         $product->loadMissing('identifiers');
         $codes = [];
@@ -46,17 +49,32 @@ class SearchQueryBuilder
 
         $queries = [];
         if ($this->llm !== null && $this->governor->hasLlmBudget()) {
-            $queries = $this->fromLlm($product, $codes, $brand, $count);
+            $queries = self::without($this->fromLlm($product, $codes, $brand, $count, $exclude), $exclude);
         }
         if ($queries === []) {
-            $queries = $this->simple($product, $codes, $brand);
+            $queries = self::without($this->simple($product, $codes, $brand), $exclude);
         }
 
         return array_slice(array_values(array_unique($queries)), 0, max(1, $count));
     }
 
+    /**
+     * Запросы без уже заданных (регистр, кавычки и пробелы не важны).
+     *
+     * @param array<int,string> $queries
+     * @param array<int,string> $exclude
+     * @return array<int,string>
+     */
+    public static function without(array $queries, array $exclude): array
+    {
+        $norm = fn (string $q) => trim((string) preg_replace('/\s+/u', ' ', str_replace(['"', '«', '»'], '', mb_strtolower($q))));
+        $seen = array_flip(array_map($norm, $exclude));
+
+        return array_values(array_filter($queries, fn ($q) => !isset($seen[$norm($q)])));
+    }
+
     /** @return array<int,string> */
-    private function fromLlm(MpProduct $product, array $codes, string $brand, int $count): array
+    private function fromLlm(MpProduct $product, array $codes, string $brand, int $count, array $exclude = []): array
     {
         $system = 'Ты составляешь поисковые запросы для Яндекса, чтобы найти СТРАНИЦЫ ПРОДАВЦОВ этой запчасти с ценой '
             . '(интернет-магазины и поставщики лифтового/эскалаторного оборудования). Правила: артикулы/OEM — в кавычках; '
@@ -64,6 +82,8 @@ class SearchQueryBuilder
             . 'название + ключевой параметр; добавляй «купить», «цена», «в наличии»; 1 запрос на английском, если бренд иностранный. '
             . 'Не ищи документацию и форумы. Отвечай строго JSON.';
         $user = "Товар: {$product->name}\nБренд: {$brand}\nOEM/артикулы: " . ($codes ? implode(', ', $codes) : '(нет)')
+            . ($exclude !== [] ? "\n\nЭти запросы уже задавали — продавцов с ценой не нашли. Не повторяй их, попробуй другие "
+                . "формулировки (варианты артикула, название без бренда, синонимы, ключевые параметры):\n- " . implode("\n- ", array_slice($exclude, -20)) : '')
             . "\n\nJSON: {\"queries\": [\"…\"]} — ровно {$count} запросов, самые точные первыми.";
         try {
             $json = $this->llm->jsonCompletion((string) config('monitoring.llm.model', 'gpt-4o-mini'), $system, $user, 600, 0.0);

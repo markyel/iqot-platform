@@ -49,7 +49,16 @@ class ListingDiscoverer
         $queries = 0;
         $errors = 0;
         $results = 0;
-        foreach ($this->queries($product) as $query) {
+        $used = array_values((array) ($product->last_queries ?? []));
+        $list = $this->queries($product);
+        if ($list === []) {
+            // «Дожим»: новых формулировок не осталось — заход пустой, итог подведёт refresh-coverage.
+            $product->forceFill(['search_state' => 'searching', 'last_search_at' => now(),
+                'search_attempts' => (int) $product->search_attempts + 1])->save();
+
+            return ['status' => 'ok', 'queries' => 0, 'results' => 0, 'created' => [], 'errors' => 0];
+        }
+        foreach ($list as $query) {
             $r = $this->search->search($query);
             if (!$r['quota']) {
                 if ($queries === 0 && $errors === 0) {
@@ -62,6 +71,7 @@ class ListingDiscoverer
                 continue;
             }
             $queries++;
+            $used[] = $query;
             foreach (array_values($r['results']) as $pos => $hit) {
                 $url = (string) ($hit['url'] ?? '');
                 if ($url === '' || DomainPolicy::isBlocked($url)) {
@@ -90,6 +100,7 @@ class ListingDiscoverer
             'search_state' => 'searching',
             'last_search_at' => now(),
             'search_attempts' => (int) $product->search_attempts + 1,
+            'last_queries' => array_slice(array_values(array_unique($used)), -40),
         ])->save();
 
         return ['status' => 'ok', 'queries' => $queries, 'results' => $results, 'created' => $created, 'errors' => $errors];
@@ -98,7 +109,36 @@ class ListingDiscoverer
     /** @return array<int,string> */
     public function queries(MpProduct $product): array
     {
-        return $this->queries->build($product, MonitoringSettings::get('search_queries'));
+        [$count] = self::depth($product);
+        $exclude = (int) $product->search_level > 0 ? array_values((array) ($product->last_queries ?? [])) : [];
+
+        return $this->queries->build($product, $count, $exclude);
+    }
+
+    /**
+     * Глубина захода: ступень 0 — пресет агрессивности; ступени «дожима» — monitoring.search.escalation
+     * (не меньше пресета).
+     *
+     * @return array{0: int, 1: int} [запросов, кандидатов]
+     */
+    public static function depth(MpProduct $product): array
+    {
+        return self::depthFor((int) $product->search_level, MonitoringSettings::get('search_queries'),
+            MonitoringSettings::get('search_candidates'), (array) config('monitoring.search.escalation', []));
+    }
+
+    /**
+     * @param array<int, array{0:int,1:int}> $ladder
+     * @return array{0: int, 1: int}
+     */
+    public static function depthFor(int $level, int $presetQueries, int $presetCandidates, array $ladder): array
+    {
+        if ($level <= 0 || $ladder === []) {
+            return [$presetQueries, $presetCandidates];
+        }
+        $step = $ladder[min($level, count($ladder)) - 1];
+
+        return [max($presetQueries, (int) $step[0]), max($presetCandidates, (int) $step[1])];
     }
 
     /**
@@ -107,7 +147,7 @@ class ListingDiscoverer
      */
     private function createListings(MpProduct $product, array $candidates): array
     {
-        $maxCandidates = MonitoringSettings::get('search_candidates');
+        [, $maxCandidates] = self::depth($product);
         $maxPerDomain = (int) config('monitoring.search.max_per_domain', 2);
 
         $known = MpListing::query()->where('product_id', $product->id)->where('bench', false)->pluck('url_hash')->flip();

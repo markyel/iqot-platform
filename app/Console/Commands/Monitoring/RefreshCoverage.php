@@ -54,8 +54,9 @@ class RefreshCoverage extends Command
         // 2. Итог поиска: проверки новых листингов отработали (или поиск давно).
         $foundDays = (int) config('monitoring.search.research_found_days', 30);
         $notFound = (array) config('monitoring.search.research_not_found_days', [30, 60, 90]);
+        $ladder = count((array) config('monitoring.search.escalation', []));
         $rows = DB::select("
-            SELECT p.id, p.listings_priced, p.search_attempts,
+            SELECT p.id, p.listings_priced, p.search_attempts, p.search_level,
                    (SELECT COUNT(*) FROM mp_listings l WHERE l.product_id = p.id AND l.bench = 0
                         AND l.status = 'active' AND l.checked_at IS NULL) pending
             FROM mp_products p WHERE p.search_state = 'searching'
@@ -67,10 +68,22 @@ class RefreshCoverage extends Command
                 continue;
             }
             $found = (int) $r->listings_priced > 0;
-            $days = $found ? $foundDays : (int) ($notFound[min(max(0, (int) $r->search_attempts - 1), count($notFound) - 1)] ?? 90);
+            $level = (int) $r->search_level;
+            if ($found) {
+                $next = now()->addDays($foundDays);
+                $level = 0;
+            } elseif ($level < $ladder) {
+                // «Дожим»: цен нет — следующий заход глубже, сразу (dispatch-discovery берёт без цен первыми).
+                $next = now();
+                $level++;
+            } else {
+                $idx = min(max(0, (int) $r->search_attempts - 1 - $ladder), count($notFound) - 1);
+                $next = now()->addDays((int) ($notFound[$idx] ?? 90));
+            }
             DB::table('mp_products')->where('id', $r->id)->update([
                 'search_state' => $found ? 'found' : 'not_found',
-                'next_search_at' => now()->addDays($days),
+                'next_search_at' => $next,
+                'search_level' => $level,
                 'updated_at' => now(),
             ]);
             $done++;
