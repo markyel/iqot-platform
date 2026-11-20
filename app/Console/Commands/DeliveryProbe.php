@@ -23,7 +23,8 @@ class DeliveryProbe extends Command
     protected $signature = 'emails:delivery-probe
         {--senders= : id ящиков через запятую (по умолчанию все активные)}
         {--wait=600 : сколько секунд ждать писем в контрольном ящике}
-        {--apply : снять с рассылки ящики с отказом}';
+        {--apply : снять с рассылки ящики с отказом}
+        {--collect= : не слать, а собрать итог прошлого прогона по его файлу (storage/app/delivery-probe/….json) или коду прогона Pччммсс}';
 
     protected $description = 'Проверка доставки: письмо с каждого ящика на контрольный адрес и поиск его во «Входящих»/«Спаме»';
 
@@ -45,11 +46,31 @@ class DeliveryProbe extends Command
         $ids = array_filter(array_map('intval', explode(',', (string) $this->option('senders'))));
         $senders = Sender::query()->when($ids, fn ($q) => $q->whereIn('id', $ids), fn ($q) => $q->where('is_active', 1))->orderBy('id')->get();
         $relay = new RelayHttpMailer();
+        $collect = trim((string) $this->option('collect'));
         $run = now()->format('His');
         $results = [];
+        $dir = storage_path('app/delivery-probe');
+        @mkdir($dir, 0775, true);
 
-        $this->info("Отправка с {$senders->count()} ящиков на {$to}");
-        foreach ($senders as $s) {
+        if ($collect !== '') {
+            // Сбор итога прошлого прогона: из его файла, а без файла — по коду прогона для выбранных/активных ящиков.
+            if (is_file($collect) || is_file("{$dir}/{$collect}")) {
+                foreach (json_decode((string) file_get_contents(is_file($collect) ? $collect : "{$dir}/{$collect}"), true) ?: [] as $r) {
+                    $results[$r['id']] = ['sent_at' => Carbon::parse($r['sent_at'])] + $r;
+                }
+            } elseif (preg_match('/^P?(\d{6})$/', $collect, $m)) {
+                foreach ($senders as $s) {
+                    $results[$s->id] = ['id' => $s->id, 'email' => $s->email, 'code' => "P{$m[1]}-{$s->id}", 'sent_at' => now()->startOfDay(), 'state' => 'sent', 'detail' => ''];
+                }
+            } else {
+                $this->error("--collect: нет файла и не код прогона: {$collect}");
+
+                return self::FAILURE;
+            }
+        }
+
+        $this->info($collect !== '' ? 'Сбор итога прогона ' . $collect : "Отправка с {$senders->count()} ящиков на {$to}");
+        foreach ($collect !== '' ? [] : $senders as $s) {
             $code = 'P' . $run . '-' . $s->id;
             $r = ['id' => $s->id, 'email' => $s->email, 'code' => $code, 'sent_at' => now(), 'state' => 'sent', 'detail' => ''];
             if (!$relay->handlesSender((int) $s->id)) {
@@ -80,11 +101,21 @@ class DeliveryProbe extends Command
             usleep(1_500_000);
         }
 
+        if ($collect === '') {
+            // Журнал отправки — сразу: сбой при ожидании не теряет коды и ошибки отправки (сбор потом — --collect=файл).
+            file_put_contents("{$dir}/P{$run}.json", json_encode(array_values($results), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+            $this->line("Журнал отправки: {$dir}/P{$run}.json");
+        }
+
         $pending = array_filter($results, fn ($r) => $r['state'] === 'sent');
-        $deadline = time() + max(30, (int) $this->option('wait'));
+        $deadline = $collect !== '' ? time() + 1 : time() + max(30, (int) $this->option('wait'));
         $this->info('Жду писем в контрольном ящике до ' . date('H:i:s', $deadline) . ' UTC…');
+        $first = true;
         while ($pending !== [] && time() < $deadline) {
-            sleep(30);
+            if (!($first && $collect !== '')) {
+                sleep(30);
+            }
+            $first = false;
             foreach ($this->probeFolders($cfg) as $folder => $subjects) {
                 foreach ($pending as $id => $r) {
                     if (isset($subjects[$r['code']])) {
@@ -146,9 +177,19 @@ class DeliveryProbe extends Command
             if ($kind === null) {
                 continue;
             }
-            foreach ($folder->query()->leaveUnread()->since(Carbon::now()->subDay())->setFetchBody(false)->get() as $m) {
-                if (preg_match('/P\d{6}-\d+/', (string) $m->getSubject(), $mm)) {
-                    $out[$kind][$mm[0]] = true;
+            // Письмо, которое библиотека не разбирает (webklex: folder_path = null), не должно ронять проверку.
+            try {
+                $messages = $folder->query()->leaveUnread()->since(Carbon::now()->subDay())->setFetchBody(false)->get();
+            } catch (\Throwable $e) {
+                $this->warn("  папка {$folder->path}: " . mb_substr($e->getMessage(), 0, 120));
+                continue;
+            }
+            foreach ($messages as $m) {
+                try {
+                    if (preg_match('/P\d{6}-\d+/', (string) $m->getSubject(), $mm)) {
+                        $out[$kind][$mm[0]] = true;
+                    }
+                } catch (\Throwable) {
                 }
             }
         }
