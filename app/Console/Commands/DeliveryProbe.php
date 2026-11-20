@@ -23,6 +23,7 @@ class DeliveryProbe extends Command
     protected $signature = 'emails:delivery-probe
         {--senders= : id ящиков через запятую (по умолчанию все активные)}
         {--wait=600 : сколько секунд ждать писем в контрольном ящике}
+        {--pause=5 : пауза между ящиками, секунд}
         {--apply : снять с рассылки ящики с отказом}
         {--collect= : не слать, а собрать итог прошлого прогона по его файлу (storage/app/delivery-probe/….json) или коду прогона Pччммсс}';
 
@@ -47,6 +48,12 @@ class DeliveryProbe extends Command
         $senders = Sender::query()->when($ids, fn ($q) => $q->whereIn('id', $ids), fn ($q) => $q->where('is_active', 1))->orderBy('id')->get();
         $relay = new RelayHttpMailer();
         $collect = trim((string) $this->option('collect'));
+        if ($this->option('collect') !== null && $collect === '') {
+            // Пустой --collect запускал новый полный прогон (20.11.2026: лишние 68 писем).
+            $this->error('--collect: укажите файл журнала или код прогона (Pччммсс)');
+
+            return self::FAILURE;
+        }
         $run = now()->format('His');
         $results = [];
         $dir = storage_path('app/delivery-probe');
@@ -98,7 +105,8 @@ class DeliveryProbe extends Command
             }
             $results[$s->id] = $r;
             $this->line(sprintf('  #%-4d %-34s %s', $s->id, $s->email, $r['state'] === 'sent' ? 'отправлено' : "{$r['state']}: {$r['detail']}"));
-            usleep(1_500_000);
+            // Beget отвечает «435 Unable to authenticate at present» на частые входы через один релей.
+            usleep(max(0, (int) $this->option('pause')) * 1_000_000);
         }
 
         if ($collect === '') {
