@@ -72,17 +72,28 @@ class ListingIdentityVerifier
         if ($attrHit !== null && $codeHit === null && empty($structured['sku_matched'])) {
             return $this->reject('attr_conflict', $attrHit);
         }
-        // «Другой товар» от модели при нашем артикуле и расходящемся признаке — то самое расхождение признака
-        // (модели велено ставить false при conflict), а не отдельный довод: тоже пометка, не отказ.
         $codeOnPage = $codeHit !== null || !empty($structured['sku_matched']);
+        // Артикул сильнее признака — только для стороны/исполнения (парные гребёнки, решение владельца 22.10.2026).
+        // Бренд, модель, размер при совпавшем артикуле — другой товар (23.11.2026: «Плата LEX-C ELEX» → робот-игрушка
+        // emotoBOT LEX-C, бренд Just Play; «Направляющие SALSIS L=296» → датчик и башмак SALSIS другой длины).
+        if ($attrHit !== null && $codeOnPage && !self::softAttr($attrHit)) {
+            return $this->reject('attr_conflict', $attrHit);
+        }
+        $extraNote = null;
         if ($llm !== null && ($llm['is_same_product'] ?? null) === false && !($codeOnPage && $attrHit !== null)) {
-            return $this->reject('llm_other_product', $llmEvidence);
+            // Наш код — в заголовке или адресе карточки (главный товар страницы), а модель расхождений не назвала —
+            // верим коду, с пометкой (23.11.2026: «Амортизатор купе кабины TAA316BJN3 Otis», «Паллета 606 NCT 1011 мм»
+            // снимались как «другой товар»). Короткий цифровой код так не доказывается (armtek «FO 468881 PRO»).
+            if (!$codeOnPage || !self::strongCodeIn($codes, $context)) {
+                return $this->reject('llm_other_product', $llmEvidence);
+            }
+            $extraNote = 'llm≠code';
         }
         if (!empty($structured['sku_matched'])) {
-            return $this->accept('structured_sku', 0.95, 'sku in markup', $attrHit);
+            return $this->accept('structured_sku', 0.95, 'sku in markup', $attrHit, $extraNote);
         }
         if ($codeHit !== null) {
-            return $this->accept('oem_exact', 0.95, $codeHit, $attrHit);
+            return $this->accept('oem_exact', 0.95, $codeHit, $attrHit, $extraNote);
         }
 
         // Серая зона (артикула на странице нет): типоразмер расходится — точно не он.
@@ -178,11 +189,49 @@ class ListingIdentityVerifier
         return array_values(array_unique(array_map(fn ($v) => str_replace(',', '.', $v), $m[1])));
     }
 
-    /** @param string|null $attrNote признак, расходящийся при совпавшем артикуле (цену берём, расхождение отмечаем) */
-    private function accept(string $method, float $confidence, string $evidence, ?string $attrNote = null): array
+    /** Признаки, расхождение которых при совпавшем артикуле не отказ, а пометка (сторона/исполнение парных деталей). */
+    public const SOFT_ATTR_KEYS = ['сторона', 'исполнение'];
+
+    /** «ключ: значение» расходящегося признака — из мягких? */
+    public static function softAttr(string $attrHit): bool
+    {
+        $key = mb_strtolower(trim(explode(':', $attrHit, 2)[0]));
+
+        return in_array($key, self::SOFT_ATTR_KEYS, true);
+    }
+
+    /**
+     * Наш код в заголовке/адресе карточки и сам по себе доказателен: ≥ 6 знаков и не короткое число
+     * (цифровые OEM вроде 468881 встречаются в артикулах чужих товаров).
+     *
+     * @param array<int,string> $codes нормализованные коды товара
+     */
+    public static function strongCodeIn(array $codes, string $context): bool
+    {
+        if ($codes === [] || trim($context) === '') {
+            return false;
+        }
+        $tokens = ArticleNormalizer::tokens($context);
+        foreach ($codes as $code) {
+            $code = (string) $code;
+            if (!isset($tokens[$code]) || mb_strlen($code) < 6 || (ctype_digit($code) && strlen($code) < 8)) {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * @param string|null $attrNote признак, расходящийся при совпавшем артикуле (цену берём, расхождение отмечаем)
+     * @param string|null $extraNote прочая пометка (llm≠code — модель сочла другим товаром, принято по коду в заголовке)
+     */
+    private function accept(string $method, float $confidence, string $evidence, ?string $attrNote = null, ?string $extraNote = null): array
     {
         return ['accepted' => true, 'method' => $method, 'confidence' => $confidence, 'reason' => 'ok', 'evidence' => mb_substr($evidence, 0, 400),
-            'attr_note' => $attrNote];
+            'attr_note' => $attrNote, 'extra_note' => $extraNote];
     }
 
     private function reject(string $reason, string $evidence): array

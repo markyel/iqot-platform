@@ -448,8 +448,12 @@ class ListingChecker
     private function noteWithAttr(?string $note, array $identity): ?string
     {
         $attr = $identity['attr_note'] ?? null;
+        $note = $attr ? trim(($note ? $note . '; ' : '') . 'attr≠code: ' . $attr) : $note;
+        if (!empty($identity['extra_note'])) {
+            $note = trim(($note ? $note . '; ' : '') . $identity['extra_note']);
+        }
 
-        return $attr ? mb_substr(trim(($note ? $note . '; ' : '') . 'attr≠code: ' . $attr), 0, 250) : $note;
+        return $note !== null ? mb_substr($note, 0, 250) : null;
     }
 
     /** Цены позиции изменились — курсор выдачи (GET …/prices?updated_since) их подхватит. */
