@@ -264,11 +264,12 @@ class ListingChecker
             $this->governor->record('llm_call', 1, $cost);
             // На перепроверке выброса без ответа ИИ решать нельзя — сбой ИИ и при разметке; перегрузка ИИ-прокси
             // на любой проверке — повтор (иначе первая проверка прошла бы по одному коду без ИИ).
-            $transientLlm = $llm['error'] !== null && preg_match('/HTTP (429|5\d\d)/', (string) $llm['error']);
+            // 402 — кончился баланс ИИ (RouterAI, 23.11.2026: 2 283 проверки ушли в отказ/«чужой товар» за 2 ч) — тоже повтор.
+            $transientLlm = $llm['error'] !== null && preg_match('/HTTP (402|429|5\d\d)/', (string) $llm['error']);
             if ($llm['error'] !== null && ($structured === null || $strict || $transientLlm)) {
                 // Отказ ИИ-прокси по перегрузке (nginx limit_req → 503, 429, 5xx) — не про страницу:
                 // повтор через 30–60 мин без счётчика неудач (иначе 5 отказов подряд = листинг failed навсегда).
-                if (preg_match('/HTTP (429|5\d\d)/', (string) $llm['error'])) {
+                if (preg_match('/HTTP (402|429|5\d\d)/', (string) $llm['error'])) {
                     $this->observe($listing, null, MpPriceObservation::STATUS_FAILED, 'none', 'llm: ' . $llm['error'], null, $cost);
                     $listing->forceFill(['checked_at' => now(), 'next_check_at' => now()->addMinutes(random_int(30, 60))])->save();
 
