@@ -57,6 +57,10 @@ return [
     // включается флагом после сверки и отключения n8n-воркфлоу.
     'email_dispatch' => [
         'enabled' => env('EMAILS_DISPATCH_ENABLED', false),
+        // Домены наших ящиков, которым Mail.ru отказывает как спаму (emails:mailru-guard, 23.11.2026): адресатам на
+        // почте Mail.ru с них не пишем — пауза «получатель × домен» на mailru_pause_days, продлевается ежедневно.
+        'mailru_blocked_sender_domains' => array_values(array_filter(array_map('trim', explode(',', (string) env('EMAILS_MAILRU_BLOCKED_SENDER_DOMAINS', ''))))),
+        'mailru_pause_days' => (int) env('EMAILS_MAILRU_PAUSE_DAYS', 3),
         // Сколько ошибок отправки подряд по ящику получателя → блокировка адреса
         // (письма ему больше не ставятся в очередь). Успех сбрасывает счётчик.
         'recipient_error_threshold' => (int) env('EMAILS_RECIPIENT_ERROR_THRESHOLD', 3),
