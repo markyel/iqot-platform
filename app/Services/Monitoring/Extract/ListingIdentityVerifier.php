@@ -47,11 +47,17 @@ class ListingIdentityVerifier
         // Если на странице НАШ артикул — пока не отказ, а пометка (решение владельца 22.10.2026): у парных гребёнок
         // (GAA453BV5/BV6, BM5/BM6, KONE ECO A/B) сторона в наименовании клиента спорит с артикулом, а зубья и длина
         // совпадают с артикулом на 9 сайтах из 9 — скорее перепутано наименование, цена верная.
-        $attrs = (array) ($product->key_attrs ?? []);
+        // Только признаки из наименования клиента — додуманные моделью извлечения не судят страницу.
+        $attrs = KeyAttributes::grounded((array) ($product->key_attrs ?? []), (string) $product->name . ' ' . (string) $product->brand);
+        $ourKeys = array_map(fn ($a) => mb_strtolower((string) ($a['key'] ?? '')), $attrs);
         $attrHit = null;
         foreach ((array) ($llm['attrs'] ?? []) as $v) {
             // Модель путается на страницах-списках: «conflict» с цитатой «правый» при нашем «правая» — не противоречие.
-            if (($v['verdict'] ?? null) === 'conflict' && !KeyAttributes::sameValue($attrs, (string) ($v['key'] ?? ''), (string) ($v['page'] ?? ''))) {
+            // Признак не из наименования или число в пределах округления — тоже нет.
+            $vKey = (string) ($v['key'] ?? '');
+            if (($v['verdict'] ?? null) === 'conflict' && in_array(mb_strtolower($vKey), $ourKeys, true)
+                && !KeyAttributes::sameValue($attrs, $vKey, (string) ($v['page'] ?? ''))
+                && !KeyAttributes::numericClose($attrs, $vKey, (string) ($v['page'] ?? ''))) {
                 $attrHit = trim(($v['key'] ?? '') . ': ' . ($v['page'] ?? ''));
                 break;
             }

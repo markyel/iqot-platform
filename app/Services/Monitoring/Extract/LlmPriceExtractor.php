@@ -168,7 +168,7 @@ TXT;
     {
         $codes = implode(', ', $product->articleValues()) ?: '(нет)';
         $brand = $product->brand ?: '(не указан)';
-        $attrs = KeyAttributes::promptLines((array) ($product->key_attrs ?? []));
+        $attrs = KeyAttributes::promptLines(KeyAttributes::grounded((array) ($product->key_attrs ?? []), (string) $product->name . ' ' . (string) $product->brand));
         $attrs = $attrs !== '' ? "Ключевые признаки:\n{$attrs}\n" : '';
         $attrsJson = $attrs !== '' ? '"attrs": [{"key": "…", "page": "…", "verdict": "match|conflict|absent"}], ' : '';
 

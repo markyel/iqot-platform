@@ -175,6 +175,62 @@ final class KeyAttributes
      *
      * @param array<int,array<string,mixed>> $attrs
      */
+    /**
+     * Только признаки, названные в наименовании клиента (значение или его вариант есть в тексте). Модель извлечения
+     * дописывает «знания» (23.11.2026, Qwen: «Блок контроля фаз (БКФ)» → бренд «Электро-Импульс», модель «БКФ6000»;
+     * плата BUS DRIVER для LISA → бренд «Schneider»), и страницы с верным ЩЛЗ/KLEEMANN снимались как чужой товар.
+     *
+     * @param array<int,array<string,mixed>> $attrs
+     * @return array<int,array<string,mixed>>
+     */
+    public static function grounded(array $attrs, string $text): array
+    {
+        $words = self::stems($text);
+        if ($attrs === [] || $words === []) {
+            return [];
+        }
+        $hay = ' ' . implode(' ', $words) . ' ';
+
+        return array_values(array_filter($attrs, function ($a) use ($hay) {
+            foreach (array_merge([(string) ($a['value'] ?? '')], (array) ($a['match'] ?? [])) as $t) {
+                if (trim((string) $t) !== '' && self::contains($hay, (string) $t)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }));
+    }
+
+    /**
+     * Число признака и число со страницы различаются не больше чем на $tolerance (округление: 39,5 мм ↔ D=40,
+     * 220 В ↔ 230 В, 79 ↔ 80 мм) — не противоречие.
+     *
+     * @param array<int,array<string,mixed>> $attrs
+     */
+    public static function numericClose(array $attrs, string $key, string $pageValue, float $tolerance = 0.05): bool
+    {
+        $num = function (string $s): ?float {
+            return preg_match('/(\d+(?:[.,]\d+)?)/u', $s, $m) ? (float) str_replace(',', '.', $m[1]) : null;
+        };
+        $k = mb_strtolower(trim($key));
+        $theirs = $num($pageValue);
+        if ($theirs === null || $theirs <= 0) {
+            return false;
+        }
+        foreach ($attrs as $a) {
+            if (mb_strtolower((string) ($a['key'] ?? '')) !== $k) {
+                continue;
+            }
+            $ours = $num((string) ($a['value'] ?? ''));
+            if ($ours !== null && $ours > 0 && abs($ours - $theirs) / max($ours, $theirs) <= $tolerance) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static function sameValue(array $attrs, string $key, string $pageValue): bool
     {
         $k = mb_strtolower(trim($key));

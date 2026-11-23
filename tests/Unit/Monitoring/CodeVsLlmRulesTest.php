@@ -62,6 +62,35 @@ class CodeVsLlmRulesTest extends TestCase
         $this->assertSame('llm_other_product', $r2['reason']);
     }
 
+    public function test_invented_brand_does_not_judge_page(): void
+    {
+        // Qwen приписал «Блоку контроля фаз (БКФ)» бренд «Электро-Импульс» — в наименовании его нет.
+        $attrs = KeyAttributes::normalize([['key' => 'бренд', 'value' => 'Электро-Импульс', 'kind' => 'brand',
+            'match' => ['электро-импульс', 'эи'], 'conflict' => []]]);
+        $this->assertSame([], KeyAttributes::grounded($attrs, 'Блок контроля фаз (БКФ)'));
+
+        $p = $this->product('Блок контроля фаз (БКФ)', 'БКФ-0.5', [['key' => 'бренд', 'value' => 'Электро-Импульс', 'kind' => 'brand',
+            'match' => ['электро-импульс'], 'conflict' => []]]);
+        $llm = ['is_same_product' => true, 'is_analog' => false, 'evidence_identity' => 'Блок контроля фаз БКФ-0.5 ЩЛЗ',
+            'attrs' => [['key' => 'бренд', 'verdict' => 'conflict', 'page' => 'Производитель: ЩЛЗ']]];
+        $r = (new ListingIdentityVerifier())->verify($p, 'Блок контроля фаз БКФ-0.5 ЩЛЗ 2 350 ₽', null, $llm, 'blok kontrolya faz');
+        $this->assertTrue($r['accepted']);
+        $this->assertNull($r['attr_note']);
+    }
+
+    public function test_rounding_is_not_a_conflict(): void
+    {
+        $attrs = KeyAttributes::normalize([
+            ['key' => 'диаметр', 'value' => '39,5 мм', 'kind' => 'size', 'match' => ['d39,5'], 'conflict' => []],
+            ['key' => 'напряжение', 'value' => '220ВAC', 'kind' => 'electrical', 'match' => ['220в'], 'conflict' => []],
+            ['key' => 'ширина паза', 'value' => '17 мм', 'kind' => 'size', 'match' => ['паз 17'], 'conflict' => []],
+        ]);
+        $this->assertTrue(KeyAttributes::numericClose($attrs, 'диаметр', 'D=40мм'));
+        $this->assertTrue(KeyAttributes::numericClose($attrs, 'напряжение', '230В'));
+        $this->assertFalse(KeyAttributes::numericClose($attrs, 'напряжение', '110V'));
+        $this->assertFalse(KeyAttributes::numericClose($attrs, 'ширина паза', 'P-16'));
+    }
+
     public function test_soft_attr_keys(): void
     {
         $this->assertTrue(ListingIdentityVerifier::softAttr('сторона: левая'));

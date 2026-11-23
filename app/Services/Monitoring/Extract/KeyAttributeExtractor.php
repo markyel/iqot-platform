@@ -52,6 +52,8 @@ class KeyAttributeExtractor
 
             return $this->lastCost();
         }
+        // Только названное в наименовании — додуманный моделью бренд/модель не храним (KeyAttributes::grounded).
+        $attrs = \App\Support\Monitoring\KeyAttributes::grounded($attrs, (string) $product->name . ' ' . (string) $product->brand);
         $product->forceFill(['key_attrs' => $attrs, 'key_attrs_at' => now()])->save();
 
         return $this->lastCost();
