@@ -93,12 +93,26 @@ class RelayHttpMailer
         if (!$this->isEnabled()) {
             return false;
         }
+        // SMTP-серверы мимо релея — шлём с прода (23.11.2026: Sprinthost закрыл SMTP для IP релея).
+        $exclude = array_map('mb_strtolower', (array) config('services.email_dispatch.microservice_exclude_hosts', []));
+        if ($exclude !== [] && in_array(self::smtpHostOf($senderId), $exclude, true)) {
+            return false;
+        }
         $ids = (array) config('services.email_dispatch.microservice_sender_ids', []);
         if ($ids === []) {
             return true;
         }
 
         return in_array($senderId, array_map('intval', $ids), true);
+    }
+
+    /** @var array<int,string> */
+    private static array $smtpHosts = [];
+
+    private static function smtpHostOf(int $senderId): string
+    {
+        return self::$smtpHosts[$senderId] ??= mb_strtolower(trim((string) \Illuminate\Support\Facades\DB::connection('reports')
+            ->table('senders')->where('id', $senderId)->value('smtp_server')));
     }
 
     /**

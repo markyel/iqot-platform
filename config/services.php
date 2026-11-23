@@ -125,6 +125,8 @@ return [
             array_filter(array_map('trim', explode(',', (string) env('EMAILS_MICROSERVICE_SENDER_IDS', ''))), 'strlen')
         ))),
         'microservice_timeout' => (int) env('EMAILS_MICROSERVICE_TIMEOUT', 60),
+        // SMTP-серверы ящиков, которые шлют мимо релея — напрямую с прода (через запятую), напр. mail.interrnet.ru.
+        'microservice_exclude_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env('EMAILS_MICROSERVICE_EXCLUDE_HOSTS', ''))))),
         // Предохранитель релея: после транспортного сбоя (connect-ошибка/таймаут чтения)
         // узел помечается «down» в кеше на N сек — остальные письма идут в живые релеи,
         // не ожидая по таймауту на каждом. По истечении TTL узел пробуется снова. 0 = выкл.
