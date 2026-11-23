@@ -183,6 +183,8 @@ return [
         'sportmaster.ru', 'lamoda.ru', 'ostin.com', 'farpost.ru', 'olx.', 'emex.ru',
         // Собственные ресурсы (LazyLift) — не рынок: их цены не мониторим и в покрытие не считаем.
         'liftway.ru',
+        // Сайты клиента mzCorp (24.11.2026): находились служебные страницы его поиска — 269 страниц, все мимо.
+        'mylift.ru', 'myzip.ru',
         'yandex.ru', 'google.', 'youtube.', 'rutube.ru', 'dzen.ru', 'wikipedia.', 'vk.com', 'ok.ru',
         'facebook.', 'instagram.', 'twitter.', 'x.com', 'tiktok.', 'pinterest.', 'linkedin.',
         'hh.ru', 'vc.ru', 'pikabu.ru', 'otvet.mail.ru', 'forum.',
