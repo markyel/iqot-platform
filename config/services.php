@@ -806,4 +806,14 @@ return [
         'alias_hosting_ids' => array_values(array_filter(array_map('intval', explode(',', (string) env('REGRU_ALIAS_HOSTING_IDS', ''))))),
     ],
 
+    // Почта Timeweb Cloud (TimewebMailboxProvider, 23.11.2026): токен API (панель → API и Terraform) и домены основного
+    // пула; домены ветки «ящик на батч» — alias_domains.provider=timeweb. Лимит аккаунта — EMAILS_SMTP_SERVER_DAILY_CAPS
+    // (smtp.timeweb.ru:<лимит>), без него ящики не создаются.
+    'timeweb' => [
+        'token' => env('TIMEWEB_API_TOKEN'),
+        'api_url' => env('TIMEWEB_API_URL', 'https://api.timeweb.cloud'),
+        'timeout' => (int) env('TIMEWEB_API_TIMEOUT', 30),
+        'pool_domains' => array_values(array_filter(array_map(fn ($d) => mb_strtolower(trim($d)), explode(',', (string) env('TIMEWEB_POOL_DOMAINS', ''))))),
+    ],
+
 ];

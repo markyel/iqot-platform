@@ -7,6 +7,7 @@ use App\Services\AliasExp\PersonaFactory;
 use App\Services\Senders\Mailboxes\BegetMailboxProvider;
 use App\Services\Senders\Mailboxes\MailboxProvider;
 use App\Services\Senders\Mailboxes\RegruMailboxProvider;
+use App\Services\Senders\Mailboxes\TimewebMailboxProvider;
 use App\Support\Senders\SenderPool;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -17,7 +18,7 @@ use RuntimeException;
  * отключённые на живых доменах (emails:revive-senders, живые домены первыми), новые создаём только на недостающее —
  * дефицит = цель − рабочие − ждущие возврата на живых доменах.
  *
- * Ящики создают поставщики (Mailboxes\MailboxProvider): Beget и хостинг REG.RU (ISPmanager). Новые — на живых доменах
+ * Ящики создают поставщики (Mailboxes\MailboxProvider): Beget, хостинг REG.RU (ISPmanager), почта Timeweb Cloud. Новые — на живых доменах
  * (DomainHealth: за health_days ≥ min_sent отправок и спам-отказов ≤ max_spam_pct) с MX, которые обслуживает один из
  * поставщиков, не домены ветки «ящик на батч»; не больше per_day в сутки и не больше per_domain_max ящиков на домен
  * (рабочие + ждущие возврата): горит именно домен, а всплеск объёма с домена — главная причина ожогов (июль 2026).
@@ -38,11 +39,12 @@ class MailboxReplenisher
     public function __construct(
         BegetMailboxProvider $beget,
         RegruMailboxProvider $regru,
+        TimewebMailboxProvider $timeweb,
         private readonly OrgReserve $reserve,
         private readonly PersonaFactory $personas,
         private readonly BulkSenderImporter $importer,
     ) {
-        $this->providers = [$beget, $regru];
+        $this->providers = [$beget, $regru, $timeweb];
     }
 
     /**

@@ -6,19 +6,21 @@ use App\Services\Regru\RegruApi;
 use App\Services\Senders\Mailboxes\AliasMailboxProvider;
 use App\Services\Senders\Mailboxes\BegetMailboxProvider;
 use App\Services\Senders\Mailboxes\RegruMailboxProvider;
+use App\Services\Senders\Mailboxes\TimewebMailboxProvider;
+use App\Services\Timeweb\TimewebMailApi;
 
 /**
- * Поставщик ящиков для домена ветки «ящик на батч»: alias_domains.provider (beget | regru). Домен обслуживает один
+ * Поставщик ящиков для домена ветки «ящик на батч»: alias_domains.provider (beget | regru | timeweb). Домен обслуживает один
  * поставщик; detect() определяет его при добавлении домена.
  */
 class AliasProviders
 {
-    public const NAMES = ['regru', 'beget'];
+    public const NAMES = ['regru', 'timeweb', 'beget'];
 
     /** @var array<string,AliasMailboxProvider> */
     private array $instances = [];
 
-    public function __construct(private readonly BegetMailApi $beget, private readonly RegruApi $regru)
+    public function __construct(private readonly BegetMailApi $beget, private readonly RegruApi $regru, private readonly TimewebMailApi $timeweb)
     {
     }
 
@@ -27,6 +29,7 @@ class AliasProviders
         return $this->instances[$name] ??= match ($name) {
             'regru' => RegruMailboxProvider::forAlias($this->regru),
             'beget' => new BegetMailboxProvider($this->beget),
+            'timeweb' => TimewebMailboxProvider::forAlias($this->timeweb),
             default => throw new \InvalidArgumentException("Неизвестный поставщик ящиков: {$name}"),
         };
     }

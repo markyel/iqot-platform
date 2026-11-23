@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\DB;
  * Управление алгоритмом «ящик на батч» (docs/alias-mailbox-design.md).
  *   status                                  — резерв, домены, ящики
  *   api-check {домен}                       — живость API поставщика домена (только чтение: список ящиков)
- *   domain-add {домен} [--provider=regru|beget] [--inbox=info] [--inbox-password=] [--reset-inbox-password]
+ *   domain-add {домен} [--provider=regru|timeweb|beget] [--inbox=info] [--inbox-password=] [--reset-inbox-password]
  *                                           — домен в пул: общий ящик (создаётся, если нет) + катч-олл на него;
  *                                             поставщик — кто обслуживает домен (Beget или хостинг REG.RU)
  *   mailbox-create [--domain=] [--deadline=Y-m-d]
@@ -95,7 +95,7 @@ class AliasExpCommand extends Command
         $domain = mb_strtolower(trim((string) $this->argument('domain')));
         $inbox = mb_strtolower(trim((string) $this->option('inbox')));
         if ($domain === '' || $inbox === '') {
-            $this->error('Укажите домен: alias-exp domain-add example.ru [--provider=regru|beget] [--inbox=info] [--inbox-password=…]');
+            $this->error('Укажите домен: alias-exp domain-add example.ru [--provider=regru|timeweb|beget] [--inbox=info] [--inbox-password=…]');
 
             return self::FAILURE;
         }
