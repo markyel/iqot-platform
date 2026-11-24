@@ -33,7 +33,7 @@ class SiteSearchProductJob implements ShouldQueue
 
     private const MAX_DEFERRALS = 40;
 
-    public function __construct(private readonly int $siteId, private readonly int $productId)
+    public function __construct(private readonly int $siteId, private readonly int $productId, private readonly bool $ignoreRobots = false)
     {
         $this->onQueue('monitor');
     }
@@ -66,12 +66,13 @@ class SiteSearchProductJob implements ShouldQueue
             return;
         }
         $search = new SiteSearch($fetcher, $pool);
+        $search->respectRobots = !$this->ignoreRobots;
         $url = $search->searchUrl($site, $product);
         if ($url === null) {
             return;
         }
 
-        $res = $fetcher->fetch($url, ['egress' => $channel, 'rate_ms' => (int) $site->rate_limit_ms]);
+        $res = $fetcher->fetch($url, ['egress' => $channel, 'rate_ms' => (int) $site->rate_limit_ms, 'respect_robots' => !$this->ignoreRobots]);
         if ($res->deferred()) {
             if ($this->attempts() < self::MAX_DEFERRALS) {
                 $this->release(max(1, (int) ceil($res->retryAfterMs / 1000)));

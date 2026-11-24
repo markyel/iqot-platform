@@ -23,7 +23,9 @@ class SiteSearchCommand extends Command
 {
     protected $signature = 'monitoring:site-search {action : profile|run}
         {--domain=*} {--ce=} {--top=15} {--skip=chipdip.ru}
-        {--program=1} {--limit=0 : не больше N товаров на сайт (0 — все)}';
+        {--program=1} {--limit=0 : не больше N товаров на сайт (0 — все)}
+        {--uncovered : только товары позиций программы без цены}
+        {--ignore-robots : разовый замер по решению владельца 24.11.2026 — поиск и на сайтах, закрывших его в robots.txt}';
 
     protected $description = 'Мониторинг цен: поиск по сайтам продавцов — профилирование шаблонов и запуск (Ф2)';
 
@@ -42,6 +44,7 @@ class SiteSearchCommand extends Command
     private function profile(array $domains): int
     {
         $ss = SiteSearch::make();
+        $ss->respectRobots = !$this->option('ignore-robots');
         $rows = [];
         foreach ($domains as $d) {
             $site = MpSite::forUrl('https://' . $d);
@@ -61,7 +64,10 @@ class SiteSearchCommand extends Command
     {
         $programId = (int) $this->option('program');
         $productIds = DB::table('program_items')->where('program_id', $programId)->where('active', true)
-            ->where('match_status', 'matched')->whereNotNull('product_id')->distinct()->pluck('product_id')->all();
+            ->where('match_status', 'matched')->whereNotNull('product_id')
+            ->when($this->option('uncovered'), fn ($q) => $q->whereNull('last_priced_at'))
+            ->distinct()->pluck('product_id')->all();
+        $ignoreRobots = (bool) $this->option('ignore-robots');
         $limit = (int) $this->option('limit');
         $rows = [];
         foreach ($domains as $d) {
@@ -78,7 +84,7 @@ class SiteSearchCommand extends Command
                 if (isset($have[$pid]) || Cache::has(SiteSearchProductJob::doneKey($site->id, (int) $pid))) {
                     continue;
                 }
-                SiteSearchProductJob::dispatch($site->id, (int) $pid);
+                SiteSearchProductJob::dispatch($site->id, (int) $pid, $ignoreRobots);
                 if (++$n >= $limit && $limit > 0) {
                     break;
                 }

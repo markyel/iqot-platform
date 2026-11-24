@@ -30,6 +30,12 @@ class SiteSearch
 
     private const NAV_RE = '~/(search|poisk|cart|basket|korzina|compare|wishlist|login|auth|personal|register|account|checkout|order)(/|\?|$)|[?&](page|PAGEN_\d+|sort|order|limit)=|^(tel|mailto|javascript):~i';
 
+    /**
+     * robots.txt соблюдаем (решение владельца). false — только разовый замер по решению владельца 24.11.2026
+     * (monitoring:site-search … --ignore-robots): проверка гипотезы, что поиск закрытых сайтов находит карточки.
+     */
+    public bool $respectRobots = true;
+
     public function __construct(
         private readonly PageFetcher $fetcher,
         private readonly EgressPool $pool,
@@ -69,7 +75,7 @@ class SiteSearch
         $disallowed = [];
         foreach ($templates as $tpl) {
             // robots.txt соблюдаем (решение владельца): /search/ у Bitrix часто закрыт.
-            if (!$this->fetcher->robotsAllow($this->url($site, $tpl, 'test'), $channel['proxy'])) {
+            if ($this->respectRobots && !$this->fetcher->robotsAllow($this->url($site, $tpl, 'test'), $channel['proxy'])) {
                 $disallowed[] = $tpl;
                 continue;
             }
@@ -244,7 +250,8 @@ class SiteSearch
     private function get(string $url, MpSite $site, array $channel): ?FetchResult
     {
         for ($i = 0; $i < 20; $i++) {
-            $res = $this->fetcher->fetch($url, ['egress' => $channel, 'rate_ms' => (int) $site->rate_limit_ms]);
+            $res = $this->fetcher->fetch($url, ['egress' => $channel, 'rate_ms' => (int) $site->rate_limit_ms,
+                'respect_robots' => $this->respectRobots]);
             if (!$res->deferred()) {
                 return $res;
             }
