@@ -45,9 +45,11 @@ class RefreshCoverage extends Command
             ->whereNotNull('vat_included')->groupBy('site_id')
             ->selectRaw('site_id, SUM(vat_included = 1) gross, SUM(vat_included = 0) net')->get()->keyBy('site_id');
         $vatChanged = 0;
-        foreach (DB::table('mp_sites')->get(['id', 'vat_default']) as $s) {
+        foreach (DB::table('mp_sites')->get(['id', 'vat_default', 'vat_cart']) as $s) {
             $r = $vatRows[$s->id] ?? null;
-            $def = $r ? \App\Support\Monitoring\VatDetector::siteDefault((int) $r->gross, (int) $r->net) : null;
+            // По страницам сайта, иначе — по его корзине (monitoring:vat-cart-probe).
+            $def = ($r ? \App\Support\Monitoring\VatDetector::siteDefault((int) $r->gross, (int) $r->net) : null)
+                ?? ($s->vat_cart === null ? null : (bool) $s->vat_cart);
             $old = $s->vat_default === null ? null : (bool) $s->vat_default;
             if ($def === $old) {
                 continue;

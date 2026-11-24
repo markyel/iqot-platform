@@ -258,6 +258,11 @@ Schedule::command('monitoring:site-recipe auto')
     ->dailyAt('03:40')
     ->timezone('Europe/Moscow')
     ->withoutOverlapping();
+// НДС по корзине (24.11.2026): сайты без признака НДС на страницах — разовая проба корзины браузером, до 10 в сутки.
+Schedule::command('monitoring:vat-cart-probe')
+    ->dailyAt('04:10')
+    ->timezone('Europe/Moscow')
+    ->withoutOverlapping();
 // Ф3 «Гибрид»: выборка и отправка проверочных КП — будни ПОСЛЕ plan-day (07:30 МСК), чтобы
 // заявки клиентов заняли ящики и капы получателей первыми; сбор ответов/сверок — каждые 30 мин.
 Schedule::command('monitoring:hybrid daily')

@@ -33,6 +33,17 @@ class VatDetectorTest extends TestCase
         $this->assertNull(VatDetector::siteDefault(3, 0));     // мало цен
     }
 
+    public function test_cart(): void
+    {
+        // lift-market: НДС внутри цены.
+        $this->assertTrue(VatDetector::fromCart("Товаров на: 4 073.77 Р\nНДС: 896.23 Р\nИтого: 4 970 Р", 4970));
+        // revator: подпись.
+        $this->assertTrue(VatDetector::fromCart('Шкив 48 448 ₽ цена с НДС Итого: 48 448 ₽', 48448));
+        // НДС сверху: итого = цена × 1,22.
+        $this->assertFalse(VatDetector::fromCart("Сумма: 10 000 ₽\nНДС 22%: 2 200 ₽\nИтого: 12 200 ₽", 10000));
+        $this->assertNull(VatDetector::fromCart('Итого: 4 970 ₽', 4970));
+    }
+
     public function test_unknown(): void
     {
         $this->assertNull(VatDetector::detect('Ролик каретки 1 250 ₽ в наличии', 1250));

@@ -34,6 +34,41 @@ final class VatDetector
         };
     }
 
+    /**
+     * НДС по тексту корзины, куда положен товар с известной ценой: подписи («в т.ч. НДС», «цена с НДС», «без НДС»),
+     * иначе — по суммам: есть сумма ≈ цена × (1+ставка) рядом со словом НДС — НДС сверху (цена без НДС); есть
+     * сумма НДС ≈ цена × ставка/(1+ставка) — НДС внутри цены (lift-market: 896,23 из 4 970).
+     */
+    public static function fromCart(string $cart, float $price, float $ratePct = 22.0): ?bool
+    {
+        $t = str_replace(["\u{00A0}", "\u{202F}", 'ё'], [' ', ' ', 'е'], mb_strtolower($cart));
+        if (!str_contains($t, 'ндс')) {
+            return null;
+        }
+        if (preg_match(self::NET_RE, $t)) {
+            return false;
+        }
+        if (preg_match(self::GROSS_RE, $t)) {
+            return true;
+        }
+        $rate = $ratePct / 100;
+        $sums = [];
+        if (preg_match_all('~(?<![\d.,])(\d{1,3}(?:[ .]\d{3})+|\d+)(?:[.,](\d{1,2}))?(?![\d])~u', $t, $m, PREG_SET_ORDER)) {
+            foreach ($m as $x) {
+                $sums[] = (float) (str_replace([' ', '.'], '', $x[1]) . '.' . ($x[2] ?? '0'));
+            }
+        }
+        $near = fn (float $target) => array_filter($sums, fn ($s) => $target > 0 && abs($s - $target) <= max(1.0, $target * 0.005)) !== [];
+        if ($near(round($price * (1 + $rate), 2))) {
+            return false;
+        }
+        if ($near(round($price * $rate / (1 + $rate), 2))) {
+            return true;
+        }
+
+        return null;
+    }
+
     public static function detect(string $text, ?float $price): ?bool
     {
         $t = str_replace(["\u{00A0}", "\u{202F}", 'ё'], [' ', ' ', 'е'], mb_strtolower($text));
