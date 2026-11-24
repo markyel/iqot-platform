@@ -12,7 +12,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const priceDigits = priceArg ? String(Math.floor(Number(priceArg))) : "";
   const args = ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'];
   if (proxy) args.push('--proxy-server=' + proxy.replace(/^https?:\/\//, ''));
-  const out = { clicked: null, cart_url: null, cart_text: '', error: null };
+  const out = { clicked: null, cart_url: null, cart_text: '', error: null, tried: [] };
   let browser;
   try {
     browser = await puppeteer.launch({
@@ -41,11 +41,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       const btn = exact || loose;
       if (!btn) return null;
       btn.scrollIntoView({ block: 'center' });
-      btn.click();
+      btn.setAttribute('data-iqot-cart', '1');
       return txt(btn);
     });
     if (!out.clicked) throw new Error('no add-to-cart button');
-    await sleep(3500);
+    // Настоящий клик мышью: темы Bitrix (Aspro) и др. не реагируют на программный el.click().
+    try {
+      await page.click('[data-iqot-cart]', { delay: 60 });
+    } catch (e) {
+      await page.evaluate(() => document.querySelector('[data-iqot-cart]')?.click());
+    }
+    try { await page.waitForNetworkIdle({ idleTime: 800, timeout: 8000 }); } catch (e) { /* ждём дальше sleep */ }
+    await sleep(2000);
 
     const origin = new URL(url).origin;
     const linked = await page.evaluate(() => {
@@ -54,15 +61,19 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       const byHref = links.map((x) => x.href).find((h) => /\/(basket|cart|korzina|personal\/cart|personal\/basket|checkout\/cart|shop\/cart|order)(\/|\?|\.|$)|route=checkout\/cart/i.test(h));
       return (byText && byText.href) || byHref || null;
     });
-    const candidates = [...new Set([linked, origin + '/basket/', origin + '/cart/', origin + '/personal/cart/', origin + '/korzina/',
+    // Корзина — на том же хосте, что и карточка (www. и без www — разные cookie, корзина пуста).
+    const sameHost = (h) => { try { const u = new URL(h); u.host = new URL(url).host; return u.toString(); } catch (e) { return null; } };
+    const candidates = [...new Set([linked && sameHost(linked), origin + '/basket/', origin + '/cart/', origin + '/personal/cart/', origin + '/korzina/',
       origin + '/index.php?route=checkout/cart', origin + '/personal/basket/', origin + '/shop/cart/', origin + '/order/'].filter(Boolean))];
     for (const c of candidates) {
       try {
         const resp = await page.goto(c, { waitUntil: 'networkidle2', timeout: 30000 });
+        out.tried.push({ url: c, status: resp ? resp.status() : null });
         if (!resp || resp.status() >= 400) continue;
         await sleep(1500);
         const text = await page.evaluate(() => document.body.innerText || '');
         const hasPrice = priceDigits && text.replace(/[\s\u00a0.]/g, '').includes(priceDigits);
+        Object.assign(out.tried[out.tried.length - 1], { len: text.length, hasPrice: !!hasPrice, vat: /ндс/i.test(text), head: text.replace(/\s+/g, ' ').slice(0, 160) });
         if (hasPrice || /итого|сумма|в корзине|товаров на/i.test(text)) {
           out.cart_url = c;
           out.cart_text = text.slice(0, 20000);
