@@ -19,7 +19,7 @@ class MpSite extends Model
         'has_structured_markup', 'search_url_template', 'sitemap_url', 'sitemap_indexed_at', 'sitemap_pages', 'fetch_mode', 'egress',
         'blocked_until', 'blocked_reason', 'rate_limit_ms', 'trust_level', 'trust_scope',
         'sample_every', 'verified_ok', 'verified_mismatch', 'consecutive_ok', 'consecutive_mismatch',
-        'last_verified_at', 'next_verification_due_at', 'stats_30d',
+        'last_verified_at', 'next_verification_due_at', 'stats_30d', 'recipe', 'recipe_score', 'recipe_at',
     ];
 
     protected $casts = [
@@ -31,6 +31,8 @@ class MpSite extends Model
         'last_verified_at' => 'datetime',
         'next_verification_due_at' => 'datetime',
         'stats_30d' => 'array',
+        'recipe' => 'array',
+        'recipe_at' => 'datetime',
     ];
 
     public static function forUrl(string $url): self
