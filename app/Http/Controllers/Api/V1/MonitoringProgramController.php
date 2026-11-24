@@ -544,12 +544,15 @@ class MonitoringProgramController extends Controller
             $fromKp = !empty($s['flags']['web_superseded']) || $s['price'] === null;
             $s['_price'] = $fromKp ? ($s['kp']['price'] ?? null) : $s['price'];
             $s['_currency'] = $fromKp ? ($s['kp']['currency'] ?? 'RUB') : ($s['currency'] ?? 'RUB');
+            // Сводка — на единой базе «с НДС» (24.11.2026): цена без НДС ×(1+ставка); признак не известен — как с НДС.
+            $vat = $fromKp ? ($s['kp']['vat_included'] ?? null) : ($s['vat_included'] ?? null);
+            $s['_gross'] = $s['_price'] === null ? null : self::withVat((float) $s['_price'], $vat === null ? null : (bool) $vat);
 
             return $s;
         // Правило 2: «сомнительные» (flags.doubtful) в сводку не идут, но остаются среди источников.
         })->filter(fn ($s) => $s['_price'] !== null && $s['status'] === 'active' && empty($s['flags']['doubtful'])
-            && $s['_currency'] === 'RUB' && $s['price_kind'] !== 'wholesale_tier')->sortBy('_price')->values();
-        $prices = $priced->pluck('_price')->all();
+            && $s['_currency'] === 'RUB' && $s['price_kind'] !== 'wholesale_tier')->sortBy('_gross')->values();
+        $prices = $priced->pluck('_gross')->all();
         $n = count($prices);
         $median = $n === 0 ? null : ($n % 2 ? $prices[intdiv($n, 2)] : round(($prices[$n / 2 - 1] + $prices[$n / 2]) / 2, 2));
         $best = $priced->first();
@@ -559,15 +562,28 @@ class MonitoringProgramController extends Controller
             'name' => $i->raw_name,
             'prices_changed_at' => $i->prices_changed_at?->toIso8601String(),
             'last_priced_at' => $i->last_priced_at?->toIso8601String(),
-            'best_price' => $best ? ['price' => $best['_price'], 'currency' => $best['_currency'], 'supplier_domain' => $best['supplier_domain'],
+            // best_price.price — цена источника как есть (с его vat_included), price_with_vat — на базе сводки.
+            'best_price' => $best ? ['price' => $best['_price'], 'price_with_vat' => $best['_gross'], 'currency' => $best['_currency'],
+                'supplier_domain' => $best['supplier_domain'],
                 'url' => $best['url'], 'price_source' => (!empty($best['flags']['web_superseded']) || $best['price'] === null) ? 'kp' : 'web',
                 'flags' => $best['flags']] : null,
             'summary' => $n === 0 ? null : [
                 'best_price' => $prices[0], 'min' => $prices[0], 'median' => $median, 'max' => $prices[$n - 1],
-                'sources_priced' => $n, 'currency' => 'RUB',
+                'sources_priced' => $n, 'currency' => 'RUB', 'vat_basis' => 'with_vat', 'vat_rate' => self::vatRate() * 100,
             ],
             'sources' => collect($sources)->values(),
         ];
+    }
+
+    private static function vatRate(): float
+    {
+        return max(0.0, (float) config('monitoring.vat_percent', 22)) / 100;
+    }
+
+    /** Цена на базе «с НДС»: без НДС — ×(1+ставка); с НДС или признак не известен — как есть. */
+    public static function withVat(float $price, ?bool $vatIncluded): float
+    {
+        return round($vatIncluded === false ? $price * (1 + self::vatRate()) : $price, 2);
     }
 
     private function programArray(MonitoringProgram $p, array $limits): array

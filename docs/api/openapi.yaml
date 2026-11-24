@@ -971,7 +971,7 @@ components:
 
     MonitoringPriceSummary:
       type: [object, 'null']
-      description: 'Сводка по сопоставимым ценам: RUB, розница или «от», статус active. Цена источника — цена сайта, а где её нет — цена КП'
+      description: 'Сводка по сопоставимым ценам: RUB, розница или «от», статус active. Цена источника — цена сайта, а где её нет — цена КП. Все значения — на единой базе «с НДС» (vat_basis): цена без НДС умножается на 1 + vat_rate/100; цена без признака НДС считается ценой с НДС'
       properties:
         best_price: { type: number }
         min: { type: number }
@@ -979,6 +979,8 @@ components:
         max: { type: number }
         sources_priced: { type: integer }
         currency: { type: string, example: RUB }
+        vat_basis: { type: string, enum: [with_vat], description: 'База сводки по НДС' }
+        vat_rate: { type: number, example: 22, description: 'Ставка НДС, %, для приведения цен без НДС' }
 
     MonitoringPriceItem:
       type: object
@@ -990,7 +992,8 @@ components:
         best_price:
           type: [object, 'null']
           properties:
-            price: { type: number }
+            price: { type: number, description: "Цена источника как есть (НДС — по vat_included источника)" }
+            price_with_vat: { type: number, description: "Та же цена на базе сводки «с НДС»" }
             currency: { type: string }
             supplier_domain: { type: [string, 'null'] }
             url: { type: [string, 'null'], format: uri }

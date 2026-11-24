@@ -153,6 +153,9 @@ return [
     // Совпадение по подстроке хоста (как SupplierTargetingService::BLOCKED).
     // Поиск листингов (Ф1). mode: sync — синхронный Search API (≈488 ₽/1000 днём), deferred —
     // отложенный (≈30,5 ₽/1000), требует квоты отложенного режима в Yandex Cloud (без неё 429).
+    // Ставка НДС, %: сводка цен в API (best/min/median/max) приводится к базе «с НДС» (24.11.2026).
+    'vat_percent' => (float) env('MONITORING_VAT_PERCENT', 22),
+
     'search' => [
         'mode' => env('MONITORING_SEARCH_MODE', 'sync'),
         'results_per_query' => (int) env('MONITORING_SEARCH_RESULTS', 10),
