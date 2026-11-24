@@ -356,7 +356,8 @@ class ListingChecker
         $fields = [
             'currency' => $price !== null ? (string) ($found['currency'] ?? 'RUB') : null,
             'price_kind' => $found['price_kind'] ?? ($price === null ? 'on_request' : 'retail'),
-            'vat_included' => $found['vat_included'] ?? null,
+            // Разметка НДС не знает, ИИ видит его не всегда — подпись у цены / общая фраза сайта (VatDetector).
+            'vat_included' => $found['vat_included'] ?? ($price !== null ? \App\Support\Monitoring\VatDetector::detect($text, (float) $price) : null),
             'price_unit' => $found['price_unit'] ?? null,
             'price_unit_qty' => $found['price_unit_qty'] ?? null,
             'min_order_qty' => $llm['min_order_qty'] ?? null,
