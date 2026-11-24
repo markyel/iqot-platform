@@ -71,10 +71,11 @@ class SiteRecipeCommand extends Command
         $min = max(3, (int) $this->option('min-pages'));
         $limit = max(1, (int) $this->option('limit'));
         $learner = SiteRecipeLearner::make();
-        $sites = MpSite::query()->where(fn ($q) => $q->whereNull('has_structured_markup')->orWhere('has_structured_markup', false))
+        // Сайты, где цену извлекает ИИ (≥ --min-pages таких цен): без разметки или с разметкой без цены (liftcomplete, olnisa).
+        $sites = MpSite::query()
             ->where(fn ($q) => $q->whereNull('blocked_until')->orWhere('blocked_until', '<', now()))
             ->whereIn('id', DB::table('mp_listings')->where('bench', false)->where('status', 'active')->where('price', '>', 0)
-                ->groupBy('site_id')->havingRaw('COUNT(*) >= ?', [$min])->select('site_id'))
+                ->where('price_method', 'llm')->groupBy('site_id')->havingRaw('COUNT(*) >= ?', [$min])->select('site_id'))
             ->get();
         $learned = 0;
         foreach ($sites as $site) {
