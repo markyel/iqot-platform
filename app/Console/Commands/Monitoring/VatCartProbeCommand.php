@@ -63,7 +63,7 @@ class VatCartProbeCommand extends Command
         $last = 'нет карточек с ценой';
         foreach ($rows as $r) {
             $home = storage_path('app/headless');
-            $p = new Process(['node', base_path('deploy/monitoring/cart-vat-probe.cjs'), $r->url, (string) ($channel['proxy'] ?? '')],
+            $p = new Process(['node', base_path('deploy/monitoring/cart-vat-probe.cjs'), $r->url, (string) ($channel['proxy'] ?? ''), (string) $r->price],
                 base_path(), ['HOME' => $home, 'CHROME_PATH' => (string) config('services.email_analysis.headless_chrome_path', '/usr/bin/google-chrome-stable')]);
             $p->setTimeout(120);
             try {

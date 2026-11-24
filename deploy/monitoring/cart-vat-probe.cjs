@@ -8,7 +8,8 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 (async () => {
-  const [url, proxy] = process.argv.slice(2);
+  const [url, proxy, priceArg] = process.argv.slice(2);
+  const priceDigits = priceArg ? String(Math.floor(Number(priceArg))) : "";
   const args = ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'];
   if (proxy) args.push('--proxy-server=' + proxy.replace(/^https?:\/\//, ''));
   const out = { clicked: null, cart_url: null, cart_text: '', error: null };
@@ -32,10 +33,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       };
       const txt = (el) => (el.innerText || el.value || el.getAttribute('title') || el.getAttribute('aria-label') || '')
         .replace(/\s+/g, ' ').trim().toLowerCase();
-      const els = [...document.querySelectorAll('button, a, input[type=submit], input[type=button], [role=button]')]
-        .filter((el) => visible(el) && !/1\s*клик|один\s*клик|заказать|запрос|сравн|избран/i.test(txt(el)));
-      const exact = els.find((el) => /^(в\s*корзину|добавить\s+в\s+корзину)$/i.test(txt(el)));
-      const loose = els.find((el) => /в\s*корзину|^купить$/i.test(txt(el)) && txt(el).length < 30);
+      const sel = 'button, a, input[type=submit], input[type=button], [role=button], [onclick], [class*=cart], [class*=basket], [class*=buy], [class*=korzin], [id*=cart], [id*=basket], [data-action*=cart], [data-action*=basket]';
+      const els = [...document.querySelectorAll(sel)]
+        .filter((el) => visible(el) && !/1\s*клик|один\s*клик|заказать|запрос|сравн|избран|оформ|перейти/i.test(txt(el)));
+      const exact = els.find((el) => /^(в\s*корзину|добавить\s+в\s+корзину|в\s*корзину\s*\+?)$/i.test(txt(el)));
+      const loose = els.find((el) => /в\s*корзину|^купить$|^добавить$/i.test(txt(el)) && txt(el).length < 30);
       const btn = exact || loose;
       if (!btn) return null;
       btn.scrollIntoView({ block: 'center' });
@@ -47,19 +49,21 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
     const origin = new URL(url).origin;
     const linked = await page.evaluate(() => {
-      const a = [...document.querySelectorAll('a[href]')].map((x) => x.href)
-        .find((h) => /\/(basket|cart|korzina|personal\/cart|checkout\/cart)(\/|\?|$)|route=checkout\/cart/i.test(h));
-      return a || null;
+      const links = [...document.querySelectorAll('a[href]')];
+      const byText = links.find((x) => /перейти\s+в\s+корзину|в\s+корзину\s*$|оформить\s+заказ|^корзина/i.test((x.innerText || '').trim()) && /^https?:/.test(x.href));
+      const byHref = links.map((x) => x.href).find((h) => /\/(basket|cart|korzina|personal\/cart|personal\/basket|checkout\/cart|shop\/cart|order)(\/|\?|\.|$)|route=checkout\/cart/i.test(h));
+      return (byText && byText.href) || byHref || null;
     });
     const candidates = [...new Set([linked, origin + '/basket/', origin + '/cart/', origin + '/personal/cart/', origin + '/korzina/',
-      origin + '/index.php?route=checkout/cart'].filter(Boolean))];
+      origin + '/index.php?route=checkout/cart', origin + '/personal/basket/', origin + '/shop/cart/', origin + '/order/'].filter(Boolean))];
     for (const c of candidates) {
       try {
         const resp = await page.goto(c, { waitUntil: 'networkidle2', timeout: 30000 });
         if (!resp || resp.status() >= 400) continue;
         await sleep(1500);
         const text = await page.evaluate(() => document.body.innerText || '');
-        if (/итого|сумма|в корзине|товаров на/i.test(text)) {
+        const hasPrice = priceDigits && text.replace(/[\s\u00a0.]/g, '').includes(priceDigits);
+        if (hasPrice || /итого|сумма|в корзине|товаров на/i.test(text)) {
           out.cart_url = c;
           out.cart_text = text.slice(0, 20000);
           if (/ндс/i.test(text)) break;
