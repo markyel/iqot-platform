@@ -252,6 +252,12 @@ Schedule::command('monitoring:index-pages')
 Schedule::command('monitoring:sitemap match --all --create')
     ->dailyAt('05:00')
     ->withoutOverlapping();
+// Профиль сайта (24.11.2026): рецепты карточек частых сайтов без стандартной разметки (до 10 новых в сутки)
+// и еженедельная перепроверка рабочих — сайт сменил вёрстку → рецепт снимается и выводится заново.
+Schedule::command('monitoring:site-recipe auto')
+    ->dailyAt('03:40')
+    ->timezone('Europe/Moscow')
+    ->withoutOverlapping();
 // Ф3 «Гибрид»: выборка и отправка проверочных КП — будни ПОСЛЕ plan-day (07:30 МСК), чтобы
 // заявки клиентов заняли ящики и капы получателей первыми; сбор ответов/сверок — каждые 30 мин.
 Schedule::command('monitoring:hybrid daily')

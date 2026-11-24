@@ -86,6 +86,73 @@ class SiteRecipeLearner
     }
 
     /**
+     * Вывести рецепт: до трёх попыток ИИ по разным парам образцов, лучший — на проверку по всем образцам; сохраняется
+     * с долей совпадений (в работе — от SiteRecipe::MIN_SCORE).
+     *
+     * @return array{status:string, score?:float, selectors?:array<string,mixed>, log:array<int,string>}
+     */
+    public function learn(MpSite $site, int $samplesN = 6): array
+    {
+        $log = [];
+        $samples = $this->samples($site, $samplesN);
+        if (count($samples) < 3) {
+            return ['status' => 'few_samples', 'log' => ['известных страниц с ценой: ' . count($samples)]];
+        }
+        $best = null;
+        foreach ([0, 2, 4] as $offset) {
+            $pair = array_slice($samples, $offset, 2);
+            if (count($pair) < 2) {
+                break;
+            }
+            $p = $this->propose($pair);
+            if (!$p['recipe']) {
+                $log[] = "попытка {$offset}: нет селектора цены";
+                continue;
+            }
+            $v = self::validate($p['recipe'], $samples);
+            $log[] = "попытка {$offset}: " . json_encode($p['recipe']->selectors, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . " → {$v['hits']}/{$v['total']}";
+            if ($best === null || $v['hits'] > $best[1]['hits']) {
+                $best = [$p['recipe'], $v];
+            }
+            if ($v['hits'] === $v['total']) {
+                break;
+            }
+        }
+        if ($best === null) {
+            $site->forceFill(['recipe_score' => 0, 'recipe_at' => now()])->save();
+
+            return ['status' => 'failed', 'log' => $log];
+        }
+        [$recipe, $v] = $best;
+        $score = round($v['total'] > 0 ? $v['hits'] / $v['total'] : 0, 3);
+        $site->forceFill(['recipe' => $recipe->selectors, 'recipe_score' => $score, 'recipe_at' => now()])->save();
+
+        return ['status' => $score >= SiteRecipe::MIN_SCORE ? 'active' : 'weak', 'score' => $score, 'selectors' => $recipe->selectors, 'log' => $log];
+    }
+
+    /**
+     * Перепроверка рабочего рецепта на свежих известных карточках: сайт сменил вёрстку — рецепт снимается
+     * (score=0) и выводится заново при следующем проходе.
+     *
+     * @return array{hits:int, total:int}
+     */
+    public function revalidate(MpSite $site, int $n = 4): array
+    {
+        $recipe = SiteRecipe::forSite($site);
+        if ($recipe === null) {
+            return ['hits' => 0, 'total' => 0];
+        }
+        $v = self::validate($recipe, $this->samples($site, $n));
+        if ($v['total'] >= 3 && $v['hits'] / $v['total'] < 0.75) {
+            $site->forceFill(['recipe_score' => 0, 'recipe_at' => now()])->save();
+        } elseif ($v['total'] > 0) {
+            $site->forceFill(['recipe_at' => now()])->save();
+        }
+
+        return ['hits' => $v['hits'], 'total' => $v['total']];
+    }
+
+    /**
      * Проверка рецепта на образцах: цена совпала (±1%) — попадание.
      *
      * @param array<int, array{url:string, price:float, codes:array<int,string>, html:string}> $samples
@@ -97,7 +164,8 @@ class SiteRecipeLearner
         $rows = [];
         foreach ($samples as $s) {
             $r = $recipe->apply($s['html']);
-            $ok = $r['price'] !== null && abs($r['price'] - $s['price']) <= max(0.01, $s['price'] * 0.01);
+            $ok = $r['price'] !== null && $r['price_nodes'] <= SiteRecipe::MAX_PRICE_NODES
+                && abs($r['price'] - $s['price']) <= max(0.01, $s['price'] * 0.01);
             $hits += $ok ? 1 : 0;
             $rows[] = ['url' => $s['url'], 'known' => $s['price'], 'got' => $r['price'], 'ok' => $ok, 'title' => $r['title'], 'sku' => $r['sku']];
         }

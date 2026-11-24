@@ -207,6 +207,12 @@ class ListingChecker
         if ($structured !== null && $site->has_structured_markup !== true) {
             $site->forceFill(['has_structured_markup' => true])->save();
         }
+        // Рецепт карточки сайта (профиль сайта, 24.11.2026): нет стандартной разметки — цена и артикул по селекторам
+        // сайта, выведенным ИИ и проверенным на известных ценах (SiteRecipe). Только карточка: на списке — null.
+        // Дальше страница идёт путём разметки: переобход с нашим кодом — без ИИ; первая проверка — ИИ сверяет товар.
+        if ($structured === null && ($recipe = \App\Services\Monitoring\Recipes\SiteRecipe::forSite($site)) !== null) {
+            $structured = $recipe->asStructured($html, $codes);
+        }
 
         // Контекст для признаков аналога: адрес карточки (разделители → пробелы) + её заголовок.
         $context = str_replace(['-', '_', '/', '.'], ' ', rawurldecode((string) parse_url($listing->url, PHP_URL_PATH)))
@@ -324,6 +330,11 @@ class ListingChecker
         // Модель при наличии разметки — только для проверки идентичности.
         $method = $structured !== null ? 'structured' : 'llm';
         $found = $method === 'structured' ? $structured : $llm;
+        // Рецепт сайта и ИИ разошлись в цене (>25%) — цена по рецепту, расхождение в пометке для разбора.
+        if (($structured['source'] ?? null) === 'recipe' && (float) ($llm['price'] ?? 0) > 0
+            && abs((float) $llm['price'] - (float) $structured['price']) / max((float) $llm['price'], (float) $structured['price']) > 0.25) {
+            $identity['extra_note'] = trim(($identity['extra_note'] ?? '') . ' recipe≠llm: ' . $llm['price']);
+        }
         $price = $found['price'] ?? null;
 
         // Страница-список (категория, «похожие товары»): цену от модели принимаем, только если

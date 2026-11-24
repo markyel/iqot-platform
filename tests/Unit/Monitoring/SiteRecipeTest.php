@@ -37,6 +37,24 @@ class SiteRecipeTest extends TestCase
         $this->assertStringNotContainsString('var x', $c);
     }
 
+    public function test_as_structured_card_with_our_code(): void
+    {
+        $s = (new SiteRecipe(['title' => 'h1.product-title', 'sku' => '.sku', 'price' => '.price-block .price-current']))
+            ->asStructured(self::HTML, ['FAA456X1']);
+
+        $this->assertSame(1250.0, $s['price']);
+        $this->assertSame('recipe', $s['source']);
+        $this->assertTrue($s['sku_matched']);
+        $this->assertFalse((new SiteRecipe(['title' => 'h1', 'price' => '.price-block .price-current']))->asStructured(self::HTML, ['ZZZ999'])['sku_matched']);
+    }
+
+    public function test_list_page_is_not_a_card(): void
+    {
+        $list = '<html><body><h1>Ролики</h1>' . str_repeat('<div class="card"><span class="price-current">500 ₽</span></div>', 5) . '</body></html>';
+
+        $this->assertNull((new SiteRecipe(['price' => '.price-current']))->asStructured($list, ['FAA456X1']));
+    }
+
     public function test_validate_counts_price_hits(): void
     {
         $v = SiteRecipeLearner::validate(new SiteRecipe(['price' => '.price-block .price-current']),

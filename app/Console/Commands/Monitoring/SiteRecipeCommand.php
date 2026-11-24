@@ -20,12 +20,17 @@ use Illuminate\Support\Facades\DB;
  */
 class SiteRecipeCommand extends Command
 {
-    protected $signature = 'monitoring:site-recipe {action : learn|eval} {--domain=*} {--pages=30}';
+    protected $signature = 'monitoring:site-recipe {action : learn|eval|auto} {--domain=*} {--pages=30} {--min-pages=10} {--limit=10}';
 
     protected $description = 'Мониторинг: пилот рецепта карточки сайта (селекторы без ИИ)';
 
     public function handle(): int
     {
+        if ($this->argument('action') === 'auto') {
+            $this->auto();
+
+            return self::SUCCESS;
+        }
         foreach ((array) $this->option('domain') as $d) {
             $site = MpSite::query()->where('domain', trim($d))->first();
             if (!$site) {
@@ -40,46 +45,56 @@ class SiteRecipeCommand extends Command
 
     private function learn(MpSite $site): void
     {
-        $learner = SiteRecipeLearner::make();
-        $samples = $learner->samples($site, 6);
-        if (count($samples) < 3) {
-            $this->warn("{$site->domain}: мало известных страниц с ценой (" . count($samples) . ')');
+        $r = SiteRecipeLearner::make()->learn($site);
+        foreach ($r['log'] as $l) {
+            $this->line("  {$l}");
+        }
+        $this->info("{$site->domain}: " . match ($r['status']) {
+            'active' => 'рецепт в работе, совпадение ' . $r['score'],
+            'weak' => 'рецепт слабый (' . $r['score'] . ') — не применяется',
+            'failed' => 'рецепт не выведен',
+            default => 'мало известных страниц с ценой',
+        });
+    }
+
+    /**
+     * Ежедневно: рецепты для частых сайтов без стандартной разметки (≥ --min-pages страниц с ценой), у которых рецепта
+     * нет или он снят; рабочие рецепты старше 7 дней — перепроверка на свежих карточках.
+     */
+    private function auto(): void
+    {
+        if (!config('monitoring.enabled')) {
+            $this->warn('Мониторинг выключен (MONITORING_ENABLED=false).');
 
             return;
         }
-        $best = null;
-        foreach ([0, 2, 4] as $offset) {
-            $pair = array_slice($samples, $offset, 2);
-            if (count($pair) < 2) {
-                break;
-            }
-            $p = $learner->propose(array_merge($pair, $samples));
-            if (!$p['recipe']) {
-                $this->line("  попытка {$offset}: ИИ не дал селектор цены " . json_encode($p['raw'], JSON_UNESCAPED_UNICODE));
+        $min = max(3, (int) $this->option('min-pages'));
+        $limit = max(1, (int) $this->option('limit'));
+        $learner = SiteRecipeLearner::make();
+        $sites = MpSite::query()->where(fn ($q) => $q->whereNull('has_structured_markup')->orWhere('has_structured_markup', false))
+            ->where(fn ($q) => $q->whereNull('blocked_until')->orWhere('blocked_until', '<', now()))
+            ->whereIn('id', DB::table('mp_listings')->where('bench', false)->where('status', 'active')->where('price', '>', 0)
+                ->groupBy('site_id')->havingRaw('COUNT(*) >= ?', [$min])->select('site_id'))
+            ->get();
+        $learned = 0;
+        foreach ($sites as $site) {
+            $active = SiteRecipe::forSite($site) !== null;
+            if ($active && $site->recipe_at !== null && $site->recipe_at->gt(now()->subDays(7))) {
                 continue;
             }
-            $v = SiteRecipeLearner::validate($p['recipe'], $samples);
-            $this->line("  попытка {$offset}: " . json_encode($p['recipe']->selectors, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . " → {$v['hits']}/{$v['total']}");
-            if ($best === null || $v['hits'] > $best[1]['hits']) {
-                $best = [$p['recipe'], $v];
+            if ($active) {
+                $v = $learner->revalidate($site);
+                $this->line("{$site->domain}: перепроверка {$v['hits']}/{$v['total']}" . (SiteRecipe::forSite($site->refresh()) ? '' : ' — снят'));
+                continue;
             }
-            if ($v['hits'] === $v['total']) {
+            // Слабый или неудачный рецепт не выводим заново чаще раза в 14 дней.
+            if ($site->recipe_at !== null && $site->recipe_at->gt(now()->subDays(14))) {
+                continue;
+            }
+            if ($learned++ >= $limit) {
                 break;
             }
-        }
-        if ($best === null) {
-            $this->error("{$site->domain}: рецепт не выведен");
-
-            return;
-        }
-        [$recipe, $v] = $best;
-        $score = $v['total'] > 0 ? $v['hits'] / $v['total'] : 0;
-        $site->forceFill(['recipe' => $recipe->selectors, 'recipe_score' => round($score, 3), 'recipe_at' => now()])->save();
-        $this->info("{$site->domain}: рецепт сохранён, совпадение цены {$v['hits']}/{$v['total']}");
-        foreach ($v['rows'] as $r) {
-            if (!$r['ok']) {
-                $this->line("    мимо: {$r['url']} — известно {$r['known']}, рецепт {$r['got']}");
-            }
+            $this->learn($site);
         }
     }
 
