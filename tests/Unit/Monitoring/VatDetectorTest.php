@@ -24,6 +24,15 @@ class VatDetectorTest extends TestCase
         $this->assertFalse(VatDetector::detect('Ролик 980 ₽. Цены указаны без учета НДС.', 980));
     }
 
+    public function test_site_default(): void
+    {
+        $this->assertFalse(VatDetector::siteDefault(0, 91));   // lzpro: 91 «без НДС»
+        $this->assertTrue(VatDetector::siteDefault(67, 0));    // yamagi
+        $this->assertTrue(VatDetector::siteDefault(19, 1));    // 95%
+        $this->assertNull(VatDetector::siteDefault(8, 2));     // 80% — не уверены
+        $this->assertNull(VatDetector::siteDefault(3, 0));     // мало цен
+    }
+
     public function test_unknown(): void
     {
         $this->assertNull(VatDetector::detect('Ролик каретки 1 250 ₽ в наличии', 1250));

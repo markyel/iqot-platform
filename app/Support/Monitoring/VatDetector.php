@@ -17,6 +17,23 @@ final class VatDetector
 
     private const SITE_GROSS_RE = '~(все\s+)?цен[аы]?\s+(на\s+сайте\s+)?(указан[аы]?\s+|приведен[аы]?\s+)?(с\s+учетом|с\s+учётом|с|включая)\s+ндс~u';
 
+    /**
+     * Преобладающий признак НДС сайта: не меньше $min определённых цен и доля одного значения не ниже $share; иначе null.
+     */
+    public static function siteDefault(int $withVat, int $withoutVat, int $min = 5, float $share = 0.9): ?bool
+    {
+        $n = $withVat + $withoutVat;
+        if ($n < $min) {
+            return null;
+        }
+
+        return match (true) {
+            $withVat / $n >= $share => true,
+            $withoutVat / $n >= $share => false,
+            default => null,
+        };
+    }
+
     public static function detect(string $text, ?float $price): ?bool
     {
         $t = str_replace(["\u{00A0}", "\u{202F}", 'ё'], [' ', ' ', 'е'], mb_strtolower($text));

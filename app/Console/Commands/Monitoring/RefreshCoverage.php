@@ -39,6 +39,28 @@ class RefreshCoverage extends Command
             $this->info("Выбросы цен: на перепроверку {$o['flagged']} страниц по {$o['products']} товарам");
         }
 
+        // 0c. НДС по умолчанию для сайта: преобладающий определённый признак (≥5 цен, ≥90%) — для цен без подписи.
+        //     Признак сменился — позиции с ценами сайта без собственного признака помечаются изменёнными (выдача API).
+        $vatRows = DB::table('mp_listings')->where('bench', false)->where('status', 'active')->where('price', '>', 0)
+            ->whereNotNull('vat_included')->groupBy('site_id')
+            ->selectRaw('site_id, SUM(vat_included = 1) gross, SUM(vat_included = 0) net')->get()->keyBy('site_id');
+        $vatChanged = 0;
+        foreach (DB::table('mp_sites')->get(['id', 'vat_default']) as $s) {
+            $r = $vatRows[$s->id] ?? null;
+            $def = $r ? \App\Support\Monitoring\VatDetector::siteDefault((int) $r->gross, (int) $r->net) : null;
+            $old = $s->vat_default === null ? null : (bool) $s->vat_default;
+            if ($def === $old) {
+                continue;
+            }
+            DB::table('mp_sites')->where('id', $s->id)->update(['vat_default' => $def, 'updated_at' => now()]);
+            DB::table('program_items')->whereIn('product_id', DB::table('mp_listings')->where('site_id', $s->id)
+                ->whereNull('vat_included')->where('price', '>', 0)->select('product_id'))->update(['prices_changed_at' => now()]);
+            $vatChanged++;
+        }
+        if ($vatChanged > 0) {
+            $this->info("НДС по умолчанию сменился у сайтов: {$vatChanged}");
+        }
+
         // 1. Счётчики листингов по товарам (без стенда).
         DB::statement("
             UPDATE mp_products p

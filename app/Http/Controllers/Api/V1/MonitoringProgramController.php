@@ -418,7 +418,8 @@ class MonitoringProgramController extends Controller
                 'price' => $l->price !== null ? (float) $l->price : null,
                 'currency' => $l->currency,
                 'price_kind' => $l->price_kind,
-                'vat_included' => $l->vat_included,
+                // Своего признака нет — НДС по умолчанию сайта (преобладающий у его цен, VatDetector::siteDefault).
+                'vat_included' => $l->vat_included ?? ($l->site?->vat_default === null ? null : (bool) $l->site->vat_default),
                 'price_unit' => $l->price_unit,
                 'price_unit_qty' => $l->price_unit_qty !== null ? (float) $l->price_unit_qty : null,
                 'availability' => $l->availability,

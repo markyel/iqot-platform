@@ -19,12 +19,13 @@ class MpSite extends Model
         'has_structured_markup', 'search_url_template', 'sitemap_url', 'sitemap_indexed_at', 'sitemap_pages', 'fetch_mode', 'egress',
         'blocked_until', 'blocked_reason', 'rate_limit_ms', 'trust_level', 'trust_scope',
         'sample_every', 'verified_ok', 'verified_mismatch', 'consecutive_ok', 'consecutive_mismatch',
-        'last_verified_at', 'next_verification_due_at', 'stats_30d', 'recipe', 'recipe_score', 'recipe_at',
+        'last_verified_at', 'next_verification_due_at', 'stats_30d', 'recipe', 'recipe_score', 'recipe_at', 'vat_default',
     ];
 
     protected $casts = [
         'publishes_prices' => 'boolean',
         'publishes_stock' => 'boolean',
+        'vat_default' => 'boolean',
         'has_structured_markup' => 'boolean',
         'blocked_until' => 'datetime',
         'sitemap_indexed_at' => 'datetime',
