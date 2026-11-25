@@ -53,4 +53,12 @@ class CatalogCrawlerTest extends TestCase
     {
         $this->assertNull(CatalogCrawler::productPattern(['https://a.ru/p/1', 'https://a.ru/x/y/z']));
     }
+
+    public function test_url_encoding(): void
+    {
+        $this->assertSame('https://snab-lift.ru/catalog/plata-%C2%AB%D0%B7%D0%B5%D0%BD%D0%B8%D1%82%C2%BB1.html',
+            CatalogCrawler::encodeUrl('https://snab-lift.ru/catalog/plata-«зенит»1.html'));
+        $this->assertSame('https://a.ru/p%20q?x=1', CatalogCrawler::encodeUrl('https://a.ru/p q?x=1'));
+        $this->assertSame('https://a.ru/%D0%B0', CatalogCrawler::encodeUrl('https://a.ru/%D0%B0'), 'закодированное не трогаем');
+    }
 }

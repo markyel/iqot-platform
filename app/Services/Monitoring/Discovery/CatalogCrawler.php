@@ -173,6 +173,24 @@ class CatalogCrawler
 
     private function get(MpSite $site, string $url, ?array $channel): ?string
     {
+        // Адреса с пробелами, «ёлочками» и кириллицей — в кодированный вид (браузер такие не принимает: snab-lift
+        // «…«zenit»1.html», 25.11.2026); сбой одной страницы обход не роняет.
+        $url = self::encodeUrl($url);
+        try {
+            return $this->fetchHtml($site, $url, $channel);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /** Путь и запрос — в процентной кодировке (уже закодированное не трогаем). */
+    public static function encodeUrl(string $url): string
+    {
+        return (string) preg_replace_callback('~[^\x21-\x7E]|["<>\\\\^`{|}«»]~u', fn ($m) => rawurlencode($m[0]), $url);
+    }
+
+    private function fetchHtml(MpSite $site, string $url, ?array $channel): ?string
+    {
         if ($site->fetch_mode === 'headless' && $this->headless !== null) {
             if (!$this->fetcher->robotsAllow($url, $channel['proxy'] ?? null)) {
                 return null;
