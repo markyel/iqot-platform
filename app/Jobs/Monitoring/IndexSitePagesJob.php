@@ -40,6 +40,32 @@ class IndexSitePagesJob implements ShouldQueue
 
     private const CAPTCHA_RE = '~captcha|подтвердите, что вы не робот|checking your browser|ddos-guard|cf-chl|проверка безопасности~u';
 
+    /**
+     * Цена карточки для индекса (25.11.2026): разметка товара, иначе рецепт сайта; НДС — подпись у цены / фраза сайта.
+     * Без ИИ. Нет цены — поля пустые (страница без цены или список).
+     *
+     * @param array<int,string> $codes
+     * @return array{price:?float, currency:?string, availability:?string, vat_included:?bool, price_source:?string}
+     */
+    public static function priceOf(MpSite $site, string $html, array $codes): array
+    {
+        $norms = array_values(array_filter(array_map(fn ($c) => \App\Support\Monitoring\ArticleNormalizer::normalize((string) $c), $codes)));
+        $s = (new \App\Services\Monitoring\Extract\StructuredPriceExtractor())->extract($html, $norms);
+        $source = 'markup';
+        if ($s === null && ($recipe = \App\Services\Monitoring\Recipes\SiteRecipe::forSite($site)) !== null) {
+            $s = $recipe->asStructured($html, $norms);
+            $source = 'recipe';
+        }
+        $price = isset($s['price']) && (float) $s['price'] > 0 ? round((float) $s['price'], 2) : null;
+        if ($price === null) {
+            return ['price' => null, 'currency' => null, 'availability' => null, 'vat_included' => null, 'price_source' => null];
+        }
+
+        return ['price' => $price, 'currency' => mb_substr((string) ($s['currency'] ?? 'RUB'), 0, 3), 'availability' => $s['availability'] ?? null,
+            'vat_included' => $s['vat_included'] ?? \App\Support\Monitoring\VatDetector::detect(\App\Support\Monitoring\HtmlText::toText($html), $price),
+            'price_source' => $source];
+    }
+
     /** @param array<int,int> $pageIds */
     public function __construct(private readonly int $siteId, private readonly array $pageIds)
     {
@@ -102,6 +128,7 @@ class IndexSitePagesJob implements ShouldQueue
                     $digest = ProductPageDigest::fromHtml($res->body);
                     $update['title'] = $digest['title'];
                     $update['codes'] = $digest['codes'] ? implode(' ', $digest['codes']) : null;
+                    $update += self::priceOf($site, $res->body, $digest['codes']);
                 }
                 DB::table('mp_site_pages')->where('id', $page->id)->update($update);
                 $done[] = $page->id;

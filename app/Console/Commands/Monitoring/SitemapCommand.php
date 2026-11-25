@@ -122,7 +122,7 @@ class SitemapCommand extends Command
 
             $created = 0;
             if ($this->option('create')) {
-                $created = $this->createListings($site, $cands);
+                $created = \App\Services\Monitoring\Discovery\IndexListings::create($site, $cands);
                 $createdTotal += $created;
             }
             $rows[] = [
@@ -143,28 +143,6 @@ class SitemapCommand extends Command
     }
 
     /** @param array<int, array<int, array{url: string, score: float, via: string}>> $cands */
-    private function createListings(MpSite $site, array $cands): int
-    {
-        $created = 0;
-        foreach ($cands as $pid => $list) {
-            foreach ($list as $c) {
-                $listing = MpListing::query()->firstOrCreate(
-                    ['product_id' => $pid, 'url_hash' => UrlCanonicalizer::hash($c['url'])],
-                    ['site_id' => $site->id, 'url' => UrlCanonicalizer::canonicalize($c['url']), 'status' => MpListing::STATUS_ACTIVE,
-                        'found_via' => 'sitemap', 'bench' => false, 'next_check_at' => now()]
-                );
-                // Проверку не ставим напрямую: тысячи джобов на один домен разом только
-                // переносятся по слоту (бинлог MySQL). next_check_at=now → темп задаёт
-                // monitoring:dispatch-checks (кап на сайт за тик).
-                if ($listing->wasRecentlyCreated) {
-                    $created++;
-                }
-            }
-        }
-
-        return $created;
-    }
-
     /** @return array<int,string> */
     private function domains(): array
     {

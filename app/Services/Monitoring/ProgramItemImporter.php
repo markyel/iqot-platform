@@ -178,6 +178,8 @@ class ProgramItemImporter
             if ($categoryIds !== []) {
                 ClassifyMonitoringCategoriesJob::dispatch((int) $program->id);
             }
+            // Новые товары — сразу сопоставить с индексом каталогов сайтов-лидеров (25.11.2026), не дожидаясь ночи.
+            \App\Services\Monitoring\Discovery\IndexListings::dispatchFor($newProducts);
         } catch (\Throwable $e) {
             Log::error('ProgramItemImporter: import failed', ['import_id' => $import->id, 'error' => $e->getMessage()]);
             $import->forceFill(['status' => 'failed', 'errors' => [['row' => null, 'error' => mb_substr($e->getMessage(), 0, 300)]]])->save();
