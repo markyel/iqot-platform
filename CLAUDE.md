@@ -2,10 +2,11 @@
 
 > **Полная карта конвейера заявка → рассылка → ответы → результат** (фактическое состояние прода, статусы, флаги, реестр проблем, точки расширения API): [`docs/pipeline-map.md`](docs/pipeline-map.md). Снимок 2026-10-14; где разделы ниже расходятся с кодом — см. её §15.
 >
-> **Итоги последних сессий и открытые вопросы:** `docs/sessions/` (последняя — [`2026-10-28_29-dispatch-observation.md`](docs/sessions/2026-10-28_29-dispatch-observation.md)).
+> **Итоги последних сессий и открытые вопросы:** `docs/sessions/` (последняя — [`2026-11-19_25-recovery-monitoring-index.md`](docs/sessions/2026-11-19_25-recovery-monitoring-index.md): восстановление после потери Beget, новый прод, состояние и открытые вопросы).
 
 ## Деплой на прод
-- Сервер: `217.26.31.80`, путь `/var/www/iqot`, SSH-алиас `iqot-prod`.
+- ⚠ **С 19.11.2026 прод — выделенный REG.RU `89.108.75.244`** (старый Beget 217.26.31.80 потерян 02.11.2026). С ПК владельца вход только через `ssh iqot-prod-via-relay3` (ProxyJump через релей #3); `git pull` — от root (у www-data `safe.directory`), artisan — `sudo -u www-data php artisan …`. Подробно — `docs/sessions/2026-11-19_25-recovery-monitoring-index.md`. Ниже — исторические заметки старого сервера.
+- Сервер (до 02.11.2026): `217.26.31.80`, путь `/var/www/iqot`, SSH-алиас `iqot-prod`.
 - Стандартный деплой:
   ```bash
   ssh iqot-prod 'cd /var/www/iqot && git pull origin main && php artisan view:clear && php artisan config:clear'
