@@ -46,6 +46,18 @@ class RfqPlanner
 
     private const WAITING = [MpAsk::STATUS_PLANNED, MpAsk::STATUS_QUEUED];
 
+    /**
+     * Запросы КП по товару, которые учитывает программа: все программы (товар общий — не спрашиваем тех же поставщиков
+     * заново, волна другой программы — тоже волна), «узкая» позиция — только свои (25.11.2026).
+     *
+     * @param \Illuminate\Support\Collection<int,object> $asks запросы товара (program_id, supplier_id, status, sent_at)
+     * @return \Illuminate\Support\Collection<int,object>
+     */
+    public static function visibleAsks(\Illuminate\Support\Collection $asks, bool $narrow, int $programId): \Illuminate\Support\Collection
+    {
+        return $narrow ? $asks->filter(fn ($a) => (int) $a->program_id === $programId)->values() : $asks->values();
+    }
+
     /** @var array<int,int> supplier_id => запросов, назначенных в этом прогоне (выравнивание нагрузки) */
     private array $assigned = [];
 
@@ -159,11 +171,12 @@ class RfqPlanner
         $outcomes = SiteTrust::lastOutcomes($listings->flatten(1)->pluck('id')->all());
         $offers = DB::table('mp_kp_offers as k')->leftJoin('mp_asks as a', 'a.id', '=', 'k.ask_id')->whereIn('k.product_id', $ids)
             ->where('k.received_at', '>', now()->subDays($refresh))->get(['k.product_id', 'k.supplier_id', 'k.listing_id', 'a.program_id'])->groupBy('product_id');
-        // Запросы программы по товарам в окне свежести: кого уже спрашивали и идёт ли волна (по программе: у разных
-        // клиентов под одним товаром могут быть разные варианты).
-        $asks = DB::table('mp_asks')->where('program_id', $program->id)->where('kind', 'rfq')->whereIn('product_id', $ids)
+        // Запросы по товарам в окне свежести — ВСЕХ программ (25.11.2026, решение владельца: товар общий, вторая программа
+        // не спрашивает тех же поставщиков о том же товаре заново). Только «узкая» позиция (заявила не все коды товара —
+        // свой вариант) учитывает лишь запросы своей программы, как и КП пула (ItemScope).
+        $asks = DB::table('mp_asks')->where('kind', 'rfq')->whereIn('product_id', $ids)
             ->where('status', '!=', MpAsk::STATUS_CANCELLED)->where('created_at', '>', now()->subDays($refresh))
-            ->get(['id', 'product_id', 'supplier_id', 'status', 'sent_at'])->groupBy('product_id');
+            ->get(['id', 'program_id', 'product_id', 'supplier_id', 'status', 'sent_at'])->groupBy('product_id');
         $waveSince = now()->subDays($wait)->getTimestamp();
 
         $selector = new CampaignSupplierSelector();
@@ -175,8 +188,9 @@ class RfqPlanner
             $allowed = ($listings[$p->id] ?? collect())->filter(fn ($l) => ItemScope::allows(ItemScope::itemCodes($p), $productCodes[(int) $p->id] ?? [],
                 ItemScope::listingCodes($l->matched_codes, $l->match_method, $l->match_evidence)));
             $allowedIds = $allowed->pluck('id')->flip();
+            $narrow = ItemScope::isNarrow(ItemScope::itemCodes($p), $productCodes[(int) $p->id] ?? []);
             $kpSuppliers = ($offers[$p->id] ?? collect())->filter(fn ($o) => $o->listing_id ? isset($allowedIds[$o->listing_id])
-                : (int) $o->program_id === (int) $program->id)->pluck('supplier_id')->map(fn ($v) => (int) $v)->unique()->flip()->all();
+                : (!$narrow || (int) $o->program_id === (int) $program->id))->pluck('supplier_id')->map(fn ($v) => (int) $v)->unique()->flip()->all();
 
             $siteHave = [];
             $priceSuppliers = [];
@@ -205,11 +219,13 @@ class RfqPlanner
             }
             // КП поставщика, чья надёжная цена уже засчитана с его сайта, — та же цена, второй раз не считаем.
             $have = ($countSite ? count($siteHave) : 0) + count(array_diff_key($kpSuppliers, $countSite ? $priceSuppliers : []));
-            $productAsks = $asks[$p->id] ?? collect();
+            $productAsks = self::visibleAsks($asks[$p->id] ?? collect(), $narrow, (int) $program->id);
 
             if ($have >= $target) {
                 $stats['done']++;
-                $planned = $productAsks->where('status', MpAsk::STATUS_PLANNED)->pluck('id')->all();
+                // Отменяем только свои запланированные запросы: у другой программы своя цель.
+                $planned = $productAsks->where('status', MpAsk::STATUS_PLANNED)
+                    ->filter(fn ($a) => (int) $a->program_id === (int) $program->id)->pluck('id')->all();
                 if ($planned !== []) {
                     $stats['cancelled'] += count($planned);
                     if (!$dryRun) {

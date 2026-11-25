@@ -34,4 +34,14 @@ class RfqWaveTest extends TestCase
         $this->assertSame([7], RfqPlanner::wave([7 => 0.2, 8 => 0.1], 0.0, 30)); // хотя бы один
         $this->assertSame([7], RfqPlanner::wave([7 => 0.2, 8 => 0.1], 5.0, 1));
     }
+
+    public function test_asks_shared_across_programs_except_narrow(): void
+    {
+        $asks = collect([(object) ['program_id' => 1, 'supplier_id' => 10], (object) ['program_id' => 2, 'supplier_id' => 20]]);
+
+        // Обычная позиция программы 2 видит и запросы программы 1: поставщика 10 второй раз не спрашиваем.
+        $this->assertSame([10, 20], RfqPlanner::visibleAsks($asks, false, 2)->pluck('supplier_id')->all());
+        // «Узкая» позиция — только свои.
+        $this->assertSame([20], RfqPlanner::visibleAsks($asks, true, 2)->pluck('supplier_id')->all());
+    }
 }
