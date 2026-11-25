@@ -15,16 +15,31 @@ use Illuminate\Support\Facades\DB;
  */
 final class IndexListings
 {
-    /** @param array<int, array<int, array{url:string}>> $cands product_id => кандидаты */
+    /** Кандидаты только по названию встают в проверку позже артикульных (25.11.2026: 34 тыс. кандидатов разом). */
+    public const NAME_DELAY_DAYS = 3;
+
+    /**
+     * Совпадение по артикулу — проверка сразу (found_via=sitemap); только по названию — если по артикулу на этом сайте
+     * у товара совпадений нет, и проверка через NAME_DELAY_DAYS (found_via=sitemap_name): по опыту такие страницы чаще
+     * чужие товары, а первая проверка — загрузка и ИИ.
+     *
+     * @param array<int, array<int, array{url:string, via?:string}>> $cands product_id => кандидаты
+     */
     public static function create(MpSite $site, array $cands): int
     {
         $created = 0;
         foreach ($cands as $pid => $list) {
+            $hasCode = collect($list)->contains(fn ($c) => ($c['via'] ?? 'code') === 'code');
             foreach ($list as $c) {
+                $byName = ($c['via'] ?? 'code') === 'name';
+                if ($byName && $hasCode) {
+                    continue;
+                }
                 $listing = MpListing::query()->firstOrCreate(
                     ['product_id' => $pid, 'url_hash' => UrlCanonicalizer::hash($c['url'])],
                     ['site_id' => $site->id, 'url' => UrlCanonicalizer::canonicalize($c['url']), 'status' => MpListing::STATUS_ACTIVE,
-                        'found_via' => 'sitemap', 'bench' => false, 'next_check_at' => now()]
+                        'found_via' => $byName ? 'sitemap_name' : 'sitemap', 'bench' => false,
+                        'next_check_at' => $byName ? now()->addDays(self::NAME_DELAY_DAYS) : now()]
                 );
                 if ($listing->wasRecentlyCreated) {
                     $created++;
