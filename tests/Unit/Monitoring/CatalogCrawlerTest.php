@@ -38,6 +38,23 @@ class CatalogCrawlerTest extends TestCase
         $this->assertTrue(CatalogCrawler::isSection('/magazin/folder/rolik', CatalogCrawler::productPattern(['https://x.ru/magazin/product/a', 'https://x.ru/magazin/product/b', 'https://x.ru/magazin/product/c'])));
     }
 
+    public function test_cards_on_several_levels_by_extension(): void
+    {
+        $u = 'https://snab-lift.ru/catalog/zapchasti-k-liftam/';
+        $p = CatalogCrawler::productPattern([
+            $u . 'platy/a1_plata.html', $u . 'platy/a2_plata.html', $u . 'shkivy/a3_shkiv.html', $u . 'datchiki/a4.html',
+            $u . 'puskateli/a5.html', $u . 'enkodery/a6.html', $u . 'balki/a7.html',
+            $u . 'vkladyshi/otech/b1.html', $u . 'vkladyshi/otech/b2.html', $u . 'ogranichiteli/shlz/b3.html',
+        ]);
+
+        $this->assertSame([4, 5], $p['depths']);
+        $this->assertSame('.html', $p['ext']);
+        $this->assertTrue(CatalogCrawler::isProduct('/catalog/zapchasti-k-liftam/vkladyshi/otech/new.html', $p));
+        $this->assertFalse(CatalogCrawler::isProduct('/catalog/zapchasti-k-liftam/vkladyshi/otech', $p), 'подраздел без .html');
+        $this->assertTrue(CatalogCrawler::isSection('/catalog/zapchasti-k-liftam/vkladyshi/otech', $p));
+        $this->assertTrue(CatalogCrawler::isSection('/catalog/zapchasti-k-liftam/vkladyshi/otech/sub', $p));
+    }
+
     public function test_links_are_absolute(): void
     {
         $html = '<a href="/catalog/a/">A</a><a href="b/">B</a><a href="https://x.ru/c">C</a><a href="tel:+7">T</a><a href="#top">H</a>';

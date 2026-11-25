@@ -35,8 +35,12 @@ class CatalogCrawler
     /**
      * Шаблон карточки по известным адресам: преобладающая глубина пути (≥60% адресов) и общий префикс сегментов.
      *
+     * Карточки бывают на нескольких уровнях (snab-lift: /catalog/zapchasti-k-liftam/<раздел>/<карточка>.html и на уровень
+     * глубже в подразделах, 25.11.2026): если у ≥90% известных карточек одно окончание (.html/.htm/.php), шаблон
+     * охватывает все уровни, где таких карточек с тем же префиксом ≥3, а карточка обязана иметь это окончание.
+     *
      * @param array<int,string> $urls
-     * @return array{prefix: array<int,string>, depth: int}|null
+     * @return array{prefix: array<int,string>, depth: int, depths: array<int,int>, ext: ?string}|null
      */
     public static function productPattern(array $urls): ?array
     {
@@ -70,15 +74,44 @@ class CatalogCrawler
             $group = array_values(array_filter($group, fn ($s) => $s[$i] === $top));
         }
 
-        return ['prefix' => $prefix, 'depth' => $depth];
+        $ext = null;
+        $depths = [$depth];
+        $exts = [];
+        foreach ($byDepth as $list) {
+            foreach ($list as $segs) {
+                $exts[] = preg_match('~\.(html?|php)$~i', (string) end($segs), $m) ? '.' . mb_strtolower($m[1]) : '';
+            }
+        }
+        $counts = array_count_values($exts);
+        arsort($counts);
+        $top = (string) array_key_first($counts);
+        if ($top !== '' && $counts[$top] >= 0.9 * count($exts)) {
+            $ext = $top;
+            foreach ($byDepth as $d => $list) {
+                $n = count(array_filter($list, fn ($segs) => array_slice($segs, 0, count($prefix)) === $prefix
+                    && str_ends_with(mb_strtolower((string) end($segs)), $ext)));
+                if ($d > count($prefix) && $n >= 3) {
+                    $depths[] = (int) $d;
+                }
+            }
+            $depths = array_values(array_unique($depths));
+            sort($depths);
+        }
+
+        return ['prefix' => $prefix, 'depth' => $depth, 'depths' => $depths, 'ext' => $ext];
     }
 
     /** @param array{prefix: array<int,string>, depth: int} $pattern */
     public static function isProduct(string $path, array $pattern): bool
     {
         $segs = self::segments($path);
+        $ext = $pattern['ext'] ?? null;
+        if ($ext !== null && !str_ends_with(mb_strtolower((string) end($segs)), $ext)) {
+            return false;
+        }
 
-        return count($segs) === $pattern['depth'] && array_slice($segs, 0, count($pattern['prefix'])) === $pattern['prefix'];
+        return in_array(count($segs), $pattern['depths'] ?? [$pattern['depth']], true)
+            && array_slice($segs, 0, count($pattern['prefix'])) === $pattern['prefix'];
     }
 
     /**
@@ -90,7 +123,7 @@ class CatalogCrawler
     {
         $segs = self::segments($path);
 
-        return count($segs) <= $pattern['depth'] + 1 && !self::isProduct($path, $pattern);
+        return count($segs) <= max($pattern['depths'] ?? [$pattern['depth']]) + 1 && !self::isProduct($path, $pattern);
     }
 
     /**

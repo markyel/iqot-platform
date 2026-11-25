@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\DB;
  */
 class CatalogCrawlCommand extends Command
 {
-    protected $signature = 'monitoring:catalog-crawl {--domain=*} {--auto} {--min-listings=30} {--max-pages=2000} {--skip=chipdip.ru}';
+    protected $signature = 'monitoring:catalog-crawl {--domain=*} {--auto} {--min-listings=30} {--max-pages=2000} {--time=3000 : лимит обхода сайта, с} {--skip=chipdip.ru}';
 
     protected $description = 'Мониторинг: обход каталога сайтов-лидеров без sitemap → индекс карточек';
 
@@ -49,9 +49,9 @@ class CatalogCrawlCommand extends Command
                 continue;
             }
             $t = microtime(true);
-            $r = $crawler->crawl($site, (int) $this->option('max-pages'));
+            $r = $crawler->crawl($site, (int) $this->option('max-pages'), (int) $this->option('time'));
             $this->line(sprintf('%s: %s, шаблон %s, загружено страниц %d, карточек %d, новых в индексе %d, %.0f c', $d, $r['status'],
-                isset($r['pattern']) ? '/' . implode('/', $r['pattern']['prefix']) . ' ×' . $r['pattern']['depth'] : '—',
+                isset($r['pattern']) ? '/' . implode('/', $r['pattern']['prefix']) . ' ×' . implode(',', $r['pattern']['depths']) . ($r['pattern']['ext'] ?? '') : '—',
                 $r['fetched'], $r['products'], $r['added'], microtime(true) - $t));
         }
 
