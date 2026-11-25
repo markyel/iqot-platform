@@ -91,6 +91,20 @@ class CodeVsLlmRulesTest extends TestCase
         $this->assertFalse(KeyAttributes::numericClose($attrs, 'ширина паза', 'P-16'));
     }
 
+    public function test_numeric_code_in_url_does_not_beat_llm(): void
+    {
+        // M27057: артикул ThyssenKrupp «10082665» = номер товара «Трусы мужские» в адресе sima-land.ru.
+        $p = $this->product('Кнопка СТРЕЛКА, круглая, шлиф, белая подсветка лифта Thyssen', '10082665');
+        $llm = ['is_same_product' => false, 'is_analog' => false, 'evidence_identity' => 'Трусы мужские, размер 50, цвет зелёный', 'attrs' => []];
+        $r = (new ListingIdentityVerifier())->verify($p, 'Трусы мужские размер 50 цвет зелёный 779 ₽ Артикул 10082665', null, $llm,
+            '10082665 trusy muzhskie razmer 50 cvet zelenyy Трусы мужские');
+
+        $this->assertFalse($r['accepted']);
+        $this->assertSame('llm_other_product', $r['reason']);
+        $this->assertFalse(ListingIdentityVerifier::strongCodeIn(['10082665'], '10082665 trusy muzhskie'));
+        $this->assertTrue(ListingIdentityVerifier::strongCodeIn(['TAA316BJN3'], 'Амортизатор TAA316BJN3 Otis'));
+    }
+
     public function test_soft_attr_keys(): void
     {
         $this->assertTrue(ListingIdentityVerifier::softAttr('сторона: левая'));

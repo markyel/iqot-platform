@@ -220,7 +220,9 @@ class ListingIdentityVerifier
         $tokens = ArticleNormalizer::tokens($context);
         foreach ($codes as $code) {
             $code = (string) $code;
-            if (!isset($tokens[$code]) || mb_strlen($code) < 6 || (ctype_digit($code) && strlen($code) < 8)) {
+            // Только буквенно-цифровой код: цифровой совпадает с внутренними номерами магазинов (25.11.2026, M27057:
+            // «10082665» — номер «Трусов мужских» в адресе sima-land.ru принят за кнопку ThyssenKrupp).
+            if (!isset($tokens[$code]) || mb_strlen($code) < 6 || !preg_match('/\p{L}/u', $code)) {
                 continue;
             }
 

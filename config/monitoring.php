@@ -182,7 +182,7 @@ return [
         'megastroy.com', 'livemaster.ru', 'autopiter.ru', 'euroauto.ru', 'citilink.ru', 'mvideo.ru', 'eldorado.ru',
         'ozon.ru', 'wildberries.ru', 'market.yandex.ru', 'avito.ru', 'sbermegamarket.ru', 'megamarket.ru',
         'kazanexpress.ru', 'aliexpress.', 'alibaba.', 'made-in-china.', 'amazon.', 'ebay.', 'youla.ru',
-        'tiu.ru', 'pulscen.ru', 'satom.ru', 'blizko.ru', 'all.biz', 'prom.ua',
+        'tiu.ru', 'pulscen.ru', 'satom.ru', 'blizko.ru', 'all.biz', 'prom.ua', 'sima-land.ru',
         'sportmaster.ru', 'lamoda.ru', 'ostin.com', 'farpost.ru', 'olx.', 'emex.ru',
         // Собственные ресурсы (LazyLift) — не рынок: их цены не мониторим и в покрытие не считаем.
         'liftway.ru',
