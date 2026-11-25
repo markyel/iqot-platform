@@ -716,7 +716,12 @@ return [
             'api_key' => env('BEGET_LLM_API_KEY'),
             'models' => env('BEGET_LLM_MODEL_MAP', 'gpt-4o=gpt-6.1-sol,gpt-4.1-mini=gpt-6.1-sol,gpt-4o-mini=gpt-6.1-sol'), // luna на стенде 21.10 — 58% цен, в резерве только sol
             'reasoning_effort' => env('BEGET_LLM_REASONING_EFFORT', 'low'),
+            // Модель резерва для любой задачи (25.11.2026: резерв — RouterAI, qwen/qwen3.8-27b); пусто — по models.
+            'default_model' => (string) env('AI_BACKUP_DEFAULT_MODEL', ''),
         ],
+        // Свой ИИ-шлюз основным (25.11.2026, llm.liftway.ru, одна 3090 на все проекты): не больше N одновременных
+        // запросов к основному — остальные сразу в резерв. 0 — без ограничения.
+        'primary_concurrency' => (int) env('OPENAI_CLASSIFIER_PRIMARY_CONCURRENCY', 0),
     ],
 
     /*

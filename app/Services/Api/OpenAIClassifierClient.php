@@ -87,7 +87,7 @@ class OpenAIClassifierClient
         // connectTimeout отдельно от общего timeout: наблюдали вечный SYN-SENT к прокси
         // (коннект не устанавливается и не рвётся) — общий timeout его не оборвал,
         // рендер вставал навсегда. Коннект дольше 15с = мёртвая точка, рвём сразу.
-        $response = $this->post($headers, $this->adaptPayload([
+        $payload = $this->adaptPayload([
             'model' => $model,
             'messages' => [
                 ['role' => 'system', 'content' => $systemPrompt],
@@ -96,29 +96,33 @@ class OpenAIClassifierClient
             'temperature' => $temperature,
             'max_tokens' => $maxTokens,
             'response_format' => ['type' => 'json_object'],
-        ]));
+        ]);
+        $response = $this->post($headers, $payload);
 
-        if (!$response->successful()) {
-            $body = $response->body();
-            Log::warning('OpenAIClassifier: non-200 response', [
-                'status' => $response->status(),
-                'body' => substr($body, 0, 500),
-            ]);
-            throw new \RuntimeException('OpenAIClassifier HTTP ' . $response->status());
+        for ($attempt = 0; ; $attempt++) {
+            if (!$response->successful()) {
+                $body = $response->body();
+                Log::warning('OpenAIClassifier: non-200 response', [
+                    'status' => $response->status(),
+                    'body' => substr($body, 0, 500),
+                ]);
+                throw new \RuntimeException('OpenAIClassifier HTTP ' . $response->status());
+            }
+            $data = $response->json();
+            $this->rememberUsage($data, $this->resolveModel($model));
+            $content = $data['choices'][0]['message']['content'] ?? null;
+            $decoded = is_string($content) && $content !== '' ? self::decodeJson($content) : null;
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+            // Пустой/битый ответ основного — один перезапрос через резерв.
+            if ($attempt === 0 && ($retry = $this->retryViaBackup($headers, $payload)) !== null) {
+                $response = $retry;
+                continue;
+            }
+            throw new \RuntimeException(!is_string($content) || $content === ''
+                ? 'OpenAIClassifier: empty completion content.' : 'OpenAIClassifier: completion is not valid JSON.');
         }
-
-        $data = $response->json();
-        $this->rememberUsage($data, $this->resolveModel($model));
-        $content = $data['choices'][0]['message']['content'] ?? null;
-        if (!is_string($content) || $content === '') {
-            throw new \RuntimeException('OpenAIClassifier: empty completion content.');
-        }
-
-        $decoded = self::decodeJson($content);
-        if (!is_array($decoded)) {
-            throw new \RuntimeException('OpenAIClassifier: completion is not valid JSON.');
-        }
-        return $decoded;
     }
 
     /**
@@ -191,15 +195,21 @@ class OpenAIClassifierClient
      * дискавери + анализ ответов) — без повтора это сбой проверки/разбора. 2 повтора с паузой 2–3 и
      * 5–7 с (джиттер, чтобы воркеры не били синхронно); 4xx, кроме 429, не повторяем.
      */
-    private function post(array $headers, array $payload): \Illuminate\Http\Client\Response
+    private function post(array $headers, array $payload, bool $forceBackup = false): \Illuminate\Http\Client\Response
     {
         $this->lastProvider = 'primary';
         $backup = self::backupConfig();
-        // Основной уже признан недоступным (кончился бюджет / 5xx / нет связи) — сразу в резерв, без пауз повтора.
-        if ($backup !== null && \Illuminate\Support\Facades\Cache::get(self::PRIMARY_DOWN_KEY)) {
+        // Основной уже признан недоступным (кончился бюджет / 5xx / нет связи / 3090 выключена) или занят (все места
+        // заняты, primary_concurrency) или ответил пусто/битым — сразу в резерв, без пауз повтора.
+        $slot = null;
+        if ($backup !== null && !$forceBackup && !\Illuminate\Support\Facades\Cache::get(self::PRIMARY_DOWN_KEY)) {
+            $slot = $this->acquirePrimarySlot();
+            $forceBackup = $slot === false;
+        }
+        if ($backup !== null && ($forceBackup || \Illuminate\Support\Facades\Cache::get(self::PRIMARY_DOWN_KEY))) {
             $b = $this->postBackup($backup, $payload);
             if ($b !== null && $b->successful()) {
-                $this->lastProvider = 'beget';
+                $this->lastProvider = 'backup';
 
                 return $b;
             }
@@ -216,8 +226,16 @@ class OpenAIClassifierClient
                     ->connectTimeout(15)
                     ->timeout($this->timeout)
                     ->post($this->baseUrl . '/chat/completions', $payload);
-                if ($response->successful() || !in_array($response->status(), [429, 500, 502, 503, 504, 520, 522, 524], true)) {
+                if ($response->successful()) {
                     return $response;
+                }
+                // Есть резерв — любой отказ основного (в т.ч. 4xx: модель local/ при выключенной 3090) уходит в резерв;
+                // без резерва 4xx, кроме 429, возвращаем как есть.
+                if (!in_array($response->status(), [429, 500, 502, 503, 504, 520, 522, 524], true)) {
+                    if ($backup === null) {
+                        return $response;
+                    }
+                    break;
                 }
                 if ($response->status() === 429 && str_contains($response->body(), 'insufficient_quota')) {
                     break; // бюджет кончился — повторять бессмысленно
@@ -228,19 +246,23 @@ class OpenAIClassifierClient
                 throw $e;
             }
             $response = null;
+        } finally {
+            if ($slot) {
+                $slot->release();
+            }
         }
 
         if ($backup !== null) {
             // Бюджет/5xx/нет связи — основной недоступен на 5 мин (дальше сразу резерв); обычный 429 перегрузки — резерв
             // только для этого вызова. 21.10.2026: кончился бюджет OpenAI, ИИ стоял 00:00–09:45 МСК.
-            $hard = $response === null || $response->status() >= 500
+            $hard = $response === null || $response->status() >= 500 || in_array($response->status(), [401, 402, 403, 404], true)
                 || ($response->status() === 429 && str_contains($response->body(), 'insufficient_quota'));
             if ($hard && \Illuminate\Support\Facades\Cache::add(self::PRIMARY_DOWN_KEY, 1, 300)) {
                 Log::warning('OpenAIClassifier: основной ИИ недоступен — 5 мин через резерв', ['status' => $response?->status(), 'backup' => $backup['base_url']]);
             }
             $b = $this->postBackup($backup, $payload);
             if ($b !== null && $b->successful()) {
-                $this->lastProvider = 'beget';
+                $this->lastProvider = 'backup';
 
                 return $b;
             }
@@ -254,6 +276,42 @@ class OpenAIClassifierClient
     }
 
     private const PRIMARY_DOWN_KEY = 'ai:primary:down';
+
+    /**
+     * Место у основного (свой шлюз — одна 3090 на все проекты, 25.11.2026): не больше primary_concurrency запросов
+     * разом; ждём освобождения до 5 с, иначе — резерв. null — без ограничения, false — мест нет.
+     *
+     * @return \Illuminate\Contracts\Cache\Lock|false|null
+     */
+    private function acquirePrimarySlot(): mixed
+    {
+        $n = (int) config('services.openai_classifier.primary_concurrency', 0);
+        if ($n <= 0) {
+            return null;
+        }
+        for ($try = 0; $try < 10; $try++) {
+            for ($i = 0; $i < $n; $i++) {
+                $lock = \Illuminate\Support\Facades\Cache::lock("ai:primary:slot:{$i}", $this->timeout + 30);
+                if ($lock->get()) {
+                    return $lock;
+                }
+            }
+            usleep(500_000);
+        }
+
+        return false;
+    }
+
+    /** Ответ основного пустой или не JSON — перезапрос через резерв (у своего шлюза бывает, 25.11.2026). */
+    private function retryViaBackup(array $headers, array $payload): ?\Illuminate\Http\Client\Response
+    {
+        if ($this->lastProvider !== 'primary' || self::backupConfig() === null) {
+            return null;
+        }
+        $r = $this->post($headers, $payload, true);
+
+        return $r->successful() ? $r : null;
+    }
 
     /**
      * «Рассуждающие» модели (gpt-5*, o1/o3/o4, gpt-6*, модели шлюза Beget): без низкого усилия max_tokens уходит на
@@ -306,12 +364,15 @@ class OpenAIClassifierClient
         }
 
         return ['base_url' => rtrim((string) $b['base_url'], '/'), 'api_key' => (string) $b['api_key'], 'models' => $models,
-            'effort' => (string) ($b['reasoning_effort'] ?? 'low')];
+            'effort' => (string) ($b['reasoning_effort'] ?? 'low'), 'default_model' => (string) ($b['default_model'] ?? '')];
     }
 
-    /** Модель резерва для нашей: точное соответствие, иначе «лёгкая» для mini/nano, иначе «полная». */
+    /** Модель резерва для нашей: единая модель резерва, иначе точное соответствие, «лёгкая» для mini/nano, «полная». */
     public static function backupModel(array $backup, string $model): string
     {
+        if (($backup['default_model'] ?? '') !== '') {
+            return $backup['default_model'];
+        }
         if (isset($backup['models'][$model])) {
             return $backup['models'][$model];
         }
@@ -323,10 +384,17 @@ class OpenAIClassifierClient
     private function postBackup(array $backup, array $payload): ?\Illuminate\Http\Client\Response
     {
         $payload['model'] = self::backupModel($backup, (string) ($payload['model'] ?? ''));
-        // Модели шлюза «рассуждающие»: без низкого усилия бюджет max_tokens уходит на рассуждения, ответ пустой.
-        $payload['reasoning_effort'] = $backup['effort'];
-        unset($payload['reasoning']); // параметр RouterAI, шлюз Beget его не знает
-        $payload['max_tokens'] = max(300, (int) ($payload['max_tokens'] ?? 0));
+        if (str_contains($backup['base_url'], 'routerai.ru')) {
+            // Резерв — RouterAI (с 25.11.2026): рассуждения выключены, как было у основного.
+            unset($payload['reasoning_effort'], $payload['chat_template_kwargs']);
+            $payload['reasoning'] = ['enabled' => false];
+            $payload['max_tokens'] = max((int) config('services.openai_classifier.min_max_tokens', 0), (int) ($payload['max_tokens'] ?? 0));
+        } else {
+            // Модели шлюза Beget «рассуждающие»: без низкого усилия бюджет max_tokens уходит на рассуждения, ответ пустой.
+            $payload['reasoning_effort'] = $backup['effort'];
+            unset($payload['reasoning']); // параметр RouterAI, шлюз Beget его не знает
+            $payload['max_tokens'] = max(300, (int) ($payload['max_tokens'] ?? 0));
+        }
         try {
             return Http::withHeaders(['Authorization' => 'Bearer ' . $backup['api_key'], 'Content-Type' => 'application/json'])
                 ->connectTimeout(15)
@@ -364,7 +432,7 @@ class OpenAIClassifierClient
         // connectTimeout отдельно от общего timeout: наблюдали вечный SYN-SENT к прокси
         // (коннект не устанавливается и не рвётся) — общий timeout его не оборвал,
         // рендер вставал навсегда. Коннект дольше 15с = мёртвая точка, рвём сразу.
-        $response = $this->post($headers, $this->adaptPayload([
+        $payload = $this->adaptPayload([
             'model' => $model,
             'messages' => [
                 ['role' => 'system', 'content' => $systemPrompt],
@@ -372,7 +440,13 @@ class OpenAIClassifierClient
             ],
             'temperature' => $temperature,
             'max_tokens' => $maxTokens,
-        ]));
+        ]);
+        $response = $this->post($headers, $payload);
+        // Пустой ответ основного — перезапрос через резерв.
+        if ($response->successful() && trim((string) ($response->json('choices.0.message.content') ?? '')) === ''
+            && ($retry = $this->retryViaBackup($headers, $payload)) !== null) {
+            $response = $retry;
+        }
 
         if (!$response->successful()) {
             $body = $response->body();
@@ -411,22 +485,28 @@ class OpenAIClassifierClient
             'prompt_tokens' => (int) ($usage['prompt_tokens'] ?? 0),
             'completion_tokens' => (int) ($usage['completion_tokens'] ?? 0),
             'cached_tokens' => (int) ($usage['prompt_tokens_details']['cached_tokens'] ?? 0),
-            'cost_rub' => self::costRub(is_array($usage) ? $usage : []),
+            'cost_rub' => $this->costRub(is_array($usage) ? $usage : []),
         ];
         $this->recordUsage(is_array($usage) ? $usage : []);
     }
 
-    /** Где сейчас был ответ: основной прокси или резерв (Beget). */
+    /** Где сейчас был ответ: основной (с 25.11.2026 — свой шлюз llm.liftway.ru) или резерв (RouterAI). */
     private string $lastProvider = 'primary';
 
-    /** Стоимость вызова в ₽: у Beget — usage.cost_rub, у RouterAI (оплата в рублях) — usage.cost. */
-    private static function costRub(array $usage): float
+    /** Адрес, куда ушёл последний вызов. */
+    private function lastBaseUrl(): string
+    {
+        return $this->lastProvider === 'backup' ? (string) (self::backupConfig()['base_url'] ?? '') : $this->baseUrl;
+    }
+
+    /** Стоимость вызова в ₽: у Beget — usage.cost_rub, у RouterAI (оплата в рублях) — usage.cost; свой шлюз — 0. */
+    private function costRub(array $usage): float
     {
         if (isset($usage['cost_rub'])) {
             return (float) $usage['cost_rub'];
         }
 
-        return str_contains((string) config('services.openai_classifier.base_url'), 'routerai.ru') ? (float) ($usage['cost'] ?? 0) : 0.0;
+        return str_contains($this->lastBaseUrl(), 'routerai.ru') ? (float) ($usage['cost'] ?? 0) : 0.0;
     }
 
     /**
@@ -442,9 +522,10 @@ class OpenAIClassifierClient
             $prompt = (int) ($usage['prompt_tokens'] ?? 0);
             $completion = (int) ($usage['completion_tokens'] ?? 0);
             $cached = (int) ($usage['prompt_tokens_details']['cached_tokens'] ?? 0);
-            $rub = self::costRub($usage);
+            $rub = $this->costRub($usage);
             $usd = 0.0;
-            if ($this->lastProvider === 'primary') {
+            // $ по прайсу — только у платного основного; свой шлюз (llm.liftway.ru) бесплатен.
+            if ($this->lastProvider === 'primary' && !str_contains($this->baseUrl, 'liftway.ru')) {
                 $price = (new \App\Services\Monitoring\LlmCostCalculator())->priceFor($model);
                 if ($price !== null) {
                     $usd = (($prompt - $cached) * $price[0] + $cached * $price[0] * 0.5 + $completion * $price[1]) / 1_000_000;
