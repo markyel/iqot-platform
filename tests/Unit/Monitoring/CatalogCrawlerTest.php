@@ -34,7 +34,8 @@ class CatalogCrawlerTest extends TestCase
         $this->assertSame(4, $p['depth']);
         $this->assertTrue(CatalogCrawler::isSection('/catalog/zapchasti-k-liftam/', $p, 'catalog'));
         $this->assertTrue(CatalogCrawler::isSection('/catalog/zapchasti-k-liftam/rolik/', $p, 'catalog'));
-        $this->assertFalse(CatalogCrawler::isSection('/news/2026/', $p, 'catalog'));
+        $this->assertFalse(CatalogCrawler::isSection('/catalog/a/b/c_item', $p), 'карточка — не раздел');
+        $this->assertTrue(CatalogCrawler::isSection('/magazin/folder/rolik', CatalogCrawler::productPattern(['https://x.ru/magazin/product/a', 'https://x.ru/magazin/product/b', 'https://x.ru/magazin/product/c'])));
     }
 
     public function test_links_are_absolute(): void

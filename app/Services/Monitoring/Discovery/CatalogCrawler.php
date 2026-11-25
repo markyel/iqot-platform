@@ -81,12 +81,16 @@ class CatalogCrawler
         return count($segs) === $pattern['depth'] && array_slice($segs, 0, count($pattern['prefix'])) === $pattern['prefix'];
     }
 
-    /** Раздел каталога: путь начинается так же, как у карточек (первый сегмент), и короче карточки. */
-    public static function isSection(string $path, array $pattern, string $firstSeg): bool
+    /**
+     * Раздел для обхода: любая страница сайта, кроме карточки, не глубже карточки больше чем на уровень (служебные —
+     * отсекает NAV_RE). Разделы бывают на той же глубине (liftformat /magazin/folder/… рядом с /magazin/product/…)
+     * и совсем в другом месте (zaplift: карточки /id/…, разделы — нет).
+     */
+    public static function isSection(string $path, array $pattern, string $firstSeg = ''): bool
     {
         $segs = self::segments($path);
 
-        return $segs !== [] && count($segs) < $pattern['depth'] && ($firstSeg === '' || $segs[0] === $firstSeg);
+        return count($segs) <= $pattern['depth'] + 1 && !self::isProduct($path, $pattern);
     }
 
     /**
