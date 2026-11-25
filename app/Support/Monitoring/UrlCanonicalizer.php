@@ -31,6 +31,11 @@ final class UrlCanonicalizer
         $host = mb_strtolower($parts['host']);
         $host = preg_replace('/^www\./', '', $host) ?? $host;
         $path = $parts['path'] ?? '/';
+        // Единая процентная кодировка пути: кириллица и прочие не-ASCII — в %XX, шестнадцатеричные — в верхнем регистре
+        // (25.11.2026: lift-fit отдаёт «%d0%bc…», Яндекс — «%D0%BC…»; разные отпечатки одного адреса — 0 из 41 наших
+        // страниц совпало с 7 265 карточками обхода каталога).
+        $path = preg_replace_callback('~[^\x21-\x7E]~u', fn ($m) => rawurlencode($m[0]), $path) ?? $path;
+        $path = preg_replace_callback('~%[0-9a-fA-F]{2}~', fn ($m) => strtoupper($m[0]), $path) ?? $path;
         $path = preg_replace('~/+~', '/', $path) ?? $path;
         if ($path !== '/') {
             $path = rtrim($path, '/');

@@ -99,4 +99,12 @@ class NormalizersTest extends TestCase
         $this->assertTrue(UrlCanonicalizer::looksLikeNonProduct('https://lift.ru/catalog/'));
         $this->assertFalse(UrlCanonicalizer::looksLikeNonProduct('https://lift.ru/catalog/rolik-km763640g01'));
     }
+
+    public function test_url_percent_encoding_is_canonical(): void
+    {
+        $a = \App\Support\Monitoring\UrlCanonicalizer::hash('https://lift-fit.ru/product/%d0%bc%d0%be');
+        $this->assertSame($a, \App\Support\Monitoring\UrlCanonicalizer::hash('https://lift-fit.ru/product/%D0%BC%D0%BE'));
+        $this->assertSame($a, \App\Support\Monitoring\UrlCanonicalizer::hash('https://lift-fit.ru/product/мо'));
+        $this->assertSame('https://a.ru/p%20q', \App\Support\Monitoring\UrlCanonicalizer::canonicalize('https://www.a.ru/p q/'));
+    }
 }
