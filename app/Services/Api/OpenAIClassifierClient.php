@@ -285,7 +285,7 @@ class OpenAIClassifierClient
      */
     private function acquirePrimarySlot(): mixed
     {
-        $n = (int) config('services.openai_classifier.primary_concurrency', 0);
+        $n = self::primaryConcurrency();
         if ($n <= 0) {
             return null;
         }
@@ -300,6 +300,25 @@ class OpenAIClassifierClient
         }
 
         return false;
+    }
+
+    /**
+     * Мест у основного сейчас: ночью (primary_night_hours по МСК, напр. «23-7») — primary_concurrency_night, когда прод
+     * LazyLift на шлюзе почти не работает (решение владельца 25.11.2026: ночью 3 места), иначе — primary_concurrency.
+     */
+    public static function primaryConcurrency(?\DateTimeInterface $now = null): int
+    {
+        $cfg = (array) config('services.openai_classifier', []);
+        $day = (int) ($cfg['primary_concurrency'] ?? 0);
+        $night = (int) ($cfg['primary_concurrency_night'] ?? 0);
+        if ($night <= 0 || !preg_match('~^(\d{1,2})-(\d{1,2})$~', (string) ($cfg['primary_night_hours'] ?? ''), $m)) {
+            return $day;
+        }
+        $h = (int) \Carbon\Carbon::instance($now ?? now())->timezone('Europe/Moscow')->format('G');
+        [$from, $to] = [(int) $m[1], (int) $m[2]];
+        $isNight = $from > $to ? ($h >= $from || $h < $to) : ($h >= $from && $h < $to);
+
+        return $isNight ? $night : $day;
     }
 
     /** Ответ основного пустой или не JSON — перезапрос через резерв (у своего шлюза бывает, 25.11.2026). */

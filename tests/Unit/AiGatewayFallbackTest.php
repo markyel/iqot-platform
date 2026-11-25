@@ -86,4 +86,14 @@ class AiGatewayFallbackTest extends TestCase
         Http::assertNotSent(fn (Request $r) => str_starts_with($r->url(), self::GW));
         $held->release();
     }
+
+    public function test_night_concurrency(): void
+    {
+        config(['services.openai_classifier.primary_concurrency' => 2, 'services.openai_classifier.primary_concurrency_night' => 3,
+            'services.openai_classifier.primary_night_hours' => '23-7']);
+        $this->assertSame(3, OpenAIClassifierClient::primaryConcurrency(new \DateTimeImmutable('2026-11-25 22:30:00', new \DateTimeZone('UTC')))); // 01:30 МСК
+        $this->assertSame(2, OpenAIClassifierClient::primaryConcurrency(new \DateTimeImmutable('2026-11-25 09:00:00', new \DateTimeZone('UTC')))); // 12:00 МСК
+        $this->assertSame(3, OpenAIClassifierClient::primaryConcurrency(new \DateTimeImmutable('2026-11-25 20:00:00', new \DateTimeZone('UTC')))); // 23:00 МСК
+        $this->assertSame(2, OpenAIClassifierClient::primaryConcurrency(new \DateTimeImmutable('2026-11-25 04:00:00', new \DateTimeZone('UTC')))); // 07:00 МСК
+    }
 }

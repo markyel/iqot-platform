@@ -722,6 +722,9 @@ return [
         // Свой ИИ-шлюз основным (25.11.2026, llm.liftway.ru, одна 3090 на все проекты): не больше N одновременных
         // запросов к основному — остальные сразу в резерв. 0 — без ограничения.
         'primary_concurrency' => (int) env('OPENAI_CLASSIFIER_PRIMARY_CONCURRENCY', 0),
+        // Ночью (часы по МСК «23-7») — больше мест: прод LazyLift на шлюзе почти не работает. 0 — как днём.
+        'primary_concurrency_night' => (int) env('OPENAI_CLASSIFIER_PRIMARY_CONCURRENCY_NIGHT', 0),
+        'primary_night_hours' => (string) env('OPENAI_CLASSIFIER_PRIMARY_NIGHT_HOURS', '23-7'),
     ],
 
     /*
