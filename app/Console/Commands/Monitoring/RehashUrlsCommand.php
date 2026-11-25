@@ -20,7 +20,7 @@ class RehashUrlsCommand extends Command
     public function handle(): int
     {
         $dry = (bool) $this->option('dry-run');
-        $where = "CAST(url AS BINARY) REGEXP CAST('%[0-9A-Fa-f]?[a-f]' AS BINARY) OR url <> CONVERT(url USING ascii)";
+        $where = "(CAST(url AS BINARY) REGEXP CAST('%[0-9A-Fa-f]?[a-f]' AS BINARY) OR url <> CONVERT(url USING ascii))";
 
         // Индекс сайтов: url_hash уникален глобально.
         [$pu, $ps] = [0, 0];
