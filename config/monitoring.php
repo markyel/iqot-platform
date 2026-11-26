@@ -89,9 +89,21 @@ return [
         'fetch_headless' => (int) env('MONITORING_HEADLESS_PER_DAY', 1500),
         // Обход карточек сайтов по sitemap (индекс заголовков/артикулов) — отдельно от проверок цен.
         'fetch_index' => (int) env('MONITORING_INDEX_PER_DAY', 60000),
+        // Те же страницы каталога у сайтов, открывающихся только браузером (snab-lift, euromehanika) — рендер Chrome.
+        'fetch_index_headless' => (int) env('MONITORING_INDEX_HEADLESS_PER_DAY', 4000),
         'llm_usd' => (float) env('MONITORING_LLM_USD_PER_DAY', 5),
         // Проверочные письма Гибрида (Ф3) в сутки — делят ящики и капы получателей с заявками.
         'email' => (int) env('MONITORING_EMAILS_PER_DAY', 100),
+    ],
+
+    // Индекс каталогов (шаг 3 плана лидеров, 26.11.2026): лидеры — сайты, где у нас ≥ leader_min_priced цен;
+    // их страницы обновляются раз в leader_refresh_days и идут первыми, остальные — раз в refresh_days на остаток
+    // квоты. Страницы, загруженные до того, как индекс начал сохранять цену (price_since), у лидеров перегружаются.
+    'index' => [
+        'leader_min_priced' => (int) env('MONITORING_INDEX_LEADER_MIN_PRICED', 30),
+        'leader_refresh_days' => (int) env('MONITORING_INDEX_LEADER_REFRESH_DAYS', 7),
+        'refresh_days' => (int) env('MONITORING_INDEX_REFRESH_DAYS', 30),
+        'price_since' => env('MONITORING_INDEX_PRICE_SINCE', '2026-11-25 12:00:00'),
     ],
 
     'llm' => [

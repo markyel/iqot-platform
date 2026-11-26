@@ -42,6 +42,7 @@ class MonitoringSettingsController extends Controller
             'headless_per_day' => 'required|integer|min:0|max:50000',
             'llm_usd_per_day' => 'required|numeric|min:0|max:1000',
             'index_per_day' => 'required|integer|min:0|max:1000000',
+            'index_headless_per_day' => 'required|integer|min:0|max:50000',
             'verify_letters_per_day' => 'required|integer|min:0|max:5000',
         ]);
         $preset = $data['preset'];

@@ -3,6 +3,7 @@
 namespace App\Jobs\Monitoring;
 
 use App\Models\Monitoring\MpSite;
+use App\Services\Analysis\HeadlessPageRenderer;
 use App\Services\Monitoring\MonitoringGovernor;
 use App\Services\Monitoring\Web\EgressPool;
 use App\Services\Monitoring\Web\PageFetcher;
@@ -74,6 +75,9 @@ class IndexSitePagesJob implements ShouldQueue
 
     public function handle(PageFetcher $fetcher, MonitoringGovernor $governor): void
     {
+        // Сайты, открывающиеся только браузером (snab-lift отдаёт HTTP-заглушку без названия), — рендер Chrome,
+        // как у проверок цен; своя квота fetch_index_headless (26.11.2026).
+        $headless = config('monitoring.fetch.headless') ? HeadlessPageRenderer::fromConfig() : null;
         $started = time();
         $site = MpSite::find($this->siteId);
         $pool = EgressPool::make();
@@ -123,12 +127,24 @@ class IndexSitePagesJob implements ShouldQueue
                     break;
                 }
 
+                $html = $res->ok() && $res->isHtml() ? $res->body : null;
+                if ($html !== null && $site->fetch_mode === 'headless' && $headless !== null) {
+                    if (!$governor->available('fetch_index_headless')) {
+                        break; // квота браузера вышла — страница остаётся в очереди на завтра
+                    }
+                    $html = $headless->renderHtml($page->url, $channel['proxy'] ?? null);
+                    $governor->record('fetch_index_headless', 1, 0.0);
+                    if ($html === null) {
+                        break; // сбой браузера — не помечаем страницу загруженной
+                    }
+                }
+
                 $update = ['fetched_at' => now(), 'http_status' => $res->status ?: null, 'index_queued_at' => null];
-                if ($res->ok() && $res->isHtml()) {
-                    $digest = ProductPageDigest::fromHtml($res->body);
+                if ($html !== null) {
+                    $digest = ProductPageDigest::fromHtml($html);
                     $update['title'] = $digest['title'];
                     $update['codes'] = $digest['codes'] ? implode(' ', $digest['codes']) : null;
-                    $update += self::priceOf($site, $res->body, $digest['codes']);
+                    $update += self::priceOf($site, $html, $digest['codes']);
                 }
                 DB::table('mp_site_pages')->where('id', $page->id)->update($update);
                 $done[] = $page->id;
