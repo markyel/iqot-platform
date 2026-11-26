@@ -56,6 +56,7 @@ class DispatchIndexPages extends Command
 
         $chunk = max(1, (int) $this->option('chunk'));
         $total = 0;
+        $leadersWorking = false;
         foreach ($sites as $site) {
             if ($budget <= 0) {
                 break;
@@ -64,9 +65,13 @@ class DispatchIndexPages extends Command
                 continue; // квота обхода браузером на сегодня вышла
             }
             $leader = (int) $site->priced >= $leaderMin;
+            if (!$leader && $leadersWorking) {
+                break; // прочие сайты — только когда у лидеров ничего не ждёт
+            }
             $busy = DB::table('mp_site_pages')->where('site_id', $site->id)->whereNotNull('index_queued_at')
                 ->where('index_queued_at', '>', now()->subHours(2))->exists();
             if ($busy) {
+                $leadersWorking = $leadersWorking || $leader;
                 continue;
             }
             $ids = DB::table('mp_site_pages as p')
@@ -81,6 +86,7 @@ class DispatchIndexPages extends Command
             if ($ids === []) {
                 continue;
             }
+            $leadersWorking = $leadersWorking || $leader;
             DB::table('mp_site_pages')->whereIn('id', $ids)->update(['index_queued_at' => now()]);
             IndexSitePagesJob::dispatch((int) $site->id, array_map('intval', $ids));
             $budget -= count($ids);
