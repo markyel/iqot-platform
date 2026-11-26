@@ -75,6 +75,20 @@ class AiGatewayFallbackTest extends TestCase
         $this->assertFalse((bool) Cache::get('ai:primary:down'), 'пустой ответ — не признак недоступности');
     }
 
+    public function test_options_penalty_exact_tokens_no_backup_retry(): void
+    {
+        Http::fake([self::GW . '/*' => Http::response(self::ok('{"attrs": ["без рамки", "без рамк')), self::RA . '/*' => Http::response(self::ok('{"a":9}'))]);
+
+        try {
+            $this->client()->jsonCompletion('gpt-4.1-mini', 's', 'u', 700, 0.0, ['frequency_penalty' => 0.5, 'max_tokens_exact' => 700, 'backup_retry' => false]);
+            $this->fail('битый JSON без перезапроса резервом должен бросать');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('not valid JSON', $e->getMessage());
+        }
+        Http::assertSent(fn (Request $r) => str_starts_with($r->url(), self::GW) && $r['frequency_penalty'] === 0.5 && $r['max_tokens'] === 700);
+        Http::assertNotSent(fn (Request $r) => str_starts_with($r->url(), self::RA));
+    }
+
     public function test_busy_gateway_goes_to_routerai(): void
     {
         config(['services.openai_classifier.primary_concurrency' => 1]);

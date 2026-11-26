@@ -17,6 +17,8 @@ use Illuminate\Support\Facades\Log;
  */
 class KeyAttributeExtractor
 {
+    private const MAX_FAILS = 3;
+
     public const VERSION = 'monitoring-key-attrs-v2';
 
     public function __construct(
@@ -31,7 +33,9 @@ class KeyAttributeExtractor
     }
 
     /**
-     * Признаки уже есть — ничего не делаем; нет — извлекаем и сохраняем. Сбой ИИ — повтор не раньше чем через час.
+     * Признаки уже есть — ничего не делаем; нет — извлекаем и сохраняем. Сбой ИИ — повтор не раньше чем через час;
+     * после MAX_FAILS неудач подряд — пустые признаки и больше не спрашиваем (проверка цены идёт и без них;
+     * Qwen на части названий зацикливался, 26.11.2026: product 2690 — 9 неудач, 617 платных повторов в RouterAI за день).
      *
      * @return float стоимость вызова, $
      */
@@ -48,7 +52,12 @@ class KeyAttributeExtractor
             $attrs = $this->extract($product);
         } catch (\Throwable $e) {
             Cache::put($failKey, 1, 3600);
-            Log::warning('KeyAttributeExtractor: LLM failed', ['product_id' => $product->id, 'error' => mb_substr($e->getMessage(), 0, 200)]);
+            $fails = (int) Cache::get('mon:keyattrs:fails:' . $product->id, 0) + 1;
+            Cache::put('mon:keyattrs:fails:' . $product->id, $fails, now()->addDays(30));
+            Log::warning('KeyAttributeExtractor: LLM failed', ['product_id' => $product->id, 'fails' => $fails, 'error' => mb_substr($e->getMessage(), 0, 200)]);
+            if ($fails >= self::MAX_FAILS) {
+                $product->forceFill(['key_attrs' => [], 'key_attrs_at' => now()])->save();
+            }
 
             return $this->lastCost();
         }
@@ -67,6 +76,8 @@ class KeyAttributeExtractor
             $this->systemPrompt(),
             $this->userPrompt($product),
             700,
+            0.0,
+            ['frequency_penalty' => 0.5, 'max_tokens_exact' => 700, 'backup_retry' => false],
         );
 
         return KeyAttributes::normalize($json['attrs'] ?? []);

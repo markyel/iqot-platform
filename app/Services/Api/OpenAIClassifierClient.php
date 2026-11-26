@@ -67,10 +67,14 @@ class OpenAIClassifierClient
      * @param int $maxTokens
      * @param float $temperature Дефолт 0 (детерминизм для analyze/identify/questions);
      *                           генерация тела рассылки зовёт с 0.7 для уникальности.
+     * @param array{frequency_penalty?: float, max_tokens_exact?: int, backup_retry?: bool} $options
+     *        frequency_penalty — штраф за повторы (Qwen на шлюзе зацикливается: «без рамки» ×500, 26.11.2026);
+     *        max_tokens_exact — потолок ответа без поправки min_max_tokens; backup_retry=false — битый ответ
+     *        основного не перезапрашивать платным резервом.
      * @return array<string,mixed> распарсенный JSON из message.content
      * @throws \RuntimeException
      */
-    public function jsonCompletion(string $model, string $systemPrompt, string $userPrompt, int $maxTokens = 1024, float $temperature = 0.0): array
+    public function jsonCompletion(string $model, string $systemPrompt, string $userPrompt, int $maxTokens = 1024, float $temperature = 0.0, array $options = []): array
     {
         if (!$this->isConfigured()) {
             throw new \RuntimeException('OpenAIClassifierClient is not configured.');
@@ -97,6 +101,12 @@ class OpenAIClassifierClient
             'max_tokens' => $maxTokens,
             'response_format' => ['type' => 'json_object'],
         ]);
+        if (isset($options['frequency_penalty'])) {
+            $payload['frequency_penalty'] = (float) $options['frequency_penalty'];
+        }
+        if (isset($options['max_tokens_exact']) && isset($payload['max_tokens'])) {
+            $payload['max_tokens'] = (int) $options['max_tokens_exact'];
+        }
         $response = $this->post($headers, $payload);
 
         for ($attempt = 0; ; $attempt++) {
@@ -116,7 +126,7 @@ class OpenAIClassifierClient
                 return $decoded;
             }
             // Пустой/битый ответ основного — один перезапрос через резерв.
-            if ($attempt === 0 && ($retry = $this->retryViaBackup($headers, $payload)) !== null) {
+            if ($attempt === 0 && ($options['backup_retry'] ?? true) && ($retry = $this->retryViaBackup($headers, $payload)) !== null) {
                 $response = $retry;
                 continue;
             }
