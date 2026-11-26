@@ -36,7 +36,7 @@ class CatalogCrawler
      * Шаблон карточки по известным адресам: преобладающая глубина пути (≥60% адресов) и общий префикс сегментов.
      *
      * Карточки бывают на нескольких уровнях (snab-lift: /catalog/zapchasti-k-liftam/<раздел>/<карточка>.html и на уровень
-     * глубже в подразделах, 25.11.2026): если у ≥90% известных карточек одно окончание (.html/.htm/.php), шаблон
+     * глубже в подразделах, 25.11.2026): если у ≥80% известных карточек одно окончание (.html/.htm/.php), шаблон
      * охватывает все уровни, где таких карточек с тем же префиксом ≥3, а карточка обязана иметь это окончание.
      *
      * @param array<int,string> $urls
@@ -46,6 +46,9 @@ class CatalogCrawler
     {
         $byDepth = [];
         foreach ($urls as $u) {
+            if ((string) parse_url($u, PHP_URL_QUERY) !== '') {
+                continue; // страница раздела с пагинацией, не карточка
+            }
             $segs = self::segments((string) parse_url($u, PHP_URL_PATH));
             if ($segs !== []) {
                 $byDepth[count($segs)][] = $segs;
@@ -57,7 +60,7 @@ class CatalogCrawler
         uasort($byDepth, fn ($a, $b) => count($b) <=> count($a));
         $depth = (int) array_key_first($byDepth);
         $group = $byDepth[$depth];
-        if (count($group) < max(3, 0.6 * count($urls))) {
+        if (count($group) < max(3, 0.6 * array_sum(array_map("count", $byDepth)))) {
             return null;
         }
         // Сегмент входит в шаблон, если его значение у ≥70% карточек (среди известных страниц бывают и разделы:
@@ -85,7 +88,7 @@ class CatalogCrawler
         $counts = array_count_values($exts);
         arsort($counts);
         $top = (string) array_key_first($counts);
-        if ($top !== '' && $counts[$top] >= 0.9 * count($exts)) {
+        if ($top !== '' && $counts[$top] >= 0.8 * count($exts)) {
             $ext = $top;
             foreach ($byDepth as $d => $list) {
                 $n = count(array_filter($list, fn ($segs) => array_slice($segs, 0, count($prefix)) === $prefix
