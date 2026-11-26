@@ -15,7 +15,8 @@ use Illuminate\Support\Facades\DB;
  *
  *  - (артикул, бренд) найден → тот же товар;
  *  - бренд неизвестен, артикул у ровно одного товара → он;
- *  - бренд неизвестен, артикул у нескольких товаров разных брендов → ambiguous (не гадаем);
+ *  - бренд неизвестен, артикул у нескольких товаров разных брендов → любой из них (решение владельца 26.11.2026:
+ *    «если подходит несколько — берём любой»; раньше ambiguous) — тот, у которого больше цен;
  *  - артикул у товара ДРУГОГО бренда → новый товар (один артикул у разных брендов —
  *    разные товары, урок Content Engine);
  *  - ничего → новый товар.
@@ -74,33 +75,25 @@ class ProductIdentityResolver
             if ($distinct->count() === 1) {
                 $productId = (int) $distinct->first();
             } elseif ($distinct->count() > 1) {
-                $item->forceFill([
-                    'product_id' => null,
-                    'match_status' => ProgramItem::MATCH_AMBIGUOUS,
-                    'match_note' => 'article_in_several_brands: ' . implode(',', array_slice($codes, 0, 3)),
-                ])->save();
-
-                return;
+                $productId = (int) (DB::table('mp_listings')->whereIn('product_id', $distinct->all())
+                    ->where('status', 'active')->whereNotNull('price')
+                    ->groupBy('product_id')->orderByRaw('COUNT(*) DESC')->value('product_id') ?? $distinct->min());
+                $note = mb_substr('picked_of_several_brands: ' . implode(',', array_slice($codes, 0, 3)), 0, 255);
             }
         }
 
         if ($productId === null) {
             $productId = $this->createProduct($item, $brandNorm, $codes)->id;
         } else {
-            // Тот же код у другой позиции ЭТОЙ ЖЕ программы с заметно другим названием —
-            // вероятно варианты одного артикула (цвет/исполнение), склеивать молча нельзя.
+            // Тот же код у другой позиции ЭТОЙ ЖЕ программы с заметно другим названием — вероятно варианты одного
+            // артикула (цвет/исполнение). Раньше — ambiguous; с 26.11.2026 (решение владельца «берём любой») — тот же
+            // товар, с пометкой.
             $sibling = ProgramItem::query()
                 ->where('program_id', $item->program_id)->where('product_id', $productId)
                 ->where('id', '!=', $item->id)->where('active', true)
                 ->first(['client_ref', 'raw_name']);
             if ($sibling && $this->namesDiffer((string) $sibling->raw_name, (string) $item->raw_name)) {
-                $item->forceFill([
-                    'product_id' => null,
-                    'match_status' => ProgramItem::MATCH_AMBIGUOUS,
-                    'match_note' => mb_substr('same_article_as: ' . $sibling->client_ref, 0, 255),
-                ])->save();
-
-                return;
+                $note = mb_substr('same_article_as: ' . $sibling->client_ref, 0, 255);
             }
             $this->addMissingCodes($productId, $codes, $brandNorm, $item);
         }

@@ -38,9 +38,11 @@ class CatalogCrawler
      * Карточки бывают на нескольких уровнях (snab-lift: /catalog/zapchasti-k-liftam/<раздел>/<карточка>.html и на уровень
      * глубже в подразделах, 25.11.2026): если у ≥80% известных карточек одно окончание (.html/.htm/.php), шаблон
      * охватывает все уровни, где таких карточек с тем же префиксом ≥3, а карточка обязана иметь это окончание.
+     * Тогда же допускаются соседние ветки каталога (snab-lift: /catalog/zapchasti-dlya-eskalatorov-i-travolatorov/
+     * рядом с /catalog/zapchasti-k-liftam/, 26.11.2026) — префиксы той же длины, у которых ≥3 карточек с окончанием.
      *
      * @param array<int,string> $urls
-     * @return array{prefix: array<int,string>, depth: int, depths: array<int,int>, ext: ?string}|null
+     * @return array{prefix: array<int,string>, prefixes: array<int,array<int,string>>, depth: int, depths: array<int,int>, ext: ?string}|null
      */
     public static function productPattern(array $urls): ?array
     {
@@ -88,12 +90,29 @@ class CatalogCrawler
         $counts = array_count_values($exts);
         arsort($counts);
         $top = (string) array_key_first($counts);
+        $prefixes = [$prefix];
         if ($top !== '' && $counts[$top] >= 0.8 * count($exts)) {
             $ext = $top;
-            foreach ($byDepth as $d => $list) {
-                $n = count(array_filter($list, fn ($segs) => array_slice($segs, 0, count($prefix)) === $prefix
-                    && str_ends_with(mb_strtolower((string) end($segs)), $ext)));
-                if ($d > count($prefix) && $n >= 3) {
+            $byPrefix = [];
+            foreach ($byDepth as $list) {
+                foreach ($list as $segs) {
+                    if (count($segs) > count($prefix) && str_ends_with(mb_strtolower((string) end($segs)), $ext)) {
+                        $byPrefix[implode('/', array_slice($segs, 0, count($prefix)))][] = $segs;
+                    }
+                }
+            }
+            foreach ($byPrefix as $key => $list) {
+                if ($key !== implode('/', $prefix) && count($list) >= 3) {
+                    $prefixes[] = $key === '' ? [] : explode('/', (string) $key);
+                }
+            }
+            foreach ($prefixes as $pre) {
+                foreach ($byPrefix[implode('/', $pre)] ?? [] as $segs) {
+                    $perDepth[count($segs)] = ($perDepth[count($segs)] ?? 0) + 1;
+                }
+            }
+            foreach ($perDepth ?? [] as $d => $n) {
+                if ($n >= 3) {
                     $depths[] = (int) $d;
                 }
             }
@@ -101,7 +120,7 @@ class CatalogCrawler
             sort($depths);
         }
 
-        return ['prefix' => $prefix, 'depth' => $depth, 'depths' => $depths, 'ext' => $ext];
+        return ['prefix' => $prefix, 'prefixes' => $prefixes, 'depth' => $depth, 'depths' => $depths, 'ext' => $ext];
     }
 
     /** @param array{prefix: array<int,string>, depth: int} $pattern */
@@ -113,8 +132,16 @@ class CatalogCrawler
             return false;
         }
 
-        return in_array(count($segs), $pattern['depths'] ?? [$pattern['depth']], true)
-            && array_slice($segs, 0, count($pattern['prefix'])) === $pattern['prefix'];
+        if (!in_array(count($segs), $pattern['depths'] ?? [$pattern['depth']], true)) {
+            return false;
+        }
+        foreach ($pattern['prefixes'] ?? [$pattern['prefix']] as $prefix) {
+            if (array_slice($segs, 0, count($prefix)) === $prefix) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

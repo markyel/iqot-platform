@@ -55,6 +55,22 @@ class CatalogCrawlerTest extends TestCase
         $this->assertTrue(CatalogCrawler::isSection('/catalog/zapchasti-k-liftam/vkladyshi/otech/sub', $p));
     }
 
+    public function test_neighbour_catalog_branches(): void
+    {
+        $l = 'https://snab-lift.ru/catalog/zapchasti-k-liftam/';
+        $e = 'https://snab-lift.ru/catalog/zapchasti-dlya-eskalatorov-i-travolatorov/';
+        $p = CatalogCrawler::productPattern([
+            $l . 'a/1.html', $l . 'b/2.html', $l . 'c/3.html', $l . 'd/4.html', $l . 'e/5.html', $l . 'f/6.html', $l . 'g/7.html',
+            $e . 'poruchni/8.html', $e . 'stupeni/9.html', $e . 'privod/x/10.html',
+            'https://snab-lift.ru/catalog/zapchasti-dlya-eskalatorov-i-travolatorov/privod-eskalatora',
+        ]);
+
+        $this->assertCount(2, $p['prefixes']);
+        $this->assertTrue(CatalogCrawler::isProduct('/catalog/zapchasti-dlya-eskalatorov-i-travolatorov/stupeni/new.html', $p));
+        $this->assertFalse(CatalogCrawler::isProduct('/catalog/zapchasti-dlya-eskalatorov-i-travolatorov/privod-eskalatora', $p));
+        $this->assertFalse(CatalogCrawler::isProduct('/news/2026/item.html', $p), 'чужая ветка');
+    }
+
     public function test_links_are_absolute(): void
     {
         $html = '<a href="/catalog/a/">A</a><a href="b/">B</a><a href="https://x.ru/c">C</a><a href="tel:+7">T</a><a href="#top">H</a>';
