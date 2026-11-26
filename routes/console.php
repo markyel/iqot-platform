@@ -126,6 +126,14 @@ Schedule::command('emails:spam-reject-guard')
     ->everyTwoHours()
     ->withoutOverlapping();
 
+// Карма поставщиков по ответам и жизненный цикл заявок (26.11.2026, замена n8n «Status Manager»).
+Schedule::command('suppliers:collect-signals')
+    ->everyTwoHours()
+    ->withoutOverlapping();
+Schedule::command('requests:update-statuses')
+    ->everyThirtyMinutes()
+    ->withoutOverlapping();
+
 // Приём почты: диспетчер опроса IMAP активных ящиков (замена n8n «Receive and
 // Route Emails v3»). Ответы приходят в любое время — без рабочего окна. Защита
 // от наложения: withoutOverlapping + Cache::lock на ящик внутри job.
